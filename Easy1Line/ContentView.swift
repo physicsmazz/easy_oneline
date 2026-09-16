@@ -43,6 +43,7 @@ struct ContentView: View {
     @State private var cloudStatus = ""
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
+    @State private var dockDragLocation = CGPoint.zero
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
 
@@ -58,6 +59,21 @@ struct ContentView: View {
             palette
                 .padding(.leading, 20)
                 .padding(.top, 84)
+
+            if let dockDragKind {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color(red: 0.10, green: 0.14, blue: 0.16))
+                        .frame(width: 72, height: 62)
+                    Image(systemName: dockDragKind.symbol)
+                        .font(.system(size: 30, weight: .medium))
+                        .foregroundStyle(Color(hex: dockDragKind.defaultColorHex))
+                }
+                .shadow(color: .black.opacity(0.35), radius: 12)
+                .allowsHitTesting(false)
+                .position(dockDragLocation)
+                .zIndex(1200)
+            }
 
             header
                 .zIndex(1000)
@@ -224,13 +240,17 @@ struct ContentView: View {
                             .onTapGesture { addTarget(kind) }
                             .overlay(alignment: .trailing) {
                                 Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.45))
-                                    .frame(width: 36, height: 36)
-                                    .contentShape(Rectangle())
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.cyan)
+                                    .frame(width: 48, height: 38)
+                                    .background(.cyan.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                                    .contentShape(RoundedRectangle(cornerRadius: 6))
                                     .gesture(
                                         DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                                            .onChanged { _ in dockDragKind = kind }
+                                            .onChanged { value in
+                                                dockDragKind = kind
+                                                dockDragLocation = value.location
+                                            }
                                             .onEnded { value in
                                                 dockDragKind = nil
                                                 placeDockItem(kind, at: value.location)
