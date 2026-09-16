@@ -1,5 +1,7 @@
 import SwiftUI
 import Foundation
+import PhotosUI
+import UIKit
 
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
@@ -14,6 +16,7 @@ struct ContentView: View {
     @State private var showLibrary = false
     @State private var showLineLibrary = false
     @State private var selectedLineDefinitionID: UUID?
+    @State private var selectedPhotoItem: PhotosPickerItem?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -53,6 +56,10 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .onChange(of: document) { _, _ in
             SchematicDocument.saveLast(document)
+        }
+        .onChange(of: selectedPhotoItem) { _, item in
+            guard let item, let targetID = selectedTargetIDs.first else { return }
+            Task { await loadTargetImage(item, targetID: targetID) }
         }
     }
 
@@ -416,6 +423,15 @@ struct ContentView: View {
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
                 TextField("SF Symbol name", text: targetBinding(target).symbol)
                     .textFieldStyle(.roundedBorder)
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Label(target.imageData == nil ? "Upload image icon" : "Replace image icon", systemImage: "photo.badge.plus")
+                }
+                Button {
+                    clearTargetImage(target)
+                } label: {
+                    Label("Use SF Symbol instead", systemImage: "sf.square")
+                }
+                .disabled(target.imageData == nil)
                 Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
                 Button { duplicateTarget(target) } label: {
@@ -531,6 +547,19 @@ struct ContentView: View {
         )
     }
 
+    private func loadTargetImage(_ item: PhotosPickerItem, targetID: UUID) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        guard let index = document.targets.firstIndex(where: { $0.id == targetID }) else { return }
+        document.targets[index].imageData = data
+        selectedPhotoItem = nil
+    }
+
+    private func clearTargetImage(_ target: SchematicTarget) {
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+        document.targets[index].imageData = nil
+        selectedPhotoItem = nil
+    }
+
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
         guard let index = document.segments.firstIndex(where: { $0.id == segmentID }) else { return }
         document.segments[index].name = line.name
@@ -587,8 +616,9 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var maxConnections: Int
     var colorHex: String
     var symbol: String
+    var imageData: Data?
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -596,6 +626,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.maxConnections = maxConnections
         self.colorHex = colorHex
         self.symbol = symbol ?? kind.symbol
+        self.imageData = imageData
     }
 
     init(from decoder: Decoder) throws {
@@ -607,6 +638,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
+        imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
     }
 }
 
@@ -691,7 +723,17 @@ private struct TargetView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         RoundedRectangle(cornerRadius: 10).stroke(isSelected || isConnectionStart ? Color(hex: target.colorHex) : .white.opacity(0.18), lineWidth: isSelected || isConnectionStart ? 2 : 1)
-                        Image(systemName: target.symbol).font(.system(size: 22, weight: .medium)).foregroundStyle(Color(hex: target.colorHex))
+                        if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 30, height: 30)
+                                .clipShape(RoundedRectangle(cornerRadius: 5))
+                        } else {
+                            Image(systemName: target.symbol)
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(Color(hex: target.colorHex))
+                        }
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }.frame(width: 108, height: 76)
