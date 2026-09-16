@@ -340,7 +340,6 @@ struct ContentView: View {
     }
 
     private func targetTapped(_ target: SchematicTarget) {
-        if selectedConnectionSlots[target.id] != nil { return }
         if selectedTargetIDs.contains(target.id) {
             cycleConnectionPoint(for: target)
             return
@@ -358,11 +357,12 @@ struct ContentView: View {
 
     private func cycleConnectionPoint(for target: SchematicTarget) {
         guard target.kind != .junction else { return }
-        let availableSlots = (0..<target.maxConnections).filter { !occupiedSlots(for: target.id).contains($0) }
-        guard !availableSlots.isEmpty else { return }
+        let freeSlots = (0..<target.maxConnections).filter { !occupiedSlots(for: target.id).contains($0) }
+        let cycleSlots = freeSlots.isEmpty ? Array(0..<target.maxConnections) : freeSlots
+        guard !cycleSlots.isEmpty else { return }
         let currentSlot = selectedConnectionSlots[target.id]
-        let nextIndex = currentSlot.flatMap { slot in availableSlots.firstIndex(of: slot).map { ($0 + 1) % availableSlots.count } } ?? 0
-        selectedConnectionSlots[target.id] = availableSlots[nextIndex]
+        let nextIndex = currentSlot.flatMap { slot in cycleSlots.firstIndex(of: slot).map { ($0 + 1) % cycleSlots.count } } ?? 0
+        selectedConnectionSlots[target.id] = cycleSlots[nextIndex]
     }
 
     private func selectTarget(_ target: SchematicTarget) {
