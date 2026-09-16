@@ -2063,14 +2063,15 @@ struct ContentView: View {
 
     private func simplifyOrthogonalPoints(_ points: [CGPoint]) -> [CGPoint] {
         guard points.count > 2 else { return points }
+        let alignmentTolerance: CGFloat = 4
         var simplified = [points[0]]
         for point in points.dropFirst() {
             guard let previous = simplified.last else { continue }
-            if abs(point.x - previous.x) < 0.5 && abs(point.y - previous.y) < 0.5 { continue }
+            if abs(point.x - previous.x) < alignmentTolerance && abs(point.y - previous.y) < alignmentTolerance { continue }
             if simplified.count >= 2 {
                 let before = simplified[simplified.count - 2]
-                let isCollinear = (abs(before.x - previous.x) < 0.5 && abs(previous.x - point.x) < 0.5) ||
-                    (abs(before.y - previous.y) < 0.5 && abs(previous.y - point.y) < 0.5)
+                let isCollinear = (abs(before.x - previous.x) < alignmentTolerance && abs(previous.x - point.x) < alignmentTolerance) ||
+                    (abs(before.y - previous.y) < alignmentTolerance && abs(previous.y - point.y) < alignmentTolerance)
                 if isCollinear {
                     simplified[simplified.count - 1] = point
                     continue
