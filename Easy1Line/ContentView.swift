@@ -1902,9 +1902,19 @@ struct ContentView: View {
         return path
     }
 
+    private func routeWithCurrentEndpoints(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
+        var points = orthogonalizedPoints(routePoints)
+        guard points.count > 1 else { return points }
+        let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
+        let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
+        points[0] = connectionPoint(for: startTarget, slot: startSlot)
+        points[points.count - 1] = connectionPoint(for: endTarget, slot: endSlot)
+        return orthogonalizedPoints(points)
+    }
+
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
         if segment.routePoints.count > 1 {
-            return orthogonalizedPoints(segment.routePoints)
+            return routeWithCurrentEndpoints(segment.routePoints, segment: segment, startTarget: startTarget, endTarget: endTarget)
         }
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
@@ -2637,7 +2647,7 @@ private struct TargetView: View {
             } else if target.isCompact {
                 ZStack {
                     Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
-                    Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
+                    Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2)
                     if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(Circle())
                     } else {
@@ -2650,7 +2660,7 @@ private struct TargetView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
+                            .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2)
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                             Image(uiImage: uiImage)
                                 .resizable()
