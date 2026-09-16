@@ -191,7 +191,7 @@ struct ContentView: View {
                 .accessibilityLabel("Show connection names")
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
-                .buttonStyle(EditorButtonStyle(isActive: connectionMode || canConnectSelection))
+                .buttonStyle(EditorButtonStyle(isActive: connectionMode))
                 }
                 .fixedSize(horizontal: true, vertical: false)
             }
@@ -392,21 +392,6 @@ struct ContentView: View {
                 }
             }
 
-            if selectedTargetIDs.count >= 2,
-               let lastSelectedID = selectedTargetIDs.last,
-               let lastSelectedTarget = target(with: lastSelectedID) {
-                Button {
-                    connectSelection()
-                } label: {
-                    Text("Connect")
-                        .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .frame(height: 30)
-                }
-                .buttonStyle(EditorButtonStyle(isActive: true))
-                .position(x: lastSelectedTarget.position.x + 86, y: lastSelectedTarget.position.y - 52)
-                .zIndex(1000)
-            }
         }
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
@@ -1095,7 +1080,19 @@ struct ContentView: View {
             } else {
                 Text("MULTI-SELECT").inspectorLabel()
                 Text("\(selectedTargetIDs.count) targets selected").font(.headline)
-                Text("Tap Connect to link them in order.").font(.caption).foregroundStyle(.white.opacity(0.45))
+                HStack {
+                    Button("Connect selected") { connectSelectedTargets() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selectedTargetIDs.count < 2)
+                    Button("Delete selected", role: .destructive) {
+                        let targetIDs = Set(selectedTargetIDs)
+                        document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
+                        document.targets.removeAll { targetIDs.contains($0.id) }
+                        selectedTargetIDs.removeAll()
+                        selectedConnectionSlots.removeAll()
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
         .padding(16)
