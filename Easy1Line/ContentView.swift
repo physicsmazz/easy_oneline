@@ -95,29 +95,34 @@ struct ContentView: View {
             Spacer()
 
             Button { showLibrary.toggle() } label: {
-                Label("Schematics", systemImage: "folder")
+                Image(systemName: "folder")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLibrary))
+            .help("Drawings")
 
             Button { showLineLibrary.toggle() } label: {
-                Label("Lines", systemImage: "line.3.horizontal")
+                Image(systemName: "line.3.horizontal")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
+            .help("Line library")
 
             Button { showTargetLibrary.toggle() } label: {
-                Label("Targets", systemImage: "square.grid.2x2")
+                Image(systemName: "square.grid.2x2")
             }
             .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
+            .help("Target library")
 
             Button { saveCurrent() } label: {
-                Label("Save", systemImage: "square.and.arrow.down")
+                Image(systemName: "square.and.arrow.down")
             }
             .buttonStyle(EditorButtonStyle())
+            .help("Save drawing locally")
 
             Button { Task { await saveToCloud() } } label: {
-                Label("Cloud", systemImage: "icloud.and.arrow.up")
+                Image(systemName: "icloud.and.arrow.up")
             }
             .buttonStyle(EditorButtonStyle())
+            .help("Save to cloud")
 
             Button { Task { await loadFromCloud() } } label: {
                 Image(systemName: "icloud.and.arrow.down")
@@ -129,10 +134,11 @@ struct ContentView: View {
             Button {
                 connectSelectedTargets()
             } label: {
-                Label(selectedTargetIDs.count >= 2 ? "Connect \(selectedTargetIDs.count)" : "Connect", systemImage: "point.3.connected.trianglepath.dotted")
+                Image(systemName: "point.3.connected.trianglepath.dotted")
             }
             .buttonStyle(EditorButtonStyle(isActive: selectedTargetIDs.count >= 2))
             .disabled(selectedTargetIDs.count < 2)
+            .help("Connect selected targets")
 
             Button { showInspector.toggle() } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -156,12 +162,15 @@ struct ContentView: View {
                 .tracking(1.4)
                 .foregroundStyle(.white.opacity(0.45))
 
-            ForEach(TargetKind.palette) { kind in
-                PaletteItem(kind: kind)
-                    .draggable(kind.rawValue)
-                    .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
-                    .onTapGesture { addTarget(kind) }
+            ScrollView {
+                ForEach(TargetKind.palette) { kind in
+                    PaletteItem(kind: kind)
+                        .draggable(kind.rawValue)
+                        .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
+                        .onTapGesture { addTarget(kind) }
+                }
             }
+            .frame(maxHeight: 460)
 
             Divider().overlay(.white.opacity(0.12)).padding(.vertical, 4)
 
@@ -318,7 +327,7 @@ struct ContentView: View {
             guard !occupiedSlots(for: startID).contains(startSlot), !occupiedSlots(for: endID).contains(endSlot) else { continue }
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
             let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-            document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, displayWidth: line.displayWidth, description: line.description))
+            document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
         }
         selectedTargetIDs.removeAll()
         selectedConnectionSlots.removeAll()
@@ -336,7 +345,7 @@ struct ContentView: View {
 
     private func addTarget(from template: TargetDefinition) {
         let position = CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
-        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale))
+        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -344,7 +353,7 @@ struct ContentView: View {
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
-        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData, connectionAngles: target.connectionAngles, scale: target.scale))
+        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData, connectionAngles: target.connectionAngles, scale: target.scale, isCompact: target.isCompact))
     }
 
     private func duplicateTarget(_ target: SchematicTarget) {
@@ -467,7 +476,7 @@ struct ContentView: View {
                         Circle().fill(Color(hex: line.colorHex)).frame(width: 12, height: 12)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(line.name).font(.system(size: 13, weight: .semibold))
-                            Text("\(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt · \(line.description)").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+                            Text("\(line.material.rawValue) · \(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
                         }
                         Spacer()
                         if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
@@ -558,6 +567,11 @@ struct ContentView: View {
                     .textFieldStyle(.roundedBorder)
                 ColorPicker("Line color", selection: segmentBinding(segment).color)
                 TextField("Wire size", text: segmentBinding(segment).wireSize).textFieldStyle(.roundedBorder)
+                Picker("Material", selection: segmentBinding(segment).material) {
+                    ForEach(ConductorMaterial.allCases) { material in
+                        Text(material.title).tag(material)
+                    }
+                }
                 TextField("Description", text: segmentBinding(segment).description).textFieldStyle(.roundedBorder)
                 Stepper("Display width: \(segment.displayWidth, specifier: "%.1f")", value: segmentBinding(segment).displayWidth, in: 1...20, step: 0.5)
                 Button {
@@ -566,7 +580,7 @@ struct ContentView: View {
                     Label("Choose line type", systemImage: "list.bullet.rectangle")
                 }
                 Button {
-                    document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description))
+                    document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, material: ConductorMaterial(rawValue: segment.material) ?? .copper, displayWidth: segment.displayWidth, description: segment.description))
                 } label: {
                     Label("Add to line library", systemImage: "plus.circle")
                 }
@@ -604,6 +618,7 @@ struct ContentView: View {
                 }
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
                 Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
+                Toggle("Compact target", isOn: targetBinding(target).isCompact)
                 Button { duplicateTarget(target) } label: {
                     Label("Duplicate target", systemImage: "plus.square.on.square")
                 }
@@ -662,7 +677,7 @@ struct ContentView: View {
     private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
         let slotIndex = slot ?? 0
         let angle = connectionAngle(for: target, slot: slotIndex) * Double.pi / 180
-        let radius: CGFloat = target.kind == .junction ? 0 : 42 * target.scale
+        let radius: CGFloat = target.kind == .junction ? 0 : (target.isCompact ? 24 : 42) * target.scale
         return CGPoint(x: target.position.x + radius * CGFloat(cos(angle)), y: target.position.y + radius * CGFloat(sin(angle)))
     }
 
@@ -679,7 +694,7 @@ struct ContentView: View {
         let key = connectionDragKey(targetID, slot: slot)
         if connectionDragStartAngles[key] == nil { connectionDragStartAngles[key] = connectionAngle(for: target, slot: slot) }
         let startAngle = (connectionDragStartAngles[key] ?? 0) * Double.pi / 180
-        let radius: CGFloat = 42 * target.scale
+        let radius: CGFloat = (target.isCompact ? 24 : 42) * target.scale
         let startPoint = CGPoint(x: radius * CGFloat(cos(startAngle)), y: radius * CGFloat(sin(startAngle)))
         let point = CGPoint(x: startPoint.x + translation.width, y: startPoint.y + translation.height)
         let angle = atan2(point.y, point.x) * 180 / Double.pi
@@ -716,7 +731,7 @@ struct ContentView: View {
     }
 
     private func obstacleRect(for target: SchematicTarget) -> CGRect {
-        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : CGSize(width: 108, height: 76)
+        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : target.isCompact ? CGSize(width: 40, height: 40) : CGSize(width: 108, height: 76)
         return CGRect(x: target.position.x - size.width * target.scale / 2, y: target.position.y - size.height * target.scale / 2, width: size.width * target.scale, height: size.height * target.scale)
     }
 
@@ -751,8 +766,8 @@ struct ContentView: View {
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
             let endSlot = segment.endSlot ?? 0
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
             return
         }
     }
@@ -775,18 +790,19 @@ struct ContentView: View {
         return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
     }
 
-    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, displayWidth: Binding<Double>, description: Binding<String>) {
+    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { fatalError("Segment disappeared") }
         return (
             Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }),
             Binding(get: { Color(hex: document.segments[index].colorHex) }, set: { document.segments[index].colorHex = $0.hexString }),
             Binding(get: { document.segments[index].wireSize }, set: { document.segments[index].wireSize = $0 }),
+            Binding(get: { ConductorMaterial(rawValue: document.segments[index].material) ?? .copper }, set: { document.segments[index].material = $0.rawValue }),
             Binding(get: { document.segments[index].displayWidth }, set: { document.segments[index].displayWidth = $0 }),
             Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 })
         )
     }
 
-    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>, scale: Binding<Double>) {
+    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>, scale: Binding<Double>, isCompact: Binding<Bool>) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
         return (
             Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }),
@@ -794,7 +810,8 @@ struct ContentView: View {
             Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }),
             Binding(get: { document.targets[index].connectionAngle }, set: { document.targets[index].connectionAngle = $0 }),
             Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString }),
-            Binding(get: { document.targets[index].scale }, set: { document.targets[index].scale = $0 })
+            Binding(get: { document.targets[index].scale }, set: { document.targets[index].scale = $0 }),
+            Binding(get: { document.targets[index].isCompact }, set: { document.targets[index].isCompact = $0 })
         )
     }
 
@@ -816,6 +833,7 @@ struct ContentView: View {
         document.segments[index].name = line.name
         document.segments[index].colorHex = line.colorHex
         document.segments[index].wireSize = line.wireSize
+        document.segments[index].material = line.material.rawValue
         document.segments[index].displayWidth = line.displayWidth
         document.segments[index].description = line.description
     }
@@ -832,10 +850,10 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var name: String
     var targets: [SchematicTarget] = []
     var segments: [SchematicSegment] = []
-    var lineDefinitions: [LineDefinition] = [.defaultLine]
+    var lineDefinitions: [LineDefinition] = LineDefinition.defaults
     var targetDefinitions: [TargetDefinition] = []
 
-    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = [.defaultLine], targetDefinitions: [TargetDefinition] = []) {
+    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = LineDefinition.defaults, targetDefinitions: [TargetDefinition] = TargetDefinition.defaults) {
         self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions; self.targetDefinitions = targetDefinitions
     }
 
@@ -845,8 +863,10 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled schematic"
         targets = try container.decodeIfPresent([SchematicTarget].self, forKey: .targets) ?? []
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
-        lineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? [.defaultLine]
-        targetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
+        let savedLineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? []
+        lineDefinitions = savedLineDefinitions.isEmpty ? LineDefinition.defaults : savedLineDefinitions
+        let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
+        targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
     }
 
     static func loadLast() -> SchematicDocument {
@@ -873,8 +893,9 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var connectionAngle: Double
     var connectionAngles: [Double]
     var scale: Double
+    var isCompact: Bool
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], scale: Double = 1) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], scale: Double = 1, isCompact: Bool = false) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -886,6 +907,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.connectionAngle = connectionAngle
         self.connectionAngles = connectionAngles
         self.scale = scale
+        self.isCompact = isCompact
     }
 
     init(from decoder: Decoder) throws {
@@ -901,6 +923,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         connectionAngle = try container.decodeIfPresent(Double.self, forKey: .connectionAngle) ?? 0
         connectionAngles = try container.decodeIfPresent([Double].self, forKey: .connectionAngles) ?? []
         scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+        isCompact = try container.decodeIfPresent(Bool.self, forKey: .isCompact) ?? false
     }
 }
 
@@ -914,8 +937,13 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
     var imageData: Data?
     var connectionAngles: [Double]
     var scale: Double
+    var isCompact: Bool
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, maxConnections: Int, colorHex: String, symbol: String, imageData: Data?, connectionAngles: [Double], scale: Double) {
+    static let defaults: [TargetDefinition] = TargetKind.palette.map {
+        TargetDefinition(kind: $0, name: $0.title, maxConnections: $0 == .panel || $0 == .bus ? 8 : 2, colorHex: $0.defaultColorHex, symbol: $0.symbol, imageData: nil, connectionAngles: [], scale: 1)
+    }
+
+    init(id: UUID = UUID(), kind: TargetKind, name: String, maxConnections: Int, colorHex: String, symbol: String, imageData: Data?, connectionAngles: [Double], scale: Double, isCompact: Bool = false) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -925,6 +953,7 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
         self.imageData = imageData
         self.connectionAngles = connectionAngles
         self.scale = scale
+        self.isCompact = isCompact
     }
 
     init(from decoder: Decoder) throws {
@@ -938,6 +967,7 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
         connectionAngles = try container.decodeIfPresent([Double].self, forKey: .connectionAngles) ?? []
         scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+        isCompact = try container.decodeIfPresent(Bool.self, forKey: .isCompact) ?? false
     }
 }
 
@@ -950,13 +980,14 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var name: String
     var colorHex: String
     var wireSize: String
+    var material: String
     var displayWidth: Double
     var description: String
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", displayWidth: Double = 3, description: String = "") {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "") {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.displayWidth = displayWidth; self.description = description
+        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description
     }
 
     init(from decoder: Decoder) throws {
@@ -969,6 +1000,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Connection"
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
+        material = try container.decodeIfPresent(String.self, forKey: .material) ?? "Copper"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
     }
@@ -979,19 +1011,68 @@ private struct LineDefinition: Identifiable, Codable, Equatable {
     var name: String
     var colorHex: String
     var wireSize: String
+    var material: ConductorMaterial
     var displayWidth: Double
     var description: String
 
-    static let defaultLine = LineDefinition(name: "Standard wire", colorHex: "31D7E8", wireSize: "14 AWG", displayWidth: 3, description: "General purpose connection")
+    init(id: UUID = UUID(), name: String, colorHex: String, wireSize: String, material: ConductorMaterial = .copper, displayWidth: Double, description: String) {
+        self.id = id; self.name = name; self.colorHex = colorHex; self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description
+    }
+
+    static let defaultLine = LineDefinition(name: "Standard wire", colorHex: "31D7E8", wireSize: "14 AWG", material: .copper, displayWidth: 3, description: "General purpose connection")
+    static let defaults: [LineDefinition] = {
+        let sizes = ["1/0", "2/0", "4/0", "2", "4", "6", "8", "10", "12", "14", "16", "18"]
+        return ConductorMaterial.allCases.flatMap { material in
+            sizes.map { size in
+                LineDefinition(name: "\(material.rawValue) \(size)", colorHex: material.defaultColorHex, wireSize: size, material: material, displayWidth: 3, description: "Common \(material.rawValue) conductor")
+            }
+        }
+    }()
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Standard wire"
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
+        wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
+        material = try container.decodeIfPresent(ConductorMaterial.self, forKey: .material) ?? .copper
+        displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+    }
+}
+
+private enum ConductorMaterial: String, CaseIterable, Codable, Identifiable {
+    case copper = "Copper"
+    case aaac = "AAAC"
+    case aac = "AAC"
+    case acsr = "ACSR"
+    case covered = "Covered"
+    var id: String { rawValue }
+    var title: String { rawValue }
+    var defaultColorHex: String {
+        switch self { case .copper: return "D98B5F"; case .aaac: return "B8C4D1"; case .aac: return "D6DEE8"; case .acsr: return "8C9AA8"; case .covered: return "F2C14E" }
+    }
 }
 
 private enum TargetKind: String, CaseIterable, Identifiable, Codable {
-    case source, load, switchTarget, junction
-    static let palette: [TargetKind] = [.source, .load, .switchTarget]
+    case source, utilitySource, transformer, breaker, fuse, disconnect, switchTarget, panel, bus, meter, generator, motor, receptacle, ground, capacitor, load, junction
+    static let palette: [TargetKind] = [.source, .utilitySource, .transformer, .breaker, .fuse, .disconnect, .switchTarget, .panel, .bus, .meter, .generator, .motor, .receptacle, .ground, .capacitor, .load]
     var id: String { rawValue }
-    var title: String { switch self { case .source: return "Source"; case .load: return "Load"; case .switchTarget: return "Switch"; case .junction: return "Junction" } }
-    var symbol: String { switch self { case .source: return "bolt.fill"; case .load: return "lightbulb.fill"; case .switchTarget: return "switch.2"; case .junction: return "circle.fill" } }
-    var defaultColorHex: String { switch self { case .source: return "FF9F43"; case .load: return "FFD166"; case .switchTarget: return "6EE7B7"; case .junction: return "31D7E8" } }
+    var title: String {
+        switch self {
+        case .source: return "Source"; case .utilitySource: return "Utility source"; case .transformer: return "Transformer"; case .breaker: return "Breaker"; case .fuse: return "Fuse"; case .disconnect: return "Disconnect"; case .switchTarget: return "Switch"; case .panel: return "Panel"; case .bus: return "Bus"; case .meter: return "Meter"; case .generator: return "Generator"; case .motor: return "Motor"; case .receptacle: return "Receptacle"; case .ground: return "Ground"; case .capacitor: return "Capacitor"; case .load: return "Load"; case .junction: return "Junction"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .source: return "bolt.fill"; case .utilitySource: return "powerplug.fill"; case .transformer: return "arrow.left.arrow.right"; case .breaker: return "bolt.shield.fill"; case .fuse: return "fuse"; case .disconnect: return "poweroff"; case .switchTarget: return "switch.2"; case .panel: return "rectangle.split.3x1"; case .bus: return "line.3.horizontal"; case .meter: return "gauge.with.dots.needle.bottom.50percent"; case .generator: return "engine.combustion.fill"; case .motor: return "fanblades.fill"; case .receptacle: return "rectangle.grid.2x2"; case .ground: return "arrow.down.to.line"; case .capacitor: return "minus.plus.batteryblock"; case .load: return "lightbulb.fill"; case .junction: return "circle.fill"
+        }
+    }
+    var defaultColorHex: String {
+        switch self {
+        case .source, .utilitySource: return "FF9F43"; case .transformer: return "F59E0B"; case .breaker, .fuse, .disconnect: return "F87171"; case .switchTarget: return "6EE7B7"; case .panel, .bus: return "60A5FA"; case .meter: return "A78BFA"; case .generator: return "FB923C"; case .motor: return "34D399"; case .receptacle, .load: return "FFD166"; case .ground: return "94A3B8"; case .capacitor: return "F472B6"; case .junction: return "31D7E8"
+        }
+    }
 }
 
 private struct PaletteItem: View {
@@ -1023,6 +1104,17 @@ private struct TargetView: View {
         Group {
             if target.kind == .junction {
                 Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+            } else if target.isCompact {
+                ZStack {
+                    Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
+                    Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
+                    if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
+                        Image(uiImage: uiImage).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(Circle())
+                    } else {
+                        Image(systemName: target.symbol).font(.system(size: 20, weight: .medium)).foregroundStyle(Color(hex: target.colorHex))
+                    }
+                }
+                .frame(width: 40, height: 40)
             } else {
                 VStack(spacing: 5) {
                     ZStack {
@@ -1094,7 +1186,7 @@ private struct TargetView: View {
 
     private func connectionPointOffset(for slot: Int) -> CGSize {
         let angle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
-        let radius: CGFloat = target.kind == .junction ? 0 : 42
+        let radius: CGFloat = target.kind == .junction ? 0 : (target.isCompact ? 24 : 42)
         return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
     }
 

@@ -15,6 +15,23 @@ create table if not exists public.drawings (
 create index if not exists drawings_owner_id_idx on public.drawings(owner_id);
 create index if not exists drawings_data_gin_idx on public.drawings using gin(data);
 
+create table if not exists public.conductor_catalog (
+    material text not null check (material in ('Copper', 'AAAC', 'AAC', 'ACSR', 'Covered')),
+    wire_size text not null,
+    description text not null default '',
+    primary key (material, wire_size)
+);
+
+insert into public.conductor_catalog (material, wire_size, description)
+select material, wire_size, 'Common ' || material || ' conductor'
+from unnest(array['Copper', 'AAAC', 'AAC', 'ACSR', 'Covered']) as materials(material)
+cross join unnest(array['1/0', '2/0', '4/0', '2', '4', '6', '8', '10', '12', '14', '16', '18']) as sizes(wire_size)
+on conflict (material, wire_size) do nothing;
+
+alter table public.conductor_catalog enable row level security;
+drop policy if exists "anyone can read conductor catalog" on public.conductor_catalog;
+create policy "anyone can read conductor catalog" on public.conductor_catalog for select using (true);
+
 alter table public.drawings enable row level security;
 
 -- Anonymous mode: drawings are readable and writable while the app is prototyping.
