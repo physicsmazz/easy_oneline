@@ -329,6 +329,9 @@ struct ContentView: View {
             ForEach(document.lineDefinitions) { line in
                 Button {
                     selectedLineDefinitionID = line.id
+                    if let selectedSegmentID {
+                        applyLineDefinition(line, to: selectedSegmentID)
+                    }
                     showLineLibrary = false
                 } label: {
                     HStack(spacing: 9) {
@@ -361,6 +364,11 @@ struct ContentView: View {
                 TextField("Wire size", text: segmentBinding(segment).wireSize).textFieldStyle(.roundedBorder)
                 TextField("Description", text: segmentBinding(segment).description).textFieldStyle(.roundedBorder)
                 Stepper("Display width: \(segment.displayWidth, specifier: "%.1f")", value: segmentBinding(segment).displayWidth, in: 1...20, step: 0.5)
+                Button {
+                    showLineLibrary = true
+                } label: {
+                    Label("Choose line type", systemImage: "list.bullet.rectangle")
+                }
                 Button {
                     document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description))
                 } label: {
@@ -455,6 +463,15 @@ struct ContentView: View {
     private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, maxConnections: Binding<Int>, color: Binding<Color>) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
         return (Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }), Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }), Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString }))
+    }
+
+    private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
+        guard let index = document.segments.firstIndex(where: { $0.id == segmentID }) else { return }
+        document.segments[index].name = line.name
+        document.segments[index].colorHex = line.colorHex
+        document.segments[index].wireSize = line.wireSize
+        document.segments[index].displayWidth = line.displayWidth
+        document.segments[index].description = line.description
     }
 }
 
