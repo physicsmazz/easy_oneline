@@ -120,11 +120,11 @@ struct ContentView: View {
 
             Spacer()
 
-            Menu("View") {
-                Button(snapToGrid ? "Snap to grid: On" : "Snap to grid: Off") { snapToGrid.toggle() }
-                Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
-            }
-            .buttonStyle(EditorButtonStyle())
+            Button(snapToGrid ? "Snap: On" : "Snap: Off") { snapToGrid.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+
+            Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: wireBridgesEnabled))
 
             Button(infoSelectorEnabled ? "Info: On" : "Info: Off") { infoSelectorEnabled.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
