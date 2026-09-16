@@ -716,6 +716,7 @@ struct ContentView: View {
                     if !selectedTargetIDs.contains(target.id) {
                         selectedTargetIDs = [target.id]
                     }
+                    targetDragStartRoutes.removeAll()
                     for targetID in activeTargetDragIDs {
                         guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }), !document.targets[targetIndex].locked else { continue }
                         dragStartPositions[targetID] = document.targets[targetIndex].position
@@ -735,8 +736,8 @@ struct ContentView: View {
                     guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }), let targetStart = dragStartPositions[targetID] else { continue }
                     let proposedPosition = CGPoint(x: targetStart.x + groupDelta.width, y: targetStart.y + groupDelta.height)
                     document.targets[targetIndex].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
-                    updateAttachedRoutes(for: targetID, translation: CGSize(width: document.targets[targetIndex].position.x - targetStart.x, height: document.targets[targetIndex].position.y - targetStart.y))
                 }
+                updateAttachedRoutes(for: Set(activeTargetDragIDs), translation: groupDelta)
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
                 splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
@@ -1688,7 +1689,6 @@ struct ContentView: View {
     }
 
     private func captureAttachedRoutes(for targetID: UUID) {
-        targetDragStartRoutes.removeAll()
         for segment in document.segments where segment.startID == targetID || segment.endID == targetID {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
             var points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
@@ -1703,9 +1703,20 @@ struct ContentView: View {
     }
 
     private func updateAttachedRoutes(for targetID: UUID, translation: CGSize) {
-        for index in document.segments.indices where document.segments[index].startID == targetID || document.segments[index].endID == targetID {
+        updateAttachedRoutes(for: Set([targetID]), translation: translation)
+    }
+
+    private func updateAttachedRoutes(for targetIDs: Set<UUID>, translation: CGSize) {
+        for index in document.segments.indices where targetIDs.contains(document.segments[index].startID) || targetIDs.contains(document.segments[index].endID) {
             let segment = document.segments[index]
             guard var points = targetDragStartRoutes[segment.id], points.count > 1 else { continue }
+            let startMoved = targetIDs.contains(segment.startID)
+            let endMoved = targetIDs.contains(segment.endID)
+            if startMoved && endMoved {
+                document.segments[index].routePoints = points.map { CGPoint(x: $0.x + translation.width, y: $0.y + translation.height) }
+                continue
+            }
+            let targetID = startMoved ? segment.startID : segment.endID
             if points.count == 2 {
                 // Straight stub: move only the attached end; drawing re-orthogonalizes it.
                 let movedIndex = segment.startID == targetID ? 0 : 1
