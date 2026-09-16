@@ -1486,13 +1486,31 @@ struct ContentView: View {
               let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
         let midpoint = nearestPoint(on: route, to: CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)).point
-        let junction = SchematicTarget(kind: .junction, name: "Junction", position: snappedPosition(midpoint), maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
+        let junctionPosition = snapToGrid ? snappedPosition(midpoint) : midpoint
+        let splitRoutes = splitRoutePoints(route, at: junctionPosition)
+        let junction = SchematicTarget(kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: index)
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index)
-        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
         selectedSegmentIDs.remove(segment.id)
         selectedSegmentID = nil
+    }
+
+    private func splitRoutePoints(_ points: [CGPoint], at point: CGPoint) -> (first: [CGPoint], second: [CGPoint]) {
+        guard points.count > 1 else { return (points, points) }
+        var splitIndex = 0
+        var shortestDistance = CGFloat.greatestFiniteMagnitude
+        for index in 0..<(points.count - 1) {
+            let candidate = nearestPoint(on: [points[index], points[index + 1]], to: point)
+            if candidate.distance < shortestDistance {
+                shortestDistance = candidate.distance
+                splitIndex = index
+            }
+        }
+        let first = orthogonalizedPoints(Array(points.prefix(splitIndex + 1)) + [point])
+        let second = orthogonalizedPoints([point] + Array(points.suffix(from: splitIndex + 1)))
+        return (first, second)
     }
 
     private func nearestPoint(on points: [CGPoint], to target: CGPoint) -> (point: CGPoint, distance: CGFloat) {
