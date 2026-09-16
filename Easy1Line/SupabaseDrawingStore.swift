@@ -29,8 +29,13 @@ struct SupabaseDrawingStore {
         self.configuration = configuration
     }
 
+    // appending(path:) percent-encodes "?", which turns the query string into a 404ing path.
+    private func endpoint(_ pathAndQuery: String) -> URL {
+        URL(string: pathAndQuery, relativeTo: configuration.url)!.absoluteURL
+    }
+
     func saveDrawing(id: UUID, name: String, data: Data) async throws {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/rpc/save_drawing"))
+        var request = URLRequest(url: endpoint("/rest/v1/rpc/save_drawing"))
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "p_id": id.uuidString,
@@ -44,7 +49,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadDrawings() async throws -> [SupabaseDrawingRecord] {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
+        var request = URLRequest(url: endpoint("/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
@@ -54,7 +59,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadTargetTypes() async throws -> [SupabaseTargetTypeRecord] {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/target_types?select=kind,name,symbol,color_hex,max_connections,connection_angle,connection_angles"))
+        var request = URLRequest(url: endpoint("/rest/v1/target_types?select=kind,name,symbol,color_hex,max_connections,connection_angle,connection_angles"))
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -63,7 +68,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadConductorCatalog() async throws -> [SupabaseConductorRecord] {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/conductor_catalog?select=material,wire_size"))
+        var request = URLRequest(url: endpoint("/rest/v1/conductor_catalog?select=material,wire_size"))
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -72,7 +77,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadDrawingData() async throws -> [(id: UUID, name: String, data: Data)] {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
+        var request = URLRequest(url: endpoint("/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
         request.httpMethod = "GET"
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
@@ -87,7 +92,7 @@ struct SupabaseDrawingStore {
     }
 
     func deleteDrawing(id: UUID) async throws {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?id=eq.\(id.uuidString)"))
+        var request = URLRequest(url: endpoint("/rest/v1/drawings?id=eq.\(id.uuidString)"))
         request.httpMethod = "DELETE"
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")

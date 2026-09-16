@@ -40,6 +40,9 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
+    @State private var saveNameDraft = ""
+    @State private var pendingSaveToCloud = false
+    @State private var showSaveNamePrompt = false
     @State private var showInfoPanel = false
     @State private var doubleTapInfoTargetIDs: [UUID] = []
     @State private var doubleTapInfoSegmentIDs: Set<UUID> = []
@@ -134,6 +137,11 @@ struct ContentView: View {
         }
         .onAppear { if snapToGrid { snapAllTargets() } }
         .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
+        .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
+            TextField("Schematic name", text: $saveNameDraft)
+            Button("Save") { commitNamedSave() }
+            Button("Cancel", role: .cancel) {}
+        }
         .onChange(of: selectedTargetIDs) { _, ids in
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
@@ -167,8 +175,8 @@ struct ContentView: View {
                 HStack(spacing: 8) {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
-                Button("Save locally") { saveCurrent() }
-                Button("Save to cloud") { Task { await saveToCloud() } }
+                Button("Save locally") { promptForSaveName(toCloud: false) }
+                Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadFromCloud() } }
                 Button("View netlist") { showNetlist.toggle() }
             }
@@ -717,6 +725,22 @@ struct ContentView: View {
         selectedSegmentID = nil
     }
 
+    private func promptForSaveName(toCloud: Bool) {
+        saveNameDraft = document.name
+        pendingSaveToCloud = toCloud
+        showSaveNamePrompt = true
+    }
+
+    private func commitNamedSave() {
+        let trimmed = saveNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { document.name = trimmed }
+        if pendingSaveToCloud {
+            Task { await saveToCloud() }
+        } else {
+            saveCurrent()
+        }
+    }
+
     private func saveCurrent() {
         if let index = savedDocuments.firstIndex(where: { $0.id == document.id }) { savedDocuments[index] = document } else { savedDocuments.append(document) }
         SchematicDocument.saveAll(savedDocuments)
@@ -733,7 +757,7 @@ struct ContentView: View {
             try await store.saveDrawing(id: document.id, name: document.name, data: data)
             cloudStatus = "Saved to cloud"
         } catch {
-            cloudStatus = "Cloud save failed"
+            cloudStatus = "Cloud save failed: \(cloudErrorText(error))"
         }
     }
 
@@ -751,7 +775,7 @@ struct ContentView: View {
             document = loaded
             cloudStatus = "Loaded from cloud"
         } catch {
-            cloudStatus = "Cloud load failed"
+            cloudStatus = "Cloud load failed: \(cloudErrorText(error))"
         }
     }
 
@@ -775,8 +799,15 @@ struct ContentView: View {
             if !syncedLines.isEmpty { document.lineDefinitions = syncedLines }
             cloudStatus = "Libraries synced"
         } catch {
-            cloudStatus = "Library sync failed"
+            cloudStatus = "Library sync failed: \(cloudErrorText(error))"
         }
+    }
+
+    private func cloudErrorText(_ error: Error) -> String {
+        if case let SupabaseDrawingStore.StoreError.requestFailed(code, body) = error {
+            return "HTTP \(code) \(body.prefix(120))"
+        }
+        return error.localizedDescription
     }
 
     private func newSchematic() {
