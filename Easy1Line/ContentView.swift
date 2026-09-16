@@ -123,9 +123,12 @@ struct ContentView: View {
             Menu("View") {
                 Button(snapToGrid ? "Snap to grid: On" : "Snap to grid: Off") { snapToGrid.toggle() }
                 Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
-                Button(infoSelectorEnabled ? "Info panel: On" : "Info panel: Off") { infoSelectorEnabled.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
+
+            Button(infoSelectorEnabled ? "Info: On" : "Info: Off") { infoSelectorEnabled.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
+                .accessibilityLabel("Toggle item information")
 
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
@@ -1156,10 +1159,15 @@ struct ContentView: View {
     private func escapePoint(for target: SchematicTarget, slot: Int, toward other: SchematicTarget) -> CGPoint {
         let point = connectionPoint(for: target, slot: slot)
         let angle = target.kind == .junction
-            ? atan2(other.position.y - target.position.y, other.position.x - target.position.x)
+            ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : connectionAngle(for: target, slot: slot) * Double.pi / 180
         let distance: CGFloat = target.kind == .junction ? 24 : max((target.isCompact ? 24 : 36) * target.scale, CGFloat(linePadding) + 12)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
+    }
+
+    private func quantizedAngle(_ angle: Double) -> Double {
+        let increment = Double.pi / 12
+        return (angle / increment).rounded() * increment
     }
 
     private func startTargetSlot(_ target: SchematicTarget, point: CGPoint) -> Int {
