@@ -33,6 +33,25 @@ private struct SchematicFileDocument: FileDocument {
     }
 }
 
+private struct SchematicPDFDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.pdf] }
+    static var writableContentTypes: [UTType] { [.pdf] }
+
+    let data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
@@ -75,6 +94,7 @@ struct ContentView: View {
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
     @State private var showFileExporter = false
+    @State private var showPDFExporter = false
     @State private var showFileImporter = false
     @State private var showInfoPanel = false
     @State private var doubleTapInfoTargetIDs: [UUID] = []
@@ -199,6 +219,14 @@ struct ContentView: View {
         ) { result in
             if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
         }
+        .fileExporter(
+            isPresented: $showPDFExporter,
+            document: SchematicPDFDocument(data: makePDFData()),
+            contentType: .pdf,
+            defaultFilename: document.name
+        ) { result in
+            if case .failure(let error) = result { cloudStatus = "PDF export failed: \(error.localizedDescription)" }
+        }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
                 let url = try result.get()
@@ -243,6 +271,7 @@ struct ContentView: View {
                 Button("Drawings") { showLibrary.toggle() }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
                 Button("Export .line") { showFileExporter = true }
+                Button("Export PDF") { showPDFExporter = true }
                 Button("Import .line") { showFileImporter = true }
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
@@ -381,6 +410,59 @@ struct ContentView: View {
                 )
                 .accessibilityLabel("Resize targets panel width")
         }
+    }
+
+    private func makePDFData() -> Data {
+        let canvasSize = CGSize(width: 1000, height: 700)
+        let imageRenderer = ImageRenderer(content: pdfCanvas(in: canvasSize))
+        imageRenderer.scale = 2
+        guard let image = imageRenderer.uiImage, let cgImage = image.cgImage else { return Data() }
+
+        let pageRect = CGRect(x: 0, y: 0, width: 842, height: 595)
+        let imageRect = AVMakeRect(aspectRatio: CGSize(width: cgImage.width, height: cgImage.height), insideRect: pageRect.insetBy(dx: 24, dy: 24))
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { context in
+            context.beginPage()
+            UIColor.white.setFill()
+            context.fill(pageRect)
+            UIImage(cgImage: cgImage).draw(in: imageRect)
+        }
+    }
+
+    private func pdfCanvas(in size: CGSize) -> some View {
+        ZStack {
+            GridBackground()
+            Canvas { context, _ in
+                for segment in document.segments {
+                    guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
+                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
+                }
+            }
+            .allowsHitTesting(false)
+
+            ForEach(document.targets) { target in
+                TargetView(
+                    target: target,
+                    isSelected: false,
+                    selectionOrder: nil,
+                    isConnectionStart: false,
+                    connectedColor: connectedColor(for: target.id),
+                    connectedColors: connectedColors(for: target.id),
+                    occupiedSlots: occupiedSlots(for: target.id),
+                    selectedSlots: [],
+                    connectionNames: target.connectionNames,
+                    showConnectionNames: showConnectionNames,
+                    onSelectConnectionPoint: { _ in },
+                    editingConnectionPoints: false,
+                    onMoveConnectionPoint: { _, _ in },
+                    onEndConnectionPointMove: { _ in }
+                )
+                .position(target.position)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
     }
 
     private func schematicCanvas(in size: CGSize) -> some View {
