@@ -1,0 +1,11 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Easy1Line on iPad Simulator",
+            "type": "shell",
+            "command": "open -a Simulator && sleep 2 && xcrun simctl boot 075D7EEB-0A56-49BA-BC6B-C569D8146FA2 2>/dev/null || true; xcrun simctl bootstatus 075D7EEB-0A56-49BA-BC6B-C569D8146FA2 -b && xcodebuild -project Easy1Line.xcodeproj -scheme Easy1Line -sdk iphonesimulator -configuration Debug -destination 'platform=iOS Simulator,id=075D7EEB-0A56-49BA-BC6B-C569D8146FA2' build && xcrun simctl install 075D7EEB-0A56-49BA-BC6B-C569D8146FA2 ~/Library/Developer/Xcode/DerivedData/Easy1Line-*/Build/Products/Debug-iphonesimulator/Easy1Line.app && xcrun simctl launch 075D7EEB-0A56-49BA-BC6B-C569D8146FA2 MazzWebdesign.Easy1Line",
+            "problemMatcher": []
+        }
+    ]
+}
