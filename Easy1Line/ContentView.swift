@@ -571,7 +571,7 @@ struct ContentView: View {
     private func targetDragGesture(for target: SchematicTarget, canvasSize: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                guard !editingConnectionPoints else { return }
+                guard !editingConnectionPoints, !target.locked else { return }
                 draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil {
@@ -590,6 +590,7 @@ struct ContentView: View {
                     : nil
             }
             .onEnded { _ in
+                guard !target.locked else { return }
                 dragStartPositions.removeValue(forKey: target.id)
                 targetDragStartRoutes.removeAll()
                 snapTarget(target.id, canvasSize: canvasSize)
@@ -802,6 +803,11 @@ struct ContentView: View {
         document.targets.append(copy)
         selectedTargetIDs = [copy.id]
         selectedSegmentID = nil
+    }
+
+    private func toggleTargetLock(_ target: SchematicTarget) {
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+        document.targets[index].locked.toggle()
     }
 
     private func promptForSaveName(toCloud: Bool) {
@@ -1292,6 +1298,10 @@ struct ContentView: View {
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
                 Button { duplicateTarget(target) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                     .buttonStyle(EditorButtonStyle())
+                Button { toggleTargetLock(target) } label: {
+                    Label(target.locked ? "Unlock" : "Lock", systemImage: target.locked ? "lock.open" : "lock")
+                }
+                    .buttonStyle(EditorButtonStyle(isActive: target.locked))
             }
         }
         .padding(12)
@@ -2057,8 +2067,9 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var connectionNames: [String]
     var scale: Double
     var isCompact: Bool
+    var locked: Bool
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], connectionNames: [String] = [], scale: Double = 1, isCompact: Bool = false) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], connectionNames: [String] = [], scale: Double = 1, isCompact: Bool = false, locked: Bool = false) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -2072,6 +2083,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.connectionNames = connectionNames
         self.scale = scale
         self.isCompact = isCompact
+        self.locked = locked
     }
 
     init(from decoder: Decoder) throws {
@@ -2089,6 +2101,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         connectionNames = try container.decodeIfPresent([String].self, forKey: .connectionNames) ?? []
         scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
         isCompact = try container.decodeIfPresent(Bool.self, forKey: .isCompact) ?? false
+        locked = try container.decodeIfPresent(Bool.self, forKey: .locked) ?? false
     }
 }
 
