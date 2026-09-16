@@ -840,7 +840,8 @@ struct ContentView: View {
         }
         let startOffset = segmentDragStartOffsets[id] ?? 0
         let delta = abs(end.position.x - start.position.x) >= abs(end.position.y - start.position.y) ? translation.width : translation.height
-        document.segments[index].bendOffset = startOffset + delta
+        let proposedOffset = startOffset + delta
+        document.segments[index].bendOffset = snapToGrid ? snappedOffset(proposedOffset) : proposedOffset
         selectedSegmentID = id
         selectedSegmentIDs = [id]
         selectedTargetIDs.removeAll()
@@ -850,6 +851,11 @@ struct ContentView: View {
         guard snapToGrid else { return position }
         let gridSize: CGFloat = 32
         return CGPoint(x: (position.x / gridSize).rounded() * gridSize, y: (position.y / gridSize).rounded() * gridSize)
+    }
+
+    private func snappedOffset(_ offset: CGFloat) -> CGFloat {
+        let gridSize: CGFloat = 32
+        return (offset / gridSize).rounded() * gridSize
     }
 
     private func orthogonalPath(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
@@ -1441,7 +1447,7 @@ private struct SegmentHitArea: View {
         path.stroke(isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
             .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
-            .gesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
+            .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
     }
 }
 
