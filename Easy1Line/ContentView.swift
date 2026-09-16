@@ -234,7 +234,7 @@ struct ContentView: View {
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                     let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
-                        SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), onDrag: { translation in
+                        SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
                             moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                         }, onEndDrag: {
                             segmentDragStartPoints.removeValue(forKey: segment.id)
@@ -334,7 +334,6 @@ struct ContentView: View {
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
                 snapTarget(target.id, canvasSize: canvasSize)
-                splitSegmentIfNeeded(for: target.id)
                 draggingTargetID = nil
             }
     }
@@ -1509,11 +1508,12 @@ private struct TargetView: View {
 private struct SegmentHitArea: View {
     let path: Path
     let isSelected: Bool
+    let isSectionSelected: Bool
     let onDrag: (CGSize) -> Void
     let onEndDrag: () -> Void
     let onTap: () -> Void
     var body: some View {
-        path.stroke(isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
+        path.stroke(isSectionSelected ? Color.yellow.opacity(0.85) : isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: isSectionSelected ? 12 : 24, lineCap: .round, lineJoin: .round))
             .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
