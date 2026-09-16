@@ -228,6 +228,20 @@ struct ContentView: View {
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
+
+                for firstIndex in document.segments.indices {
+                    guard let firstStart = target(with: document.segments[firstIndex].startID), let firstEnd = target(with: document.segments[firstIndex].endID) else { continue }
+                    let firstPoints = orthogonalPoints(for: document.segments[firstIndex], from: firstStart, to: firstEnd, avoiding: document.targets.filter { $0.id != firstStart.id && $0.id != firstEnd.id })
+                    for secondIndex in document.segments.indices.dropFirst(firstIndex + 1) {
+                        guard let secondStart = target(with: document.segments[secondIndex].startID), let secondEnd = target(with: document.segments[secondIndex].endID) else { continue }
+                        let secondPoints = orthogonalPoints(for: document.segments[secondIndex], from: secondStart, to: secondEnd, avoiding: document.targets.filter { $0.id != secondStart.id && $0.id != secondEnd.id })
+                        for crossing in crossings(between: firstPoints, and: secondPoints) {
+                            let bridge = bridgePath(at: crossing.point, overHorizontal: crossing.firstIsHorizontal)
+                            context.stroke(bridge, with: .color(Color(red: 0.07, green: 0.09, blue: 0.105)), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth + 7, lineCap: .round, lineJoin: .round))
+                            context.stroke(bridge, with: .color(document.segments[secondIndex].color), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth, lineCap: .round, lineJoin: .round))
+                        }
+                    }
+                }
             }
             .allowsHitTesting(false)
 
@@ -980,6 +994,45 @@ struct ContentView: View {
         var path = Path()
         path.move(to: start)
         path.addLine(to: end)
+        return path
+    }
+
+    private func crossings(between first: [CGPoint], and second: [CGPoint]) -> [(point: CGPoint, firstIsHorizontal: Bool)] {
+        var results: [(point: CGPoint, firstIsHorizontal: Bool)] = []
+        for firstIndex in 0..<(first.count - 1) {
+            let firstStart = first[firstIndex], firstEnd = first[firstIndex + 1]
+            let firstHorizontal = abs(firstStart.y - firstEnd.y) < 0.5
+            guard abs(firstStart.x - firstEnd.x) > 0.5 || abs(firstStart.y - firstEnd.y) > 0.5 else { continue }
+            for secondIndex in 0..<(second.count - 1) {
+                let secondStart = second[secondIndex], secondEnd = second[secondIndex + 1]
+                let secondHorizontal = abs(secondStart.y - secondEnd.y) < 0.5
+                guard firstHorizontal != secondHorizontal else { continue }
+                let horizontal = firstHorizontal ? (firstStart, firstEnd) : (secondStart, secondEnd)
+                let vertical = firstHorizontal ? (secondStart, secondEnd) : (firstStart, firstEnd)
+                let point = CGPoint(x: vertical.0.x, y: horizontal.0.y)
+                guard point.x > min(horizontal.0.x, horizontal.1.x) + 8,
+                      point.x < max(horizontal.0.x, horizontal.1.x) - 8,
+                      point.y > min(vertical.0.y, vertical.1.y) + 8,
+                      point.y < max(vertical.0.y, vertical.1.y) - 8 else { continue }
+                if !results.contains(where: { hypot($0.point.x - point.x, $0.point.y - point.y) < 2 }) {
+                    results.append((point, firstHorizontal))
+                }
+            }
+        }
+        return results
+    }
+
+    private func bridgePath(at point: CGPoint, overHorizontal: Bool) -> Path {
+        let radius: CGFloat = 9
+        let control: CGFloat = radius * 1.35
+        var path = Path()
+        if overHorizontal {
+            path.move(to: CGPoint(x: point.x - radius, y: point.y))
+            path.addCurve(to: CGPoint(x: point.x + radius, y: point.y), control1: CGPoint(x: point.x - radius / 2, y: point.y - control), control2: CGPoint(x: point.x + radius / 2, y: point.y - control))
+        } else {
+            path.move(to: CGPoint(x: point.x, y: point.y - radius))
+            path.addCurve(to: CGPoint(x: point.x, y: point.y + radius), control1: CGPoint(x: point.x + control, y: point.y - radius / 2), control2: CGPoint(x: point.x + control, y: point.y + radius / 2))
+        }
         return path
     }
 
