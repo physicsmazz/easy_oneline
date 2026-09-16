@@ -100,86 +100,43 @@ struct ContentView: View {
                 }
             }
 
-            Button { snapToGrid.toggle() } label: {
-                Image(systemName: "magnet")
-                    .frame(width: 42, height: 42)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button { snapToGrid.toggle() } label: {
+                        Text(snapToGrid ? "Snap: On" : "Snap: Off")
+                    }
+                    .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+
+                    Button { canvasScale = max(0.5, canvasScale - 0.25) } label: { Text("−") }
+                        .buttonStyle(EditorButtonStyle())
+                    Text("\(Int(canvasScale * 100))%")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .frame(width: 46)
+                        .foregroundStyle(.white.opacity(0.75))
+                    Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
+                        .buttonStyle(EditorButtonStyle())
+
+                    Button { showLibrary.toggle() } label: { Text("Drawings") }
+                        .buttonStyle(EditorButtonStyle(isActive: showLibrary))
+                    Button { showLineLibrary.toggle() } label: { Text("Lines") }
+                        .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
+                    Button { showTargetLibrary.toggle() } label: { Text("Targets") }
+                        .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
+                    Button { saveCurrent() } label: { Text("Save") }
+                        .buttonStyle(EditorButtonStyle())
+                    Button { Task { await saveToCloud() } } label: { Text("Cloud save") }
+                        .buttonStyle(EditorButtonStyle())
+                    Button { Task { await loadFromCloud() } } label: { Text("Cloud load") }
+                        .buttonStyle(EditorButtonStyle())
+                    Button { connectSelection() } label: { Text("Connect") }
+                        .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
+                        .disabled(!canConnectSelection)
+                    Button { infoSelectorEnabled.toggle() } label: { Text("Info") }
+                        .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
+                }
+                .padding(.vertical, 2)
             }
-            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
-            .help(snapToGrid ? "Snap to grid: on" : "Snap to grid: off")
-            .accessibilityLabel("Snap to grid")
-
-            Button { canvasScale = max(0.5, canvasScale - 0.25) } label: {
-                Image(systemName: "minus.magnifyingglass")
-            }
-            .buttonStyle(EditorButtonStyle())
-            .help("Zoom out")
-
-            Text("\(Int(canvasScale * 100))%")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .frame(width: 46)
-                .foregroundStyle(.white.opacity(0.75))
-
-            Button { canvasScale = min(2.5, canvasScale + 0.25) } label: {
-                Image(systemName: "plus.magnifyingglass")
-            }
-            .buttonStyle(EditorButtonStyle())
-            .help("Zoom in")
-
-            Spacer()
-
-            Button { showLibrary.toggle() } label: {
-                Label("Drawings", systemImage: "folder")
-            }
-            .buttonStyle(EditorButtonStyle(isActive: showLibrary))
-            .help("Drawings")
-
-            Button { showLineLibrary.toggle() } label: {
-                Label("Lines", systemImage: "line.3.horizontal")
-            }
-            .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
-            .help("Line library")
-
-            Button { showTargetLibrary.toggle() } label: {
-                Label("Targets", systemImage: "square.grid.2x2")
-            }
-            .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
-            .help("Target library")
-
-            Button { saveCurrent() } label: {
-                Label("Save", systemImage: "square.and.arrow.down")
-            }
-            .buttonStyle(EditorButtonStyle())
-            .help("Save drawing locally")
-
-            Button { Task { await saveToCloud() } } label: {
-                Label("Cloud save", systemImage: "icloud.and.arrow.up")
-            }
-            .buttonStyle(EditorButtonStyle())
-            .help("Save to cloud")
-
-            Button { Task { await loadFromCloud() } } label: {
-                Label("Cloud load", systemImage: "icloud.and.arrow.down")
-            }
-            .buttonStyle(EditorButtonStyle())
-            .accessibilityLabel("Load from cloud")
-
-            Button {
-                connectSelection()
-            } label: {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-            }
-            .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
-            .disabled(!canConnectSelection)
-            .help("Connect selected targets or attach target to line")
-            .accessibilityLabel("Connect selected targets or attach target to line")
-
-            Button { infoSelectorEnabled.toggle() } label: {
-                Image(systemName: "info.circle")
-                    .frame(width: 42, height: 42)
-            }
-            .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
-            .help("Toggle item information")
-            .accessibilityLabel("Toggle item information")
+            .frame(maxWidth: .infinity)
         }
 
         .padding(.horizontal, 24)
