@@ -583,7 +583,13 @@ struct ContentView: View {
                             // Stub sections: keep the hit area clear of the pin so pin taps aren't swallowed by the wire.
                             let pinEnd = sectionIndex == 0 ? points[sectionIndex] : points[sectionIndex + 1]
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
-                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 22), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}, onTap: {
+                            let movableSectionIndex = sectionIndex == 0 ? 1 : max(1, points.count - 3)
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 22), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
+                                moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                            }, onEndDrag: {
+                                segmentDragStartPoints.removeValue(forKey: segment.id)
+                                finalizeWireSectionDrag(segment.id)
+                            }, onTap: {
                                 selectedSegmentIDs.insert(segment.id)
                                 selectedSegmentID = segment.id
                                 selectedSegmentSectionIndex = nil
