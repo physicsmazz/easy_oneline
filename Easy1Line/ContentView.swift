@@ -166,7 +166,6 @@ struct ContentView: View {
                 ForEach(TargetKind.palette) { kind in
                     PaletteItem(kind: kind)
                         .draggable(kind.rawValue)
-                        .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
                         .onTapGesture { addTarget(kind) }
                 }
             }
@@ -712,22 +711,38 @@ struct ContentView: View {
 
     private func orthogonalPath(from start: CGPoint, to end: CGPoint, avoiding obstacles: [SchematicTarget]) -> Path {
         let rectangles = obstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        var xCandidates = Set<CGFloat>([start.x, end.x, (start.x + end.x) / 2])
-        var yCandidates = Set<CGFloat>([start.y, end.y, (start.y + end.y) / 2])
+        var xCandidates = [start.x, end.x, (start.x + end.x) / 2]
+        var yCandidates = [start.y, end.y, (start.y + end.y) / 2]
         for rectangle in rectangles {
-            xCandidates.insert(rectangle.minX)
-            xCandidates.insert(rectangle.maxX)
-            yCandidates.insert(rectangle.minY)
-            yCandidates.insert(rectangle.maxY)
+            xCandidates.append(contentsOf: [rectangle.minX, rectangle.maxX])
+            yCandidates.append(contentsOf: [rectangle.minY, rectangle.maxY])
         }
-        var candidates: [[CGPoint]] = []
-        candidates += xCandidates.map { [start, CGPoint(x: $0, y: start.y), CGPoint(x: $0, y: end.y), end] }
-        candidates += yCandidates.map { [start, CGPoint(x: start.x, y: $0), CGPoint(x: end.x, y: $0), end] }
-        let safePath = candidates.first(where: { pointsAreClear($0, from: rectangles) }) ?? [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
+        let uniqueX = Array(Set(xCandidates)).sorted { lhs, rhs in
+            let lhsDistance = abs(lhs - start.x)
+            let rhsDistance = abs(rhs - start.x)
+            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+        }
+        let uniqueY = Array(Set(yCandidates)).sorted { lhs, rhs in
+            let lhsDistance = abs(lhs - start.y)
+            let rhsDistance = abs(rhs - start.y)
+            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+        }
+        let candidates = uniqueX.map { [start, CGPoint(x: $0, y: start.y), CGPoint(x: $0, y: end.y), end] }
+            + uniqueY.map { [start, CGPoint(x: start.x, y: $0), CGPoint(x: end.x, y: $0), end] }
+        let safePath = candidates
+            .filter { pointsAreClear($0, from: rectangles) }
+            .min { pathLength($0) < pathLength($1) }
+            ?? [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
         var path = Path()
         path.move(to: safePath[0])
         for point in safePath.dropFirst() { path.addLine(to: point) }
         return path
+    }
+
+    private func pathLength(_ points: [CGPoint]) -> CGFloat {
+        zip(points, points.dropFirst()).reduce(0) { length, pair in
+            length + hypot(pair.1.x - pair.0.x, pair.1.y - pair.0.y)
+        }
     }
 
     private func obstacleRect(for target: SchematicTarget) -> CGRect {
@@ -1154,18 +1169,7 @@ private struct TargetView: View {
                     .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
             } else {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
-                    Circle()
-                        .fill(selectedSlots.contains(slot) ? Color.white : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
-                        .frame(width: editingConnectionPoints ? 18 : 9, height: editingConnectionPoints ? 18 : 9)
-                        .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
-                        .offset(connectionPointOffset(for: slot))
-                        .contentShape(Circle().scale(2.5))
-                        .onTapGesture { onSelectConnectionPoint(slot) }
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in onMoveConnectionPoint(slot, value.translation) }
-                                .onEnded { _ in onEndConnectionPointMove(slot) }
-                        )
+                    connectionPoint(slot: slot)
                 }
             }
         }
@@ -1182,6 +1186,31 @@ private struct TargetView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func connectionPoint(slot: Int) -> some View {
+        let point = Circle()
+            .fill(selectedSlots.contains(slot) ? Color.white : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+            .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
+            .offset(connectionPointOffset(for: slot))
+
+        if editingConnectionPoints {
+            point
+                .frame(width: 18, height: 18)
+                .contentShape(Circle().scale(2.5))
+                .onTapGesture { onSelectConnectionPoint(slot) }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in onMoveConnectionPoint(slot, value.translation) }
+                        .onEnded { _ in onEndConnectionPointMove(slot) }
+                )
+        } else {
+            point
+                .frame(width: 9, height: 9)
+                .contentShape(Circle())
+                .onTapGesture { onSelectConnectionPoint(slot) }
+        }
     }
 
     private func connectionPointOffset(for slot: Int) -> CGSize {
