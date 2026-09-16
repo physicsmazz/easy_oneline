@@ -19,6 +19,7 @@ struct ContentView: View {
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var connectionDragStartAngles: [String: Double] = [:]
+    @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
 
     var body: some View {
@@ -227,6 +228,7 @@ struct ContentView: View {
                     connectedColor: connectedColor(for: target.id),
                     connectedColors: connectedColors(for: target.id),
                     occupiedSlots: occupiedSlots(for: target.id),
+                    editingConnectionPoints: editingConnectionPoints && selectedTargetIDs.contains(target.id),
                     onMoveConnectionPoint: { slot, translation in
                         moveConnectionPoint(targetID: target.id, slot: slot, translation: translation)
                     },
@@ -261,6 +263,7 @@ struct ContentView: View {
     private func targetDragGesture(for target: SchematicTarget, canvasSize: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
+                guard !editingConnectionPoints else { return }
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
                 guard let start = dragStartPositions[target.id] else { return }
@@ -279,6 +282,7 @@ struct ContentView: View {
     private func targetTapped(_ target: SchematicTarget) {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
+        editingConnectionPoints = false
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
         } else {
@@ -307,13 +311,14 @@ struct ContentView: View {
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
+        editingConnectionPoints = false
         selectedSegmentIDs.removeAll()
         showInspector = true
     }
 
     private func addTarget(from template: TargetDefinition) {
         let position = CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
-        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, scale: template.scale))
+        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -322,7 +327,7 @@ struct ContentView: View {
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
-        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData, scale: target.scale))
+        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData, connectionAngles: target.connectionAngles, scale: target.scale))
     }
 
     private func duplicateTarget(_ target: SchematicTarget) {
@@ -559,6 +564,11 @@ struct ContentView: View {
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
                 TextField("SF Symbol name", text: targetBinding(target).symbol)
                     .textFieldStyle(.roundedBorder)
+                Button {
+                    editingConnectionPoints.toggle()
+                } label: {
+                    Label(editingConnectionPoints ? "Done editing points" : "Edit connection points", systemImage: "point.3.connected.trianglepath.dotted")
+                }
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     Label(target.imageData == nil ? "Upload image icon" : "Replace image icon", systemImage: "photo.badge.plus")
                 }
@@ -848,7 +858,33 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
     var colorHex: String
     var symbol: String
     var imageData: Data?
+    var connectionAngles: [Double]
     var scale: Double
+
+    init(id: UUID = UUID(), kind: TargetKind, name: String, maxConnections: Int, colorHex: String, symbol: String, imageData: Data?, connectionAngles: [Double], scale: Double) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.maxConnections = maxConnections
+        self.colorHex = colorHex
+        self.symbol = symbol
+        self.imageData = imageData
+        self.connectionAngles = connectionAngles
+        self.scale = scale
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        kind = try container.decode(TargetKind.self, forKey: .kind)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
+        maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
+        imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        connectionAngles = try container.decodeIfPresent([Double].self, forKey: .connectionAngles) ?? []
+        scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
+    }
 }
 
 private struct SchematicSegment: Identifiable, Codable, Equatable {
@@ -923,6 +959,7 @@ private struct TargetView: View {
     let connectedColor: Color
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
+    let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
     let onEndConnectionPointMove: (Int) -> Void
 
@@ -962,7 +999,7 @@ private struct TargetView: View {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
                     Circle()
                         .fill(occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
-                        .frame(width: 9, height: 9)
+                        .frame(width: editingConnectionPoints ? 18 : 9, height: editingConnectionPoints ? 18 : 9)
                         .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
                         .offset(connectionPointOffset(for: slot))
                         .gesture(
