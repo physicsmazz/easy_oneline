@@ -2157,15 +2157,7 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let halfExtent: CGFloat
-        if target.kind == .junction {
-            halfExtent = 9
-        } else if target.isCompact {
-            halfExtent = 20
-        } else {
-            halfExtent = abs(cos(angle)) > abs(sin(angle)) ? 54 : 38
-        }
-        let distance = max(10, halfExtent * target.scale + 4)
+        let distance: CGFloat = 15
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
