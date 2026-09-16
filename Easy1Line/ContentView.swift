@@ -505,6 +505,7 @@ struct ContentView: View {
                     selectedSegmentIDs.removeAll()
                 }
 
+            ZStack {
             Canvas { context, _ in
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
@@ -607,7 +608,7 @@ struct ContentView: View {
                 }
             }
 
-        }
+            }
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
@@ -631,6 +632,7 @@ struct ContentView: View {
             zoomControls
                 .padding(.top, 88)
                 .padding(.trailing, 24)
+        }
         }
     }
 
