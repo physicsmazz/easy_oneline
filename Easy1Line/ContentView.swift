@@ -482,7 +482,13 @@ struct ContentView: View {
                     Label("Use SF Symbol instead", systemImage: "sf.square")
                 }
                 .disabled(target.imageData == nil)
-                Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
+                if target.kind == .junction {
+                    Text("Connections: Unlimited")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.55))
+                } else {
+                    Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
+                }
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
                 Button { duplicateTarget(target) } label: {
                     Label("Duplicate target", systemImage: "plus.square.on.square")
@@ -517,6 +523,11 @@ struct ContentView: View {
 
     private func firstEmptySlot(for id: UUID) -> Int? {
         guard let target = target(with: id) else { return nil }
+        if target.kind == .junction {
+            return document.segments.reduce(into: 0) { nextSlot, segment in
+                if segment.startID == id || segment.endID == id { nextSlot += 1 }
+            }
+        }
         let occupied = occupiedSlots(for: id)
         return (0..<target.maxConnections).first { !occupied.contains($0) }
     }
@@ -524,7 +535,7 @@ struct ContentView: View {
     private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
         let slotIndex = slot ?? 0
         let angle = (2 * Double.pi * Double(slotIndex) / Double(max(target.maxConnections, 1))) - Double.pi / 2
-        let radius: CGFloat = target.kind == .junction ? 14 : 42
+        let radius: CGFloat = target.kind == .junction ? 0 : 42
         return CGPoint(x: target.position.x + radius * CGFloat(cos(angle)), y: target.position.y + radius * CGFloat(sin(angle)))
     }
 
@@ -790,12 +801,19 @@ private struct TargetView: View {
             }
         }
         .overlay {
-            ForEach(0..<target.maxConnections, id: \.self) { slot in
+            if target.kind == .junction {
                 Circle()
-                    .fill(occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
-                    .frame(width: 9, height: 9)
+                    .fill(connectedColor)
+                    .frame(width: 10, height: 10)
                     .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
-                    .offset(connectionPointOffset(for: slot))
+            } else {
+                ForEach(0..<target.maxConnections, id: \.self) { slot in
+                    Circle()
+                        .fill(occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+                        .frame(width: 9, height: 9)
+                        .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
+                        .offset(connectionPointOffset(for: slot))
+                }
             }
         }
         .overlay(alignment: .topTrailing) {
