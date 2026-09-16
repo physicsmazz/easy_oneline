@@ -613,9 +613,11 @@ struct ContentView: View {
         for index in document.segments.indices {
             if document.segments[index].startID == targetID && document.segments[index].startSlot == oldSlot {
                 document.segments[index].startSlot = newSlot
+                document.segments[index].routePoints.removeAll()
             }
             if document.segments[index].endID == targetID && document.segments[index].endSlot == oldSlot {
                 document.segments[index].endSlot = newSlot
+                document.segments[index].routePoints.removeAll()
             }
         }
     }
