@@ -198,7 +198,7 @@ struct ContentView: View {
             Canvas { context, _ in
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot))
+                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -210,7 +210,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot)), isSelected: selectedSegmentIDs.contains(segment.id)) {
+                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
                         if selectedSegmentIDs.contains(segment.id) {
                             selectedSegmentIDs.remove(segment.id)
                         } else {
@@ -695,10 +695,48 @@ struct ContentView: View {
         document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
     }
 
-    private func orthogonalPath(from start: CGPoint, to end: CGPoint) -> Path {
-        var path = Path(); let midpointX = (start.x + end.x) / 2
-        path.move(to: start); path.addLine(to: CGPoint(x: midpointX, y: start.y)); path.addLine(to: CGPoint(x: midpointX, y: end.y)); path.addLine(to: end)
+    private func orthogonalPath(from start: CGPoint, to end: CGPoint, avoiding obstacles: [SchematicTarget]) -> Path {
+        let rectangles = obstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        var xCandidates = Set<CGFloat>([start.x, end.x, (start.x + end.x) / 2])
+        var yCandidates = Set<CGFloat>([start.y, end.y, (start.y + end.y) / 2])
+        for rectangle in rectangles {
+            xCandidates.insert(rectangle.minX)
+            xCandidates.insert(rectangle.maxX)
+            yCandidates.insert(rectangle.minY)
+            yCandidates.insert(rectangle.maxY)
+        }
+        var candidates: [[CGPoint]] = []
+        candidates += xCandidates.map { [start, CGPoint(x: $0, y: start.y), CGPoint(x: $0, y: end.y), end] }
+        candidates += yCandidates.map { [start, CGPoint(x: start.x, y: $0), CGPoint(x: end.x, y: $0), end] }
+        let safePath = candidates.first(where: { pointsAreClear($0, from: rectangles) }) ?? [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
+        var path = Path()
+        path.move(to: safePath[0])
+        for point in safePath.dropFirst() { path.addLine(to: point) }
         return path
+    }
+
+    private func obstacleRect(for target: SchematicTarget) -> CGRect {
+        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : CGSize(width: 108, height: 76)
+        return CGRect(x: target.position.x - size.width * target.scale / 2, y: target.position.y - size.height * target.scale / 2, width: size.width * target.scale, height: size.height * target.scale)
+    }
+
+    private func pointsAreClear(_ points: [CGPoint], from rectangles: [CGRect]) -> Bool {
+        for index in 0..<(points.count - 1) {
+            let start = points[index]
+            let end = points[index + 1]
+            for rectangle in rectangles where segmentIntersects(rectangle, from: start, to: end) { return false }
+        }
+        return true
+    }
+
+    private func segmentIntersects(_ rectangle: CGRect, from start: CGPoint, to end: CGPoint) -> Bool {
+        if abs(start.x - end.x) < 0.5 {
+            return start.x >= rectangle.minX && start.x <= rectangle.maxX && max(start.y, end.y) >= rectangle.minY && min(start.y, end.y) <= rectangle.maxY
+        }
+        if abs(start.y - end.y) < 0.5 {
+            return start.y >= rectangle.minY && start.y <= rectangle.maxY && max(start.x, end.x) >= rectangle.minX && min(start.x, end.x) <= rectangle.maxX
+        }
+        return true
     }
 
     private func splitSegmentIfNeeded(for targetID: UUID) {
