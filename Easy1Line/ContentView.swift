@@ -1329,9 +1329,7 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
-        let routeObstacles = (draggingTargetID == nil ? obstacles : []) + [startTarget, endTarget]
-        let padding = CGFloat(linePadding)
-        let rectangles = routeObstacles.map { obstacleRect(for: $0).insetBy(dx: -padding, dy: -padding) }
+        let rectangles: [CGRect] = []
         var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
         var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
         for rectangle in rectangles {
@@ -1528,7 +1526,9 @@ struct ContentView: View {
         let position = document.targets[targetIndex].position
         for (index, segment) in document.segments.enumerated() {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id && $0.id != targetID })
+            let route = segment.routePoints.count > 1
+                ? segment.routePoints
+                : orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
             let candidate = nearestPoint(on: route, to: position)
             guard candidate.distance <= 52 else { continue }
             guard document.targets[targetIndex].maxConnections >= 2 else { return }
