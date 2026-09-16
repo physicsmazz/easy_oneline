@@ -1287,7 +1287,11 @@ struct ContentView: View {
 
     private var selectionBoxSize: CGSize {
         let actionCount = selectedTargetIDs.count == 1 ? 4 : 3
-        return CGSize(width: CGFloat(actionCount * 36 + (actionCount - 1) * 8 + 24), height: 60)
+        let buttonWidth: CGFloat = 40
+        let countWidth: CGFloat = 16
+        let spacing = CGFloat(actionCount) * 8
+        let horizontalPadding: CGFloat = 24
+        return CGSize(width: countWidth + CGFloat(actionCount) * buttonWidth + spacing + horizontalPadding, height: 60)
     }
 
     private var selectionBox: some View {
