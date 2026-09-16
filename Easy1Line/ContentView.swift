@@ -13,7 +13,7 @@ struct ContentView: View {
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
-    @State private var showInspector = false
+    @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
     @State private var showTargetLibrary = false
@@ -38,7 +38,7 @@ struct ContentView: View {
 
             header
 
-            if showInspector {
+            if infoSelectorEnabled && hasSelection {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
@@ -140,11 +140,11 @@ struct ContentView: View {
             .disabled(selectedTargetIDs.count < 2)
             .help("Connect selected targets")
 
-            Button { showInspector.toggle() } label: {
+            Button { infoSelectorEnabled.toggle() } label: {
                 Image(systemName: "slider.horizontal.3")
                     .frame(width: 42, height: 42)
             }
-            .buttonStyle(EditorButtonStyle())
+            .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
             .accessibilityLabel("Toggle inspector")
         }
         .padding(.horizontal, 24)
@@ -200,7 +200,6 @@ struct ContentView: View {
                     selectedTargetIDs.removeAll()
                     selectedSegmentID = nil
                     selectedSegmentIDs.removeAll()
-                    showInspector = false
                 }
 
             Canvas { context, _ in
@@ -297,9 +296,23 @@ struct ContentView: View {
     private func targetTapped(_ target: SchematicTarget) {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
+        if selectedConnectionSlots[target.id] != nil { return }
         selectedConnectionSlots.removeAll()
-        selectedConnectionSlots.removeValue(forKey: target.id)
         editingConnectionPoints = false
+
+        let overlappingTargets = document.targets.filter {
+            $0.id != target.id && obstacleRect(for: $0).intersects(obstacleRect(for: target))
+        }
+        if !overlappingTargets.isEmpty,
+           selectedTargetIDs.count == 1,
+           let currentID = selectedTargetIDs.first,
+           currentID == target.id || overlappingTargets.contains(where: { $0.id == currentID }) {
+            let cycle = [target] + overlappingTargets
+            let currentIndex = cycle.firstIndex(where: { $0.id == currentID }) ?? 0
+            selectedTargetIDs = [cycle[(currentIndex + 1) % cycle.count].id]
+            return
+        }
+
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
         } else {
@@ -322,7 +335,7 @@ struct ContentView: View {
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            guard let startSlot = selectedConnectionSlots[startID] ?? firstEmptySlot(for: startID), let endSlot = selectedConnectionSlots[endID] ?? firstEmptySlot(for: endID) else { continue }
+            guard let startSlot = selectedConnectionSlots[startID] ?? closestAvailableSlot(for: startID, to: endID), let endSlot = selectedConnectionSlots[endID] ?? closestAvailableSlot(for: endID, to: startID) else { continue }
             guard !occupiedSlots(for: startID).contains(startSlot), !occupiedSlots(for: endID).contains(endSlot) else { continue }
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
             let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
@@ -556,7 +569,6 @@ struct ContentView: View {
                     document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
                     selectedSegmentIDs.removeAll()
                     selectedSegmentID = nil
-                    showInspector = false
                 } label: {
                     Label("Delete lines", systemImage: "trash")
                 }
@@ -640,6 +652,7 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
@@ -671,6 +684,21 @@ struct ContentView: View {
         }
         let occupied = occupiedSlots(for: id)
         return (0..<target.maxConnections).first { !occupied.contains($0) }
+    }
+
+    private func closestAvailableSlot(for id: UUID, to otherID: UUID) -> Int? {
+        guard let sourceTarget = target(with: id), let otherTarget = target(with: otherID) else { return nil }
+        guard sourceTarget.kind != .junction else { return firstEmptySlot(for: id) }
+        let occupied = occupiedSlots(for: id)
+        return (0..<sourceTarget.maxConnections)
+            .filter { !occupied.contains($0) }
+            .min { lhs, rhs in
+                let lhsPoint = connectionPoint(for: sourceTarget, slot: lhs)
+                let rhsPoint = connectionPoint(for: sourceTarget, slot: rhs)
+                let lhsDistance = hypot(lhsPoint.x - otherTarget.position.x, lhsPoint.y - otherTarget.position.y)
+                let rhsDistance = hypot(rhsPoint.x - otherTarget.position.x, rhsPoint.y - otherTarget.position.y)
+                return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+            }
     }
 
     private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
