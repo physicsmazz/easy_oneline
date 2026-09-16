@@ -584,7 +584,7 @@ struct ContentView: View {
                             let pinEnd = sectionIndex == 0 ? points[sectionIndex] : points[sectionIndex + 1]
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
                             let movableSectionIndex = sectionIndex == 0 ? 1 : max(1, points.count - 3)
-                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 22), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 8), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
                                 moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
