@@ -140,7 +140,7 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle())
 
             Menu("Libraries") {
-                Button("Lines") { showLineLibrary.toggle() }
+                Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
@@ -653,7 +653,7 @@ struct ContentView: View {
     private var lineLibraryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("LINE LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Text("WIRE LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
                 Spacer()
                 Button { document.lineDefinitions.append(.defaultLine) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
                 Button { showLineLibrary = false } label: { Image(systemName: "xmark") }.foregroundStyle(.white.opacity(0.65))
@@ -765,23 +765,28 @@ struct ContentView: View {
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
             if selectedSegmentIDs.count > 1 {
-                Text("LINES").inspectorLabel()
-                Text("\(selectedSegmentIDs.count) lines selected").font(.headline)
+                Text("WIRES").inspectorLabel()
+                Text("\(selectedSegmentIDs.count) wires selected").font(.headline)
+                ForEach(Array(selectedSegmentIDs).compactMap { segment(with: $0) }) { wire in
+                    wireEditor(wire, compact: true)
+                }
                 Button {
                     showLineLibrary = true
                 } label: {
-                    Label("Choose line type", systemImage: "list.bullet.rectangle")
+                    Label("Choose wire type", systemImage: "list.bullet.rectangle")
                 }
                 Button(role: .destructive) {
                     document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
                     selectedSegmentIDs.removeAll()
                     selectedSegmentID = nil
                 } label: {
-                    Label("Delete lines", systemImage: "trash")
+                    Label("Delete wires", systemImage: "trash")
                 }
             } else if let segment = selectedSegment {
-                Text("SEGMENT").inspectorLabel()
-                TextField("Line name", text: segmentBinding(segment).name)
+                Text("WIRE").inspectorLabel()
+                wireEditor(segment)
+                /*
+                TextField("Wire name", text: segmentBinding(segment).name)
                     .textFieldStyle(.roundedBorder)
                 ColorPicker("Line color", selection: segmentBinding(segment).color)
                 TextField("Wire size", text: segmentBinding(segment).wireSize).textFieldStyle(.roundedBorder)
@@ -795,18 +800,19 @@ struct ContentView: View {
                 Button {
                     showLineLibrary = true
                 } label: {
-                    Label("Choose line type", systemImage: "list.bullet.rectangle")
+                    Label("Choose wire type", systemImage: "list.bullet.rectangle")
                 }
                 Button {
                     document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, material: ConductorMaterial(rawValue: segment.material) ?? .copper, displayWidth: segment.displayWidth, description: segment.description))
                 } label: {
-                    Label("Add to line library", systemImage: "plus.circle")
+                    Label("Add to wire library", systemImage: "plus.circle")
                 }
                 Button(role: .destructive) {
                     document.segments.removeAll { $0.id == segment.id }
                     selectedSegmentIDs.removeAll()
                     selectedSegmentID = nil
-                } label: { Label("Delete line", systemImage: "trash") }
+                } label: { Label("Delete wire", systemImage: "trash") }
+                */
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
@@ -861,6 +867,31 @@ struct ContentView: View {
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
+    private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
+
+    private func wireEditor(_ wire: SchematicSegment, compact: Bool = false) -> some View {
+        let binding = segmentBinding(wire)
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(wire.id.uuidString.prefix(8)).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.4))
+                Spacer()
+                Text("WIRE").font(.caption2.weight(.bold)).foregroundStyle(.cyan)
+            }
+            TextField("Wire name", text: binding.name).textFieldStyle(.roundedBorder)
+            HStack {
+                TextField("Size", text: binding.wireSize).textFieldStyle(.roundedBorder)
+                Picker("Material", selection: binding.material) {
+                    ForEach(ConductorMaterial.allCases) { material in
+                        Text(material.title).tag(material)
+                    }
+                }
+            }
+            TextField("Covering", text: binding.covering).textFieldStyle(.roundedBorder)
+            Stepper("Display size: \(wire.displayWidth, specifier: "%.1f") pt", value: binding.displayWidth, in: 1...20, step: 0.5)
+        }
+        .padding(10)
+        .background(.white.opacity(compact ? 0.05 : 0.03), in: RoundedRectangle(cornerRadius: 8))
+    }
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
@@ -1276,7 +1307,7 @@ struct ContentView: View {
         return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
     }
 
-    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>) {
+    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { fatalError("Segment disappeared") }
         return (
             Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }),
@@ -1284,7 +1315,8 @@ struct ContentView: View {
             Binding(get: { document.segments[index].wireSize }, set: { document.segments[index].wireSize = $0 }),
             Binding(get: { ConductorMaterial(rawValue: document.segments[index].material) ?? .copper }, set: { document.segments[index].material = $0.rawValue }),
             Binding(get: { document.segments[index].displayWidth }, set: { document.segments[index].displayWidth = $0 }),
-            Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 })
+            Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 }),
+            Binding(get: { document.segments[index].covering }, set: { document.segments[index].covering = $0 })
         )
     }
 
@@ -1467,15 +1499,16 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var colorHex: String
     var wireSize: String
     var material: String
+    var covering: String
     var displayWidth: Double
     var description: String
     var bendOffset: CGFloat
     var routePoints: [CGPoint]
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
+        self.wireSize = wireSize; self.material = material; self.covering = covering; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
     }
 
     init(from decoder: Decoder) throws {
@@ -1489,6 +1522,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
         material = try container.decodeIfPresent(String.self, forKey: .material) ?? "Copper"
+        covering = try container.decodeIfPresent(String.self, forKey: .covering) ?? "None"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         bendOffset = try container.decodeIfPresent(CGFloat.self, forKey: .bendOffset) ?? 0
