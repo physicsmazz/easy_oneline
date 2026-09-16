@@ -2321,10 +2321,14 @@ private struct TargetView: View {
     var body: some View {
         Group {
             if target.kind == .junction {
-                Circle().fill(targetFill).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+                ZStack {
+                    if target.locked { Circle().fill(.red.opacity(0.2)).frame(width: 30, height: 30).blur(radius: 3) }
+                    Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+                }
             } else if target.isCompact {
                 ZStack {
-                    Circle().fill(targetFill)
+                    if target.locked { Circle().fill(.red.opacity(0.2)).frame(width: 54, height: 54).blur(radius: 5) }
+                    Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                     Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                     if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(Circle())
@@ -2336,7 +2340,8 @@ private struct TargetView: View {
             } else {
                 VStack(spacing: 5) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 10).fill(targetFill)
+                        if target.locked { RoundedRectangle(cornerRadius: 14).fill(.red.opacity(0.2)).frame(width: 76, height: 66).blur(radius: 6) }
+                        RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
@@ -2440,15 +2445,6 @@ private struct TargetView: View {
     }
 
     private var borderStyle: AnyShapeStyle {
-        if target.locked {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [Color.red, Color(red: 0.55, green: 0.02, blue: 0.08)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
         if isSelected || isConnectionStart {
             return AnyShapeStyle(Color(hex: target.colorHex))
         }
@@ -2456,19 +2452,6 @@ private struct TargetView: View {
             return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
         }
         return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
-    }
-
-    private var targetFill: AnyShapeStyle {
-        if target.locked {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [Color(red: 0.32, green: 0.04, blue: 0.07), Color(red: 0.12, green: 0.03, blue: 0.04)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
-        return AnyShapeStyle(Color(red: 0.10, green: 0.14, blue: 0.16))
     }
 }
 
