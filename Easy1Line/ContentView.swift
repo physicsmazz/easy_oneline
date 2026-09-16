@@ -505,7 +505,22 @@ struct ContentView: View {
         if !selectedTargetIDs.contains(targetID) {
             selectedTargetIDs.append(targetID)
         }
+        if let previousSlot = selectedConnectionSlots[targetID], previousSlot != slot,
+           !occupiedSlots(for: targetID).contains(slot) {
+            reassignConnectionPoint(targetID: targetID, from: previousSlot, to: slot)
+        }
         selectedConnectionSlots[targetID] = slot
+    }
+
+    private func reassignConnectionPoint(targetID: UUID, from oldSlot: Int, to newSlot: Int) {
+        for index in document.segments.indices {
+            if document.segments[index].startID == targetID && document.segments[index].startSlot == oldSlot {
+                document.segments[index].startSlot = newSlot
+            }
+            if document.segments[index].endID == targetID && document.segments[index].endSlot == oldSlot {
+                document.segments[index].endSlot = newSlot
+            }
+        }
     }
 
     private func connectSelectedTargets() {
