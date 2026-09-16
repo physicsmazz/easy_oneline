@@ -4,6 +4,35 @@ import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
 
+private extension UTType {
+    static let eon = UTType(exportedAs: "com.mazzwebdesign.easyoneline", conformingTo: .data)
+}
+
+private struct SchematicFileDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.eon] }
+
+    let document: SchematicDocument
+
+    init(document: SchematicDocument) {
+        self.document = document
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        document = try JSONDecoder().decode(SchematicDocument.self, from: data)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: try JSONEncoder().encode(document))
+    }
+
+    static func load(from url: URL) throws -> SchematicFileDocument {
+        SchematicFileDocument(document: try JSONDecoder().decode(SchematicDocument.self, from: Data(contentsOf: url)))
+    }
+}
+
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
@@ -43,6 +72,8 @@ struct ContentView: View {
     @State private var saveNameDraft = ""
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
+    @State private var showFileExporter = false
+    @State private var showFileImporter = false
     @State private var showInfoPanel = false
     @State private var doubleTapInfoTargetIDs: [UUID] = []
     @State private var doubleTapInfoSegmentIDs: Set<UUID> = []
@@ -149,6 +180,23 @@ struct ContentView: View {
             Button("Save") { commitNamedSave() }
             Button("Cancel", role: .cancel) {}
         }
+        .fileExporter(
+            isPresented: $showFileExporter,
+            document: SchematicFileDocument(document: document),
+            contentType: .eon,
+            defaultFilename: document.name
+        ) { result in
+            if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
+        }
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.eon]) { result in
+            do {
+                let url = try result.get()
+                document = try SchematicFileDocument.load(from: url).document
+                cloudStatus = "Imported schematic"
+            } catch {
+                cloudStatus = "Import failed: \(error.localizedDescription)"
+            }
+        }
         .onChange(of: selectedTargetIDs) { _, ids in
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
@@ -183,6 +231,8 @@ struct ContentView: View {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
+                Button("Export .eon") { showFileExporter = true }
+                Button("Import .eon") { showFileImporter = true }
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadFromCloud() } }
                 Button("View netlist") { showNetlist.toggle() }
