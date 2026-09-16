@@ -50,6 +50,7 @@ struct ContentView: View {
                 .padding(.top, 84)
 
             header
+                .zIndex(1000)
 
             if infoSelectorEnabled && hasSelection {
                 inspector
@@ -347,9 +348,12 @@ struct ContentView: View {
             Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Zoom in")
-            Button { canvasRotation = .zero } label: { Text("Reset") }
+            Button {
+                canvasScale = 1
+                canvasRotation = .zero
+            } label: { Text("Reset") }
                 .buttonStyle(EditorButtonStyle())
-                .help("Reset rotation")
+                .help("Reset zoom and rotation")
         }
         .padding(6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
