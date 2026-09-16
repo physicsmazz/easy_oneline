@@ -278,15 +278,6 @@ struct ContentView: View {
                 }
                 .frame(height: targetsPanelListHeight)
 
-                Divider().overlay(.white.opacity(0.12)).padding(.vertical, 4)
-
-                Button { addTarget(.junction) } label: {
-                    Label("Add junction", systemImage: "plus.circle")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.cyan)
-
                 Text("Drag to place\nTap to add at center")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.35))
@@ -2124,7 +2115,7 @@ private enum ConductorMaterial: String, CaseIterable, Codable, Identifiable {
 
 private enum TargetKind: String, CaseIterable, Identifiable, Codable {
     case source, utilitySource, transformer, breaker, fuse, disconnect, switchTarget, panel, bus, meter, generator, motor, receptacle, ground, capacitor, load, junction
-    static let palette: [TargetKind] = [.source, .utilitySource, .transformer, .breaker, .fuse, .disconnect, .switchTarget, .panel, .bus, .meter, .generator, .motor, .receptacle, .ground, .capacitor, .load]
+    static let palette: [TargetKind] = [.source, .utilitySource, .transformer, .breaker, .fuse, .disconnect, .switchTarget, .panel, .bus, .meter, .generator, .motor, .receptacle, .ground, .capacitor, .load, .junction]
     var id: String { rawValue }
     var title: String {
         switch self {
