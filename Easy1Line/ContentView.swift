@@ -138,14 +138,14 @@ struct ContentView: View {
             .accessibilityLabel("Load from cloud")
 
             Button {
-                connectSelectedTargets()
+                connectSelection()
             } label: {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
             }
-            .buttonStyle(EditorButtonStyle(isActive: selectedTargetIDs.count >= 2))
-            .disabled(selectedTargetIDs.count < 2)
-            .help("Connect selected targets")
-            .accessibilityLabel("Connect selected targets")
+            .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
+            .disabled(!canConnectSelection)
+            .help("Connect selected targets or attach target to line")
+            .accessibilityLabel("Connect selected targets or attach target to line")
 
             Button { infoSelectorEnabled.toggle() } label: {
                 Image(systemName: "info.circle")
@@ -270,7 +270,7 @@ struct ContentView: View {
                             selectedSegmentIDs.insert(segment.id)
                         }
                         selectedSegmentID = selectedSegmentIDs.count == 1 ? selectedSegmentIDs.first : nil
-                        selectedTargetIDs.removeAll()
+                        if selectedTargetIDs.isEmpty { selectedTargetIDs.removeAll() }
                     }
                 }
             }
@@ -360,8 +360,6 @@ struct ContentView: View {
     }
 
     private func selectTarget(_ target: SchematicTarget) {
-        selectedSegmentID = nil
-        selectedSegmentIDs.removeAll()
         selectedConnectionSlots.removeAll()
         editingConnectionPoints = false
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
@@ -393,6 +391,45 @@ struct ContentView: View {
             document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
         }
         selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+    }
+
+    private var canConnectSelection: Bool {
+        selectedTargetIDs.count >= 2 || (selectedTargetIDs.count == 1 && selectedSegmentIDs.count == 1)
+    }
+
+    private func connectSelection() {
+        if selectedTargetIDs.count >= 2 {
+            connectSelectedTargets()
+        } else {
+            connectSelectedTargetToLine()
+        }
+    }
+
+    private func connectSelectedTargetToLine() {
+        guard selectedTargetIDs.count == 1,
+              let targetID = selectedTargetIDs.first,
+              let segmentID = selectedSegmentIDs.first,
+              let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }),
+              let segmentIndex = document.segments.firstIndex(where: { $0.id == segmentID }),
+              let start = target(with: document.segments[segmentIndex].startID),
+              let end = target(with: document.segments[segmentIndex].endID),
+              targetID != start.id,
+              targetID != end.id else { return }
+
+        let segment = document.segments[segmentIndex]
+        let route = [start.position, CGPoint(x: (start.position.x + end.position.x) / 2, y: start.position.y), CGPoint(x: (start.position.x + end.position.x) / 2, y: end.position.y), end.position]
+        let nearest = nearestPoint(on: route, to: document.targets[targetIndex].position).point
+        let junction = SchematicTarget(kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
+        document.targets.append(junction)
+        document.segments.remove(at: segmentIndex)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
+        let targetSlot = selectedConnectionSlots[targetID] ?? closestAvailableSlot(for: targetID, to: junction.id) ?? 0
+        document.segments.append(SchematicSegment(startID: targetID, endID: junction.id, startSlot: targetSlot, endSlot: 2, name: "Connection", colorHex: "31D7E8", wireSize: "14 AWG", material: "Copper", displayWidth: 3, description: "Target connection"))
+        selectedTargetIDs.removeAll()
+        selectedSegmentIDs.removeAll()
+        selectedSegmentID = nil
         selectedConnectionSlots.removeAll()
     }
 
