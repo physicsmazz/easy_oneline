@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
+    @State private var overlapChoices: [SchematicTarget] = []
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
@@ -72,6 +73,43 @@ struct ContentView: View {
             guard let item, let targetID = selectedTargetIDs.first else { return }
             Task { await loadTargetImage(item, targetID: targetID) }
         }
+        .popover(isPresented: Binding(
+            get: { !overlapChoices.isEmpty },
+            set: { if !$0 { overlapChoices.removeAll() } }
+        )) {
+            overlapChooser
+        }
+    }
+
+    private var overlapChooser: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("SELECT ITEM")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(.secondary)
+
+            ForEach(overlapChoices) { target in
+                Button {
+                    overlapChoices.removeAll()
+                    selectTarget(target)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: target.symbol)
+                            .foregroundStyle(Color(hex: target.colorHex))
+                            .frame(width: 24)
+                        Text(target.name)
+                            .font(.system(size: 14, weight: .semibold))
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 220)
+        .presentationCompactAdaptation(.popover)
     }
 
     private var header: some View {
@@ -294,25 +332,22 @@ struct ContentView: View {
     }
 
     private func targetTapped(_ target: SchematicTarget) {
-        selectedSegmentID = nil
-        selectedSegmentIDs.removeAll()
         if selectedConnectionSlots[target.id] != nil { return }
-        selectedConnectionSlots.removeAll()
-        editingConnectionPoints = false
-
         let overlappingTargets = document.targets.filter {
             $0.id != target.id && obstacleRect(for: $0).intersects(obstacleRect(for: target))
         }
-        if !overlappingTargets.isEmpty,
-           selectedTargetIDs.count == 1,
-           let currentID = selectedTargetIDs.first,
-           currentID == target.id || overlappingTargets.contains(where: { $0.id == currentID }) {
-            let cycle = [target] + overlappingTargets
-            let currentIndex = cycle.firstIndex(where: { $0.id == currentID }) ?? 0
-            selectedTargetIDs = [cycle[(currentIndex + 1) % cycle.count].id]
-            return
+        if !overlappingTargets.isEmpty {
+            overlapChoices = [target] + overlappingTargets
+        } else {
+            selectTarget(target)
         }
+    }
 
+    private func selectTarget(_ target: SchematicTarget) {
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        editingConnectionPoints = false
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
         } else {
@@ -1244,7 +1279,7 @@ private struct TargetView: View {
             }
                 .contentShape(Circle())
                 .offset(connectionPointOffset(for: slot))
-                .onTapGesture { onSelectConnectionPoint(slot) }
+                .highPriorityGesture(TapGesture().onEnded { onSelectConnectionPoint(slot) })
         }
     }
 
