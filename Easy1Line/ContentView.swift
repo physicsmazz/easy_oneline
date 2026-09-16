@@ -530,7 +530,7 @@ struct ContentView: View {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
                     if wireAlignmentPreviewSegmentID == segment.id {
-                        context.stroke(path, with: .color(.yellow.opacity(0.7)), style: StrokeStyle(lineWidth: segment.displayWidth + 10, lineCap: .round, lineJoin: .round))
+                        context.stroke(path, with: .color(.yellow.opacity(0.8)), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 5]))
                     }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
@@ -1959,13 +1959,13 @@ struct ContentView: View {
     }
 
     private func routeWithCurrentEndpoints(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
-        var points = orthogonalizedPoints(routePoints)
+        var points = orthogonalizedPoints(routePoints, alignmentTolerance: 0.5)
         guard points.count > 1 else { return points }
         let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
         points[0] = connectionPoint(for: startTarget, slot: startSlot)
         points[points.count - 1] = connectionPoint(for: endTarget, slot: endSlot)
-        return orthogonalizedPoints(points)
+        return orthogonalizedPoints(points, alignmentTolerance: 0.5)
     }
 
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
