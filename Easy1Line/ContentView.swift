@@ -86,14 +86,14 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1 {
+            if inspectorVisible {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
-            if let lastID = selectedTargetIDs.last, let lastTarget = target(with: lastID), editorSize != .zero {
+            if !inspectorVisible, let lastID = selectedTargetIDs.last, let lastTarget = target(with: lastID), editorSize != .zero {
                 selectionBox
                     .position(selectionBoxPosition(near: lastTarget.position))
                     .zIndex(900)
@@ -372,7 +372,7 @@ struct ContentView: View {
                                 if selectedSegmentID == segment.id {
                                     selectedSegmentSectionIndex = sectionIndex
                                 } else {
-                                    selectedSegmentIDs = [segment.id]
+                                    selectedSegmentIDs.insert(segment.id)
                                     selectedSegmentID = segment.id
                                     selectedSegmentSectionIndex = nil
                                 }
@@ -385,7 +385,7 @@ struct ContentView: View {
                             let pinEnd = sectionIndex == 0 ? points[sectionIndex] : points[sectionIndex + 1]
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 22), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}, onTap: {
-                                selectedSegmentIDs = [segment.id]
+                                selectedSegmentIDs.insert(segment.id)
                                 selectedSegmentID = segment.id
                                 selectedSegmentSectionIndex = nil
                                 selectedTargetIDs.removeAll()
@@ -1211,6 +1211,9 @@ struct ContentView: View {
     }
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
+    private var inspectorVisible: Bool {
+        (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1
+    }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
     private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
