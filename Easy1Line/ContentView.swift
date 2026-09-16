@@ -268,19 +268,21 @@ struct ContentView: View {
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                     let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
-                        SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
-                            moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
-                        }, onEndDrag: {
-                            segmentDragStartPoints.removeValue(forKey: segment.id)
-                        }) {
-                            if selectedSegmentID == segment.id {
-                                selectedSegmentSectionIndex = sectionIndex
-                            } else {
-                                selectedSegmentIDs = [segment.id]
-                                selectedSegmentID = segment.id
-                                selectedSegmentSectionIndex = nil
+                        if sectionIndex > 0 && sectionIndex + 1 < points.count - 1 {
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
+                                moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                            }, onEndDrag: {
+                                segmentDragStartPoints.removeValue(forKey: segment.id)
+                            }) {
+                                if selectedSegmentID == segment.id {
+                                    selectedSegmentSectionIndex = sectionIndex
+                                } else {
+                                    selectedSegmentIDs = [segment.id]
+                                    selectedSegmentID = segment.id
+                                    selectedSegmentSectionIndex = nil
+                                }
+                                selectedTargetIDs.removeAll()
                             }
-                            selectedTargetIDs.removeAll()
                         }
                     }
                 }
