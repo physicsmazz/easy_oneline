@@ -283,6 +283,13 @@ struct ContentView: View {
                                 }
                                 selectedTargetIDs.removeAll()
                             }
+                        } else {
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}) {
+                                selectedSegmentIDs = [segment.id]
+                                selectedSegmentID = segment.id
+                                selectedSegmentSectionIndex = nil
+                                selectedTargetIDs.removeAll()
+                            }
                         }
                     }
                 }
