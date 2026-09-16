@@ -251,6 +251,7 @@ struct ContentView: View {
                 .gesture(panGesture)
                 .onTapGesture {
                     selectedTargetIDs.removeAll()
+                    selectedConnectionSlots.removeAll()
                     selectedSegmentID = nil
                     selectedSegmentIDs.removeAll()
                 }
