@@ -1354,14 +1354,15 @@ struct ContentView: View {
         let position = document.targets[targetIndex].position
         for (index, segment) in document.segments.enumerated() {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let candidate = nearestPoint(on: [start.position, CGPoint(x: (start.position.x + end.position.x) / 2, y: start.position.y), CGPoint(x: (start.position.x + end.position.x) / 2, y: end.position.y), end.position], to: position)
-            guard candidate.distance <= 30 else { continue }
+            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            let candidate = nearestPoint(on: route, to: position)
+            guard candidate.distance <= 36 else { continue }
             guard document.targets[targetIndex].maxConnections >= 2 else { return }
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
             let endSlot = segment.endSlot ?? 0
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
             return
         }
     }
