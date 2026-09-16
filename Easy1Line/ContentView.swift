@@ -49,6 +49,7 @@ struct ContentView: View {
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
+    @State private var activeTargetDragIDs: [UUID] = []
     @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
     @State private var draggingTargetID: UUID?
     @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
@@ -710,9 +711,16 @@ struct ContentView: View {
                 draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil {
-                    dragStartPositions[target.id] = document.targets[index].position
+                    activeTargetDragIDs = selectedTargetIDs.contains(target.id) ? selectedTargetIDs : [target.id]
                     targetDragStartCanvasOffset = canvasOffset
-                    captureAttachedRoutes(for: target.id)
+                    if !selectedTargetIDs.contains(target.id) {
+                        selectedTargetIDs = [target.id]
+                    }
+                    for targetID in activeTargetDragIDs {
+                        guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }), !document.targets[targetIndex].locked else { continue }
+                        dragStartPositions[targetID] = document.targets[targetIndex].position
+                        captureAttachedRoutes(for: targetID)
+                    }
                 }
                 guard let start = dragStartPositions[target.id] else { return }
                 autoPanCanvasIfNeeded(for: document.targets[index].position)
@@ -722,10 +730,13 @@ struct ContentView: View {
                     height: (targetDragStartCanvasOffset?.height ?? canvasOffset.height) - canvasOffset.height
                 )
                 let panCompensation = canvasDelta(for: canvasPan)
-                let proposedPosition = CGPoint(x: start.x + delta.width + panCompensation.width, y: start.y + delta.height + panCompensation.height)
-                document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
-                updateAttachedRoutes(for: target.id, translation: CGSize(width: document.targets[index].position.x - start.x, height: document.targets[index].position.y - start.y))
-                selectedTargetIDs = [target.id]
+                let groupDelta = CGSize(width: delta.width + panCompensation.width, height: delta.height + panCompensation.height)
+                for targetID in activeTargetDragIDs {
+                    guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }), let targetStart = dragStartPositions[targetID] else { continue }
+                    let proposedPosition = CGPoint(x: targetStart.x + groupDelta.width, y: targetStart.y + groupDelta.height)
+                    document.targets[targetIndex].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
+                    updateAttachedRoutes(for: targetID, translation: CGSize(width: document.targets[targetIndex].position.x - targetStart.x, height: document.targets[targetIndex].position.y - targetStart.y))
+                }
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
                 splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
@@ -737,8 +748,12 @@ struct ContentView: View {
                 dragStartPositions.removeValue(forKey: target.id)
                 targetDragStartCanvasOffset = nil
                 targetDragStartRoutes.removeAll()
-                snapTarget(target.id, canvasSize: canvasSize)
-                splitSegmentIfNeeded(for: target.id)
+                for targetID in activeTargetDragIDs {
+                    snapTarget(targetID, canvasSize: canvasSize)
+                    splitSegmentIfNeeded(for: targetID)
+                }
+                dragStartPositions.removeAll()
+                activeTargetDragIDs.removeAll()
                 splitCandidateSegmentID = nil
                 draggingTargetID = nil
             }
