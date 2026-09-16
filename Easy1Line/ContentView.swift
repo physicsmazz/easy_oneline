@@ -60,6 +60,8 @@ struct ContentView: View {
     @AppStorage("snapToGrid") private var snapToGrid = true
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
+    @State private var showCloudLibrary = false
+    @State private var cloudDrawings: [CloudDrawingChoice] = []
     @State private var showLineLibrary = false
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
@@ -133,6 +135,13 @@ struct ContentView: View {
 
             if showLibrary {
                 libraryPanel
+                    .padding(.top, 84)
+                    .padding(.trailing, 20)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            if showCloudLibrary {
+                cloudLibraryPanel
                     .padding(.top, 84)
                     .padding(.trailing, 20)
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -234,7 +243,7 @@ struct ContentView: View {
                 Button("Export .line") { showFileExporter = true }
                 Button("Import .line") { showFileImporter = true }
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
-                Button("Load from cloud") { Task { await loadFromCloud() } }
+                Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
@@ -827,21 +836,31 @@ struct ContentView: View {
         }
     }
 
-    private func loadFromCloud() async {
+    private func loadCloudDrawings() async {
         guard let store = SupabaseDrawingStore() else {
             cloudStatus = "Supabase is not configured"
             return
         }
         do {
-            guard let remote = try await store.loadDrawingData().first,
-                  let loaded = try? JSONDecoder().decode(SchematicDocument.self, from: remote.data) else {
+            let remoteDrawings = try await store.loadDrawingData()
+            cloudDrawings = remoteDrawings.map { CloudDrawingChoice(id: $0.id, name: $0.name, data: $0.data) }
+            showCloudLibrary = true
+            guard !remoteDrawings.isEmpty else {
                 cloudStatus = "No cloud drawings"
                 return
             }
-            document = loaded
-            cloudStatus = "Loaded from cloud"
         } catch {
-            cloudStatus = "Cloud load failed: \(cloudErrorText(error))"
+            cloudStatus = "Cloud list failed: \(cloudErrorText(error))"
+        }
+    }
+
+    private func loadCloudDrawing(_ drawing: CloudDrawingChoice) {
+        do {
+            document = try JSONDecoder().decode(SchematicDocument.self, from: drawing.data)
+            showCloudLibrary = false
+            cloudStatus = "Loaded from cloud: \(drawing.name)"
+        } catch {
+            cloudStatus = "Cloud drawing invalid: \(error.localizedDescription)"
         }
     }
 
@@ -921,6 +940,41 @@ struct ContentView: View {
                 .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
             }
             if savedDocuments.isEmpty { Text("No saved schematics yet").font(.caption).foregroundStyle(.white.opacity(0.4)) }
+        }
+        .padding(14)
+        .frame(width: 270)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var cloudLibraryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("CLOUD DRAWINGS").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { Task { await loadCloudDrawings() } } label: { Image(systemName: "arrow.clockwise") }.foregroundStyle(.cyan)
+                Button { showCloudLibrary = false } label: { Image(systemName: "xmark") }.foregroundStyle(.white.opacity(0.65))
+            }
+            if cloudDrawings.isEmpty {
+                Text("No cloud drawings yet").font(.caption).foregroundStyle(.white.opacity(0.4))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(cloudDrawings) { drawing in
+                            Button { loadCloudDrawing(drawing) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(drawing.name).font(.system(size: 13, weight: .semibold))
+                                    Text(drawing.id.uuidString.prefix(8)).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.4))
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(9)
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                        }
+                    }
+                }
+                .frame(maxHeight: 420)
+            }
         }
         .padding(14)
         .frame(width: 270)
@@ -1937,6 +1991,12 @@ struct ContentView: View {
             applyLineDefinition(line, to: segmentID)
         }
     }
+}
+
+private struct CloudDrawingChoice: Identifiable {
+    let id: UUID
+    let name: String
+    let data: Data
 }
 
 private struct SchematicDocument: Identifiable, Codable, Equatable {
