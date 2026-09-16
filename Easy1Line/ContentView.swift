@@ -154,6 +154,14 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
             .help("Toggle item information")
             .accessibilityLabel("Toggle item information")
+
+            Button { snapToGrid.toggle() } label: {
+                Image(systemName: "magnet")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+            .help(snapToGrid ? "Snap to grid: on" : "Snap to grid: off")
+            .accessibilityLabel("Snap to grid")
         }
 
         .padding(.horizontal, 24)
@@ -213,9 +221,6 @@ struct ContentView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .fixedSize(horizontal: false, vertical: true)
 
-                Toggle("Snap targets to grid", isOn: $snapToGrid)
-                    .font(.system(size: 11, weight: .medium))
-                    .tint(.cyan)
             }
         }
         .padding(14)
@@ -319,7 +324,8 @@ struct ContentView: View {
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
                 guard let start = dragStartPositions[target.id] else { return }
-                document.targets[index].position = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height)
+                let proposedPosition = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height)
+                document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
