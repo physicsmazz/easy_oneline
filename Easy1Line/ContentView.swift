@@ -1194,14 +1194,15 @@ private struct TargetView: View {
     @ViewBuilder
     private func connectionPoint(slot: Int) -> some View {
         let point = Circle()
-            .fill(selectedSlots.contains(slot) ? Color.white : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
-            .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
-            .offset(connectionPointOffset(for: slot))
+            .fill(selectedSlots.contains(slot) ? Color.cyan : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+            .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
+            .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
 
         if editingConnectionPoints {
             point
                 .frame(width: 18, height: 18)
                 .contentShape(Circle().scale(2.5))
+                .offset(connectionPointOffset(for: slot))
                 .onTapGesture { onSelectConnectionPoint(slot) }
                 .gesture(
                     DragGesture()
@@ -1209,9 +1210,12 @@ private struct TargetView: View {
                         .onEnded { _ in onEndConnectionPointMove(slot) }
                 )
         } else {
-            point
-                .frame(width: 9, height: 9)
+            ZStack {
+                point
+                Circle().fill(.clear).frame(width: 28, height: 28)
+            }
                 .contentShape(Circle())
+                .offset(connectionPointOffset(for: slot))
                 .onTapGesture { onSelectConnectionPoint(slot) }
         }
     }
