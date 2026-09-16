@@ -40,10 +40,15 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
-    @State private var showInfoPanel = true
+    @State private var showInfoPanel = false
+    @State private var doubleTapInfoTargetIDs: [UUID] = []
+    @State private var doubleTapInfoSegmentIDs: Set<UUID> = []
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
     @State private var dockDragLocation = CGPoint.zero
+    @AppStorage("targetsPanelListHeight") private var targetsPanelListHeight: Double = 460
+    @State private var targetsPanelResizeStart: Double?
+    @State private var splitCandidateSegmentID: UUID?
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
 
@@ -78,7 +83,7 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if (hasSelection && showInfoPanel) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
+            if (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent)) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
@@ -130,7 +135,6 @@ struct ContentView: View {
         .onAppear { if snapToGrid { snapAllTargets() } }
         .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
         .onChange(of: selectedTargetIDs) { _, ids in
-            if !ids.isEmpty { showInfoPanel = true }
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
                 targetNameDraft = ""
@@ -212,22 +216,15 @@ struct ContentView: View {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
             } label: {
-                if targetsPanelExpanded {
-                    HStack(spacing: 8) {
-                        Text("TARGETS")
-                            .font(.system(size: 10, weight: .bold))
-                            .tracking(1.4)
-                            .foregroundStyle(.white.opacity(0.45))
-                        Spacer()
-                        Image(systemName: "chevron.left")
-                            .frame(width: 24, height: 24)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
-                } else {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.cyan)
-                        .frame(width: 28, height: 28)
+                HStack(spacing: 8) {
+                    Text("TARGETS")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundStyle(.white.opacity(0.45))
+                    Spacer()
+                    Image(systemName: targetsPanelExpanded ? "chevron.up" : "chevron.down")
+                        .frame(width: 24, height: 24)
+                        .foregroundStyle(.white.opacity(0.7))
                 }
             }
             .buttonStyle(.plain)
@@ -251,9 +248,11 @@ struct ContentView: View {
                                             .onChanged { value in
                                                 dockDragKind = kind
                                                 dockDragLocation = value.location
+                                                splitCandidateSegmentID = editorSize == .zero ? nil : splitCandidate(at: canvasDropPoint(value.location, canvasSize: editorSize), excluding: nil)?.segment.id
                                             }
                                             .onEnded { value in
                                                 dockDragKind = nil
+                                                splitCandidateSegmentID = nil
                                                 placeDockItem(kind, at: value.location)
                                             }
                                     )
@@ -261,7 +260,7 @@ struct ContentView: View {
                             }
                     }
                 }
-                .frame(maxHeight: 460)
+                .frame(height: targetsPanelListHeight)
 
                 Divider().overlay(.white.opacity(0.12)).padding(.vertical, 4)
 
@@ -277,10 +276,25 @@ struct ContentView: View {
                     .foregroundStyle(.white.opacity(0.35))
                     .fixedSize(horizontal: false, vertical: true)
 
+                Capsule()
+                    .fill(.white.opacity(0.25))
+                    .frame(width: 40, height: 4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 2)
+                            .onChanged { value in
+                                if targetsPanelResizeStart == nil { targetsPanelResizeStart = targetsPanelListHeight }
+                                targetsPanelListHeight = min(max((targetsPanelResizeStart ?? targetsPanelListHeight) + value.translation.height, 80), 900)
+                            }
+                            .onEnded { _ in targetsPanelResizeStart = nil }
+                    )
+                    .accessibilityLabel("Resize targets panel")
             }
         }
-        .padding(targetsPanelExpanded ? 14 : 5)
-        .frame(width: targetsPanelExpanded ? 170 : 38)
+        .padding(14)
+        .frame(width: 170)
         .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
     }
@@ -301,6 +315,9 @@ struct ContentView: View {
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    if splitCandidateSegmentID == segment.id {
+                        context.stroke(path, with: .color(.yellow.opacity(0.55)), style: StrokeStyle(lineWidth: segment.displayWidth + 14, lineCap: .round, lineJoin: .round))
+                    }
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -397,14 +414,6 @@ struct ContentView: View {
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
-        .overlay(alignment: .center) {
-            if targetsPanelExpanded {
-                Text("Drop to place")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.12))
-                    .allowsHitTesting(false)
-            }
-        }
         .ignoresSafeArea(edges: .bottom)
         .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
@@ -496,12 +505,16 @@ struct ContentView: View {
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
+                splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
+                    ? splitCandidate(at: document.targets[index].position, excluding: target.id)?.segment.id
+                    : nil
             }
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
                 targetDragStartRoutes.removeAll()
                 snapTarget(target.id, canvasSize: canvasSize)
                 splitSegmentIfNeeded(for: target.id)
+                splitCandidateSegmentID = nil
                 draggingTargetID = nil
             }
     }
@@ -525,6 +538,8 @@ struct ContentView: View {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         selectedConnectionSlots.removeAll()
+        doubleTapInfoTargetIDs = selectedTargetIDs
+        doubleTapInfoSegmentIDs = []
     }
 
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
@@ -532,6 +547,15 @@ struct ContentView: View {
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
         selectedSegmentSectionIndex = sectionIndex
+        doubleTapInfoTargetIDs = []
+        doubleTapInfoSegmentIDs = [wire.id]
+    }
+
+    // Inspector opened by double-tap stays only while that same selection is current.
+    private var doubleTapInfoIsCurrent: Bool {
+        (!doubleTapInfoTargetIDs.isEmpty || !doubleTapInfoSegmentIDs.isEmpty)
+            && doubleTapInfoTargetIDs == selectedTargetIDs
+            && doubleTapInfoSegmentIDs == selectedSegmentIDs
     }
 
     private func toggleConnectionMode() {
@@ -1104,13 +1128,15 @@ struct ContentView: View {
     private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
 
     private func connectionNameBinding(_ target: SchematicTarget, slot: Int) -> Binding<String> {
-        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
+        let id = target.id
         return Binding(
             get: {
-                if document.targets[index].connectionNames.indices.contains(slot) { return document.targets[index].connectionNames[slot] }
+                let names = document.targets.first { $0.id == id }?.connectionNames ?? target.connectionNames
+                if names.indices.contains(slot) { return names[slot] }
                 return defaultConnectionName(for: slot)
             },
             set: {
+                guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
                 while document.targets[index].connectionNames.count <= slot { document.targets[index].connectionNames.append(defaultConnectionName(for: document.targets[index].connectionNames.count)) }
                 document.targets[index].connectionNames[slot] = $0
             }
@@ -1253,8 +1279,13 @@ struct ContentView: View {
     private func updateAttachedRoutes(for targetID: UUID, translation: CGSize) {
         for index in document.segments.indices where document.segments[index].startID == targetID || document.segments[index].endID == targetID {
             let segment = document.segments[index]
-            guard var points = targetDragStartRoutes[segment.id], points.count > 2 else { continue }
-            if segment.startID == targetID {
+            guard var points = targetDragStartRoutes[segment.id], points.count > 1 else { continue }
+            if points.count == 2 {
+                // Straight stub: move only the attached end; drawing re-orthogonalizes it.
+                let movedIndex = segment.startID == targetID ? 0 : 1
+                points[movedIndex].x += translation.width
+                points[movedIndex].y += translation.height
+            } else if segment.startID == targetID {
                 points[0].x += translation.width
                 points[0].y += translation.height
                 points[1].x += translation.width
@@ -1519,29 +1550,46 @@ struct ContentView: View {
         return true
     }
 
-    private func splitSegmentIfNeeded(for targetID: UUID) {
-        guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }) else { return }
-        let position = document.targets[targetIndex].position
+    private func splitCandidate(at position: CGPoint, excluding targetID: UUID?) -> (segment: SchematicSegment, index: Int, route: [CGPoint], point: CGPoint)? {
         for (index, segment) in document.segments.enumerated() {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
             let route = segment.routePoints.count > 1
                 ? segment.routePoints
                 : orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
             let candidate = nearestPoint(on: route, to: position)
-            guard candidate.distance <= 52 else { continue }
-            let freeSlots = document.targets[targetIndex].maxConnections - occupiedSlots(for: targetID).count
-            guard freeSlots >= 2 else { return }
-            let junctionPosition = snapToGrid ? snappedPosition(candidate.point) : candidate.point
-            let splitRoutes = splitRoutePoints(route, at: junctionPosition)
-            document.segments.remove(at: index)
-            let startSlot = segment.startSlot ?? 0
-            let endSlot = segment.endSlot ?? 0
-            let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
-            let secondSlot = closestAvailableSlot(for: targetID, to: segment.endID) ?? (firstSlot == 0 ? 1 : 0)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
-            return
+            if candidate.distance <= 52 { return (segment, index, route, candidate.point) }
         }
+        return nil
+    }
+
+    private func splitSegmentIfNeeded(for targetID: UUID) {
+        guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }) else { return }
+        let freeSlots = document.targets[targetIndex].maxConnections - occupiedSlots(for: targetID).count
+        guard freeSlots >= 2 else { return }
+        guard let hit = splitCandidate(at: document.targets[targetIndex].position, excluding: targetID) else { return }
+        let segment = hit.segment
+        let junctionPosition = snapToGrid ? snappedPosition(hit.point) : hit.point
+        // Sit the dropped item on the wire so both halves terminate at its pins.
+        document.targets[targetIndex].position = junctionPosition
+        let splitRoutes = splitRoutePoints(hit.route, at: junctionPosition)
+        document.segments.remove(at: hit.index)
+        let startSlot = segment.startSlot ?? 0
+        let endSlot = segment.endSlot ?? 0
+        let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.first.dropLast()), target: document.targets[targetIndex], slot: firstSlot, toward: segment.startID, fallback: junctionPosition)), at: hit.index)
+        let secondSlot = closestAvailableSlot(for: targetID, to: segment.endID) ?? (firstSlot == 0 ? 1 : 0)
+        document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.second.dropFirst()).reversed(), target: document.targets[targetIndex], slot: secondSlot, toward: segment.endID, fallback: junctionPosition).reversed()), at: hit.index + 1)
+    }
+
+    // Ends `points` at the pin by way of its escape stub so the wire leaves the pin outward.
+    private func routeIntoPin(_ points: [CGPoint], target: SchematicTarget, slot: Int, toward otherID: UUID, fallback: CGPoint) -> [CGPoint] {
+        let pin = connectionPoint(for: target, slot: slot)
+        guard let other = self.target(with: otherID) else { return orthogonalizedPoints(points + [pin]) }
+        let escape = escapePoint(for: target, slot: slot, toward: other)
+        let previous = points.last ?? fallback
+        let pinIsVertical = abs(pin.y - target.position.y) >= abs(pin.x - target.position.x)
+        let corner = pinIsVertical ? CGPoint(x: previous.x, y: escape.y) : CGPoint(x: escape.x, y: previous.y)
+        return simplifyOrthogonalPoints((points.isEmpty ? [fallback] : points) + [corner, escape, pin])
     }
 
     private func splitWire(_ segment: SchematicSegment) {
@@ -1595,29 +1643,40 @@ struct ContentView: View {
     }
 
     private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>, netName: Binding<String>) {
-        guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { fatalError("Segment disappeared") }
+        let id = segment.id
+        func current() -> SchematicSegment { document.segments.first { $0.id == id } ?? segment }
+        func update(_ change: (inout SchematicSegment) -> Void) {
+            guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
+            change(&document.segments[index])
+        }
         return (
-            Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }),
-            Binding(get: { Color(hex: document.segments[index].colorHex) }, set: { document.segments[index].colorHex = $0.hexString }),
-            Binding(get: { document.segments[index].wireSize }, set: { document.segments[index].wireSize = $0 }),
-            Binding(get: { ConductorMaterial(rawValue: document.segments[index].material) ?? .copper }, set: { document.segments[index].material = $0.rawValue }),
-            Binding(get: { document.segments[index].displayWidth }, set: { document.segments[index].displayWidth = $0 }),
-            Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 }),
-            Binding(get: { document.segments[index].covering }, set: { document.segments[index].covering = $0 }),
-            Binding(get: { document.segments[index].netName }, set: { document.segments[index].netName = $0 })
+            Binding(get: { current().name }, set: { value in update { $0.name = value } }),
+            Binding(get: { Color(hex: current().colorHex) }, set: { value in update { $0.colorHex = value.hexString } }),
+            Binding(get: { current().wireSize }, set: { value in update { $0.wireSize = value } }),
+            Binding(get: { ConductorMaterial(rawValue: current().material) ?? .copper }, set: { value in update { $0.material = value.rawValue } }),
+            Binding(get: { current().displayWidth }, set: { value in update { $0.displayWidth = value } }),
+            Binding(get: { current().description }, set: { value in update { $0.description = value } }),
+            Binding(get: { current().covering }, set: { value in update { $0.covering = value } }),
+            Binding(get: { current().netName }, set: { value in update { $0.netName = value } })
         )
     }
 
     private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>, scale: Binding<Double>, isCompact: Binding<Bool>) {
-        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
+        let id = target.id
+        // Resolve by id on every access; a captured index goes stale when targets are deleted.
+        func current() -> SchematicTarget { document.targets.first { $0.id == id } ?? target }
+        func update(_ change: (inout SchematicTarget) -> Void) {
+            guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
+            change(&document.targets[index])
+        }
         return (
-            Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }),
-            Binding(get: { document.targets[index].symbol }, set: { document.targets[index].symbol = $0 }),
-            Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }),
-            Binding(get: { document.targets[index].connectionAngle }, set: { document.targets[index].connectionAngle = $0 }),
-            Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString }),
-            Binding(get: { document.targets[index].scale }, set: { document.targets[index].scale = $0 }),
-            Binding(get: { document.targets[index].isCompact }, set: { document.targets[index].isCompact = $0 })
+            Binding(get: { current().name }, set: { value in update { $0.name = value } }),
+            Binding(get: { current().symbol }, set: { value in update { $0.symbol = value } }),
+            Binding(get: { current().maxConnections }, set: { value in update { $0.maxConnections = value } }),
+            Binding(get: { current().connectionAngle }, set: { value in update { $0.connectionAngle = value } }),
+            Binding(get: { Color(hex: current().colorHex) }, set: { value in update { $0.colorHex = value.hexString } }),
+            Binding(get: { current().scale }, set: { value in update { $0.scale = value } }),
+            Binding(get: { current().isCompact }, set: { value in update { $0.isCompact = value } })
         )
     }
 
