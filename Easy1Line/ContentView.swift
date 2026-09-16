@@ -17,6 +17,7 @@ struct ContentView: View {
     @State private var showLineLibrary = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var cloudStatus = ""
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -74,6 +75,11 @@ struct ContentView: View {
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white.opacity(0.5))
                     .frame(width: 180)
+                if !cloudStatus.isEmpty {
+                    Text(cloudStatus)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.cyan.opacity(0.8))
+                }
             }
 
             Spacer()
@@ -92,6 +98,18 @@ struct ContentView: View {
                 Label("Save", systemImage: "square.and.arrow.down")
             }
             .buttonStyle(EditorButtonStyle())
+
+            Button { Task { await saveToCloud() } } label: {
+                Label("Cloud", systemImage: "icloud.and.arrow.up")
+            }
+            .buttonStyle(EditorButtonStyle())
+
+            Button { Task { await loadFromCloud() } } label: {
+                Image(systemName: "icloud.and.arrow.down")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(EditorButtonStyle())
+            .accessibilityLabel("Load from cloud")
 
             Button {
                 connectSelectedTargets()
@@ -287,6 +305,38 @@ struct ContentView: View {
         if let index = savedDocuments.firstIndex(where: { $0.id == document.id }) { savedDocuments[index] = document } else { savedDocuments.append(document) }
         SchematicDocument.saveAll(savedDocuments)
         SchematicDocument.saveLast(document)
+    }
+
+    private func saveToCloud() async {
+        guard let store = SupabaseDrawingStore() else {
+            cloudStatus = "Supabase is not configured"
+            return
+        }
+        do {
+            let data = try JSONEncoder().encode(document)
+            try await store.saveDrawing(id: document.id, name: document.name, data: data)
+            cloudStatus = "Saved to cloud"
+        } catch {
+            cloudStatus = "Cloud save failed"
+        }
+    }
+
+    private func loadFromCloud() async {
+        guard let store = SupabaseDrawingStore() else {
+            cloudStatus = "Supabase is not configured"
+            return
+        }
+        do {
+            guard let remote = try await store.loadDrawingData().first,
+                  let loaded = try? JSONDecoder().decode(SchematicDocument.self, from: remote.data) else {
+                cloudStatus = "No cloud drawings"
+                return
+            }
+            document = loaded
+            cloudStatus = "Loaded from cloud"
+        } catch {
+            cloudStatus = "Cloud load failed"
+        }
     }
 
     private func newSchematic() {

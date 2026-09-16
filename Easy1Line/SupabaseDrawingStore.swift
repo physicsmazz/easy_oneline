@@ -54,6 +54,21 @@ struct SupabaseDrawingStore {
         return try JSONDecoder().decode([SupabaseDrawingRecord].self, from: data)
     }
 
+    func loadDrawingData() async throws -> [(id: UUID, name: String, data: Data)] {
+        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw StoreError.invalidResponse }
+        return try rows.compactMap { row in
+            guard let rawID = row["id"] as? String, let id = UUID(uuidString: rawID),
+                  let name = row["name"] as? String, let drawing = row["data"] else { return nil }
+            return (id, name, try JSONSerialization.data(withJSONObject: drawing))
+        }
+    }
+
     func deleteDrawing(id: UUID) async throws {
         var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?id=eq.\(id.uuidString)"))
         request.httpMethod = "DELETE"

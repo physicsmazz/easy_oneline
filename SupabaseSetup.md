@@ -6,8 +6,8 @@
 4. Add these generated Info.plist keys to the app's local build configuration:
 
 ```text
-SUPABASE_URL = https://YOUR_PROJECT.supabase.co
-SUPABASE_ANON_KEY = YOUR_ANON_KEY
+SUPABASE_URL = https://ukiksqzsdsjszhhtpqjl.supabase.co
+SUPABASE_ANON_KEY = sb_publishable_iaTMBFN570O3NfYjz_pjgw_RaJ28_RV
 ```
 
 The app reads these values through `SupabaseConfiguration.current`. The anon key is intended for client use; never put a service-role key in the app.
