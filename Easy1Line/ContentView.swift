@@ -1878,7 +1878,12 @@ struct ContentView: View {
     }
 
     private func moveSegmentSection(_ id: UUID, sectionIndex: Int, translation: CGSize) {
-        guard selectedSegmentIDs.contains(id), selectedSegmentID == id, selectedSegmentSectionIndex == sectionIndex else { return }
+        if !selectedSegmentIDs.contains(id) || selectedSegmentID != id || selectedSegmentSectionIndex != sectionIndex {
+            selectedTargetIDs.removeAll()
+            selectedSegmentIDs = [id]
+            selectedSegmentID = id
+            selectedSegmentSectionIndex = sectionIndex
+        }
         guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
