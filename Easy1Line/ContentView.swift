@@ -737,7 +737,7 @@ struct ContentView: View {
                     let proposedPosition = CGPoint(x: targetStart.x + groupDelta.width, y: targetStart.y + groupDelta.height)
                     document.targets[targetIndex].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
                 }
-                updateAttachedRoutes(for: Set(activeTargetDragIDs), translation: groupDelta)
+                updateAttachedRoutes(for: Set(activeTargetDragIDs), translation: groupDelta, onlyFullySelected: activeTargetDragIDs.count > 1)
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
                 splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
@@ -1703,15 +1703,19 @@ struct ContentView: View {
     }
 
     private func updateAttachedRoutes(for targetID: UUID, translation: CGSize) {
-        updateAttachedRoutes(for: Set([targetID]), translation: translation)
+        updateAttachedRoutes(for: Set([targetID]), translation: translation, onlyFullySelected: false)
     }
 
-    private func updateAttachedRoutes(for targetIDs: Set<UUID>, translation: CGSize) {
+    private func updateAttachedRoutes(for targetIDs: Set<UUID>, translation: CGSize, onlyFullySelected: Bool = false) {
         for index in document.segments.indices where targetIDs.contains(document.segments[index].startID) || targetIDs.contains(document.segments[index].endID) {
             let segment = document.segments[index]
             guard var points = targetDragStartRoutes[segment.id], points.count > 1 else { continue }
             let startMoved = targetIDs.contains(segment.startID)
             let endMoved = targetIDs.contains(segment.endID)
+            if onlyFullySelected && !(startMoved && endMoved) {
+                document.segments[index].routePoints.removeAll()
+                continue
+            }
             if startMoved && endMoved {
                 document.segments[index].routePoints = points.map { CGPoint(x: $0.x + translation.width, y: $0.y + translation.height) }
                 continue
