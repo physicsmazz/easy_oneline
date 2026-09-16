@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @State private var overlapChoices: [SchematicTarget] = []
+    @State private var overlapAnchorID: UUID?
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
@@ -73,12 +74,6 @@ struct ContentView: View {
             guard let item, let targetID = selectedTargetIDs.first else { return }
             Task { await loadTargetImage(item, targetID: targetID) }
         }
-        .popover(isPresented: Binding(
-            get: { !overlapChoices.isEmpty },
-            set: { if !$0 { overlapChoices.removeAll() } }
-        )) {
-            overlapChooser
-        }
     }
 
     private var overlapChooser: some View {
@@ -91,6 +86,7 @@ struct ContentView: View {
             ForEach(overlapChoices) { target in
                 Button {
                     overlapChoices.removeAll()
+                    overlapAnchorID = nil
                     selectTarget(target)
                 } label: {
                     HStack(spacing: 10) {
@@ -291,6 +287,12 @@ struct ContentView: View {
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
+                .popover(isPresented: Binding(
+                    get: { overlapAnchorID == target.id && !overlapChoices.isEmpty },
+                    set: { if !$0 { overlapChoices.removeAll(); overlapAnchorID = nil } }
+                )) {
+                    overlapChooser
+                }
             }
         }
         .offset(canvasOffset)
@@ -338,6 +340,7 @@ struct ContentView: View {
         }
         if !overlappingTargets.isEmpty {
             overlapChoices = [target] + overlappingTargets
+            overlapAnchorID = target.id
         } else {
             selectTarget(target)
         }
