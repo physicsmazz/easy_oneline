@@ -1902,25 +1902,8 @@ struct ContentView: View {
             points[sectionIndex].y = movedCoordinate
             points[sectionIndex + 1].y = movedCoordinate
         }
-        document.segments[index].routePoints = routeWithClearStubsForSectionDrag(orthogonalizedPoints(points), segment: document.segments[index], startTarget: start, endTarget: end)
+        document.segments[index].routePoints = orthogonalizedPoints(points)
         selectedTargetIDs.removeAll()
-    }
-
-    private func routeWithClearStubsForSectionDrag(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
-        guard routePoints.count > 1 else { return routePoints }
-        var points = routePoints
-        let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
-        let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
-        let startPin = connectionPoint(for: startTarget, slot: startSlot)
-        let endPin = connectionPoint(for: endTarget, slot: endSlot)
-        let startEscape = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
-        let endEscape = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
-        if points.count == 2 { return orthogonalizedPoints([startPin, startEscape, endEscape, endPin]) }
-        points[0] = startPin
-        points[1] = startEscape
-        points[points.count - 1] = endPin
-        points[points.count - 2] = endEscape
-        return orthogonalizedPoints(points)
     }
 
     private func snappedPosition(_ position: CGPoint) -> CGPoint {
