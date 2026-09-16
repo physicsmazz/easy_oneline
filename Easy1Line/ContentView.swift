@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var canvasOffset = CGSize.zero
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
     @State private var selectedTargetIDs: [UUID] = []
     @AppStorage("targetsPanelExpanded") private var targetsPanelExpanded = true
     @State private var selectedSegmentID: UUID?
@@ -249,7 +250,11 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
+                    SegmentHitArea(path: orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id), onDrag: { translation in
+                        moveSegment(segment.id, translation: translation)
+                    }, onEndDrag: {
+                        segmentDragStartOffsets.removeValue(forKey: segment.id)
+                    }) {
                         if selectedSegmentIDs.contains(segment.id) {
                             selectedSegmentIDs.remove(segment.id)
                         } else {
@@ -774,6 +779,19 @@ struct ContentView: View {
         document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
     }
 
+    private func moveSegment(_ id: UUID, translation: CGSize) {
+        guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
+        if segmentDragStartOffsets[id] == nil {
+            segmentDragStartOffsets[id] = document.segments[index].bendOffset
+        }
+        let startOffset = segmentDragStartOffsets[id] ?? 0
+        let delta = abs(translation.width) >= abs(translation.height) ? translation.width : translation.height
+        document.segments[index].bendOffset = startOffset + delta
+        selectedSegmentID = id
+        selectedSegmentIDs = [id]
+        selectedTargetIDs.removeAll()
+    }
+
     private func snappedPosition(_ position: CGPoint) -> CGPoint {
         guard snapToGrid else { return position }
         let gridSize: CGFloat = 32
@@ -810,10 +828,18 @@ struct ContentView: View {
             .filter { pointsAreClear($0, from: rectangles) }
             .min { pathLength($0) < pathLength($1) }
             ?? [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
+        var adjustedPath = safePath
+        if abs(adjustedPath[1].x - adjustedPath[2].x) < 0.5 {
+            adjustedPath[1].x += segment.bendOffset
+            adjustedPath[2].x += segment.bendOffset
+        } else {
+            adjustedPath[1].y += segment.bendOffset
+            adjustedPath[2].y += segment.bendOffset
+        }
         var path = Path()
         path.move(to: start)
         path.addLine(to: escapeStart)
-        for point in safePath.dropFirst() { path.addLine(to: point) }
+        for point in adjustedPath.dropFirst() { path.addLine(to: point) }
         path.addLine(to: end)
         return path
     }
@@ -1117,11 +1143,12 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var material: String
     var displayWidth: Double
     var description: String
+    var bendOffset: CGFloat
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "") {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description
+        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset
     }
 
     init(from decoder: Decoder) throws {
@@ -1137,6 +1164,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         material = try container.decodeIfPresent(String.self, forKey: .material) ?? "Copper"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+        bendOffset = try container.decodeIfPresent(CGFloat.self, forKey: .bendOffset) ?? 0
     }
 }
 
@@ -1359,8 +1387,15 @@ private struct TargetView: View {
 private struct SegmentHitArea: View {
     let path: Path
     let isSelected: Bool
+    let onDrag: (CGSize) -> Void
+    let onEndDrag: () -> Void
     let onTap: () -> Void
-    var body: some View { path.stroke(isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)).contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))).onTapGesture(perform: onTap) }
+    var body: some View {
+        path.stroke(isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
+            .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
+            .onTapGesture(perform: onTap)
+            .gesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
+    }
 }
 
 private struct GridBackground: View {
