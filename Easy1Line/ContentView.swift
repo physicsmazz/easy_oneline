@@ -97,14 +97,15 @@ struct ContentView: View {
                             .font(.system(size: 14, weight: .semibold))
                         Spacer()
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: 188, alignment: .leading)
                     .padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(16)
-        .frame(minWidth: 220)
+        .frame(width: 220)
+        .fixedSize(horizontal: true, vertical: false)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1) }
         .presentationCompactAdaptation(.popover)
