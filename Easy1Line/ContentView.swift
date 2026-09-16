@@ -224,6 +224,7 @@ struct ContentView: View {
                     selectionOrder: selectedTargetIDs.count > 2 ? selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 } : nil,
                     isConnectionStart: selectedTargetIDs.contains(target.id),
                     connectedColor: connectedColor(for: target.id),
+                    connectedColors: connectedColors(for: target.id),
                     occupiedSlots: occupiedSlots(for: target.id)
                 )
                 .position(target.position)
@@ -594,6 +595,15 @@ struct ContentView: View {
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
+    private func connectedColors(for id: UUID) -> [Color] {
+        var colors: [Color] = []
+        for segment in document.segments where segment.startID == id || segment.endID == id {
+            if !colors.contains(where: { $0.hexString == segment.color.hexString }) {
+                colors.append(segment.color)
+            }
+        }
+        return colors
+    }
     private func occupiedSlots(for id: UUID) -> Set<Int> {
         var slots = Set<Int>()
         for segment in document.segments {
@@ -867,6 +877,7 @@ private struct TargetView: View {
     let selectionOrder: Int?
     let isConnectionStart: Bool
     let connectedColor: Color
+    let connectedColors: [Color]
     let occupiedSlots: Set<Int>
 
     var body: some View {
@@ -877,7 +888,8 @@ private struct TargetView: View {
                 VStack(spacing: 5) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
-                        RoundedRectangle(cornerRadius: 10).stroke(isSelected || isConnectionStart ? Color(hex: target.colorHex) : .white.opacity(0.18), lineWidth: isSelected || isConnectionStart ? 2 : 1)
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                             Image(uiImage: uiImage)
                                 .resizable()
@@ -928,6 +940,16 @@ private struct TargetView: View {
         let angle = (2 * Double.pi * Double(slot) / Double(max(target.maxConnections, 1))) - Double.pi / 2
         let radius: CGFloat = target.kind == .junction ? 14 : 42
         return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
+    }
+
+    private var borderStyle: AnyShapeStyle {
+        if isSelected || isConnectionStart {
+            return AnyShapeStyle(Color(hex: target.colorHex))
+        }
+        if connectedColors.count > 1 {
+            return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
+        }
+        return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
     }
 }
 
