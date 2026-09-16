@@ -661,35 +661,46 @@ struct ContentView: View {
             TextField("Search material or wire size", text: $lineLibrarySearch)
                 .textFieldStyle(.roundedBorder)
 
-            let filteredLines = document.lineDefinitions.filter {
-                lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.material.rawValue.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch)
-            }
             ScrollView {
                 LazyVStack(spacing: 6) {
-                    ForEach(filteredLines) { line in
-                        Button {
-                            selectedLineDefinitionID = line.id
-                            if let selectedSegmentID {
-                                applyLineDefinition(line, to: selectedSegmentID)
-                            } else {
-                                applyLineDefinition(line, to: selectedSegmentIDs)
-                            }
-                            showLineLibrary = false
-                        } label: {
-                            HStack(spacing: 9) {
-                                Circle().fill(Color(hex: line.colorHex)).frame(width: 10, height: 10)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(line.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                                    Text("\(line.material.rawValue) · \(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
-                                }
-                                Spacer()
-                                if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
-                            }
-                            .padding(.horizontal, 8)
-                            .frame(height: 38)
-                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                    ForEach(ConductorMaterial.allCases) { material in
+                        let materialLines = document.lineDefinitions.filter {
+                            $0.material == material && (lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch))
                         }
-                        .buttonStyle(.plain)
+                        if !materialLines.isEmpty {
+                            Text(material.rawValue.uppercased())
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(1.1)
+                                .foregroundStyle(.white.opacity(0.4))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 5)
+
+                            ForEach(materialLines) { line in
+                                Button {
+                                    selectedLineDefinitionID = line.id
+                                    if let selectedSegmentID {
+                                        applyLineDefinition(line, to: selectedSegmentID)
+                                    } else {
+                                        applyLineDefinition(line, to: selectedSegmentIDs)
+                                    }
+                                    showLineLibrary = false
+                                } label: {
+                                    HStack(spacing: 9) {
+                                        Circle().fill(Color(hex: line.colorHex)).frame(width: 10, height: 10)
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(line.wireSize).font(.system(size: 12, weight: .semibold))
+                                            Text("\(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                                        }
+                                        Spacer()
+                                        if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .frame(height: 34)
+                                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
                 }
             }
