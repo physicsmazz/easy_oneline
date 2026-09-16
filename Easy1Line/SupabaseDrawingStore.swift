@@ -53,6 +53,24 @@ struct SupabaseDrawingStore {
         return try JSONDecoder().decode([SupabaseDrawingRecord].self, from: data)
     }
 
+    func loadTargetTypes() async throws -> [SupabaseTargetTypeRecord] {
+        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/target_types?select=kind,name,symbol,color_hex,max_connections,connection_angle,connection_angles"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseTargetTypeRecord].self, from: data)
+    }
+
+    func loadConductorCatalog() async throws -> [SupabaseConductorRecord] {
+        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/conductor_catalog?select=material,wire_size"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseConductorRecord].self, from: data)
+    }
+
     func loadDrawingData() async throws -> [(id: UUID, name: String, data: Data)] {
         var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
         request.httpMethod = "GET"
@@ -93,6 +111,24 @@ struct SupabaseDrawingRecord: Codable {
     let id: UUID
     let name: String
     let data: [String: JSONValue]
+}
+
+struct SupabaseTargetTypeRecord: Codable {
+    let kind: String
+    let name: String
+    let symbol: String?
+    let colorHex: String
+    let maxConnections: Int?
+    let connectionAngle: Double
+    let connectionAngles: [Double]
+
+    enum CodingKeys: String, CodingKey { case kind, name, symbol, colorHex = "color_hex", maxConnections = "max_connections", connectionAngle = "connection_angle", connectionAngles = "connection_angles" }
+}
+
+struct SupabaseConductorRecord: Codable {
+    let material: String
+    let wireSize: String
+    enum CodingKeys: String, CodingKey { case material, wireSize = "wire_size" }
 }
 
 enum JSONValue: Codable {

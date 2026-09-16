@@ -153,6 +153,7 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
+                Button("Sync libraries") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -632,6 +633,30 @@ struct ContentView: View {
             cloudStatus = "Loaded from cloud"
         } catch {
             cloudStatus = "Cloud load failed"
+        }
+    }
+
+    private func syncLibraries() async {
+        guard let store = SupabaseDrawingStore() else {
+            cloudStatus = "Supabase is not configured"
+            return
+        }
+        do {
+            let targetTypes = try await store.loadTargetTypes()
+            let conductors = try await store.loadConductorCatalog()
+            let syncedTargets = targetTypes.compactMap { record -> TargetDefinition? in
+                guard let kind = TargetKind(rawValue: record.kind) else { return nil }
+                return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: record.symbol ?? kind.symbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
+            }
+            if !syncedTargets.isEmpty { document.targetDefinitions = syncedTargets }
+            let syncedLines = conductors.compactMap { record -> LineDefinition? in
+                guard let material = ConductorMaterial(rawValue: record.material) else { return nil }
+                return LineDefinition(name: "\(material.rawValue) \(record.wireSize)", colorHex: material.defaultColorHex, wireSize: record.wireSize, material: material, displayWidth: 3, description: "Synced conductor")
+            }
+            if !syncedLines.isEmpty { document.lineDefinitions = syncedLines }
+            cloudStatus = "Libraries synced"
+        } catch {
+            cloudStatus = "Library sync failed"
         }
     }
 
