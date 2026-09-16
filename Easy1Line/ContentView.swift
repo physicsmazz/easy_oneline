@@ -1383,7 +1383,7 @@ struct ContentView: View {
         let point = connectionPoint(for: target, slot: slot)
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
-            : connectionAngle(for: target, slot: slot) * Double.pi / 180
+            : atan2(point.y - target.position.y, point.x - target.position.x)
         let distance: CGFloat = target.kind == .junction ? 24 : max((target.isCompact ? 24 : 36) * target.scale, CGFloat(linePadding) + 12)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
