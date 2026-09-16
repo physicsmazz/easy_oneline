@@ -7,6 +7,7 @@ struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
     @State private var canvasOffset = CGSize.zero
+    @State private var canvasScale: CGFloat = 1
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var draggingTargetID: UUID?
@@ -106,6 +107,23 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
             .help(snapToGrid ? "Snap to grid: on" : "Snap to grid: off")
             .accessibilityLabel("Snap to grid")
+
+            Button { canvasScale = max(0.5, canvasScale - 0.25) } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .buttonStyle(EditorButtonStyle())
+            .help("Zoom out")
+
+            Text("\(Int(canvasScale * 100))%")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .frame(width: 46)
+                .foregroundStyle(.white.opacity(0.75))
+
+            Button { canvasScale = min(2.5, canvasScale + 0.25) } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .buttonStyle(EditorButtonStyle())
+            .help("Zoom in")
 
             Spacer()
 
@@ -256,7 +274,7 @@ struct ContentView: View {
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                     SegmentHitArea(path: orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id), onDrag: { translation in
-                        moveSegment(segment.id, translation: translation)
+                        moveSegment(segment.id, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                     }, onEndDrag: {
                         segmentDragStartOffsets.removeValue(forKey: segment.id)
                     }) {
@@ -286,7 +304,7 @@ struct ContentView: View {
                     },
                     editingConnectionPoints: editingConnectionPoints && selectedTargetIDs.contains(target.id),
                     onMoveConnectionPoint: { slot, translation in
-                        moveConnectionPoint(targetID: target.id, slot: slot, translation: translation)
+                        moveConnectionPoint(targetID: target.id, slot: slot, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                     },
                     onEndConnectionPointMove: { slot in
                         connectionDragStartAngles.removeValue(forKey: connectionDragKey(target.id, slot: slot))
@@ -298,6 +316,7 @@ struct ContentView: View {
             }
         }
         .offset(canvasOffset)
+        .scaleEffect(canvasScale, anchor: .center)
         .dropDestination(for: String.self) { items, location in
             guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
             let point = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
@@ -324,7 +343,7 @@ struct ContentView: View {
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
                 guard let start = dragStartPositions[target.id] else { return }
-                let proposedPosition = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height)
+                let proposedPosition = CGPoint(x: start.x + value.translation.width / canvasScale, y: start.y + value.translation.height / canvasScale)
                 document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
