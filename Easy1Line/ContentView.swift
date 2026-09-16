@@ -83,8 +83,10 @@ struct ContentView: View {
     @State private var dockDragKind: TargetKind?
     @State private var dockDragLocation = CGPoint.zero
     @AppStorage("targetsPanelListHeight") private var targetsPanelListHeight: Double = 460
+    @AppStorage("targetsPanelWidth") private var targetsPanelWidth: Double = 250
     @AppStorage("canvasLocked") private var canvasLocked = false
     @State private var targetsPanelResizeStart: Double?
+    @State private var targetsPanelWidthResizeStart: Double?
     @State private var splitCandidateSegmentID: UUID?
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
@@ -360,9 +362,25 @@ struct ContentView: View {
             }
         }
         .padding(14)
-        .frame(width: 170)
+        .frame(width: targetsPanelWidth)
         .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
+        .overlay(alignment: .trailing) {
+            Capsule()
+                .fill(.white.opacity(0.3))
+                .frame(width: 4, height: 42)
+                .padding(.trailing, 4)
+                .contentShape(Rectangle().size(width: 24, height: 64))
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                        .onChanged { value in
+                            if targetsPanelWidthResizeStart == nil { targetsPanelWidthResizeStart = targetsPanelWidth }
+                            targetsPanelWidth = min(max((targetsPanelWidthResizeStart ?? targetsPanelWidth) + value.translation.width, 170), 360)
+                        }
+                        .onEnded { _ in targetsPanelWidthResizeStart = nil }
+                )
+                .accessibilityLabel("Resize targets panel width")
+        }
     }
 
     private func schematicCanvas(in size: CGSize) -> some View {
