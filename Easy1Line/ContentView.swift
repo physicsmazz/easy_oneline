@@ -267,7 +267,7 @@ struct ContentView: View {
             Canvas { context, _ in
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), startTarget: start, endTarget: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -279,7 +279,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
+                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), startTarget: start, endTarget: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
                         if selectedSegmentIDs.contains(segment.id) {
                             selectedSegmentIDs.remove(segment.id)
                         } else {
@@ -817,10 +817,13 @@ struct ContentView: View {
         document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
     }
 
-    private func orthogonalPath(from start: CGPoint, to end: CGPoint, avoiding obstacles: [SchematicTarget]) -> Path {
-        let rectangles = obstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        var xCandidates = [start.x, end.x, (start.x + end.x) / 2]
-        var yCandidates = [start.y, end.y, (start.y + end.y) / 2]
+    private func orthogonalPath(from start: CGPoint, to end: CGPoint, startTarget: SchematicTarget, endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
+        let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start))
+        let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end))
+        let routeObstacles = obstacles + [startTarget, endTarget]
+        let rectangles = routeObstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
+        var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
         for rectangle in rectangles {
             xCandidates.append(contentsOf: [rectangle.minX, rectangle.maxX])
             yCandidates.append(contentsOf: [rectangle.minY, rectangle.maxY])
@@ -835,16 +838,41 @@ struct ContentView: View {
             let rhsDistance = abs(rhs - start.y)
             return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
         }
-        let candidates = uniqueX.map { [start, CGPoint(x: $0, y: start.y), CGPoint(x: $0, y: end.y), end] }
-            + uniqueY.map { [start, CGPoint(x: start.x, y: $0), CGPoint(x: end.x, y: $0), end] }
+        let candidates = uniqueX.map { [escapeStart, CGPoint(x: $0, y: escapeStart.y), CGPoint(x: $0, y: escapeEnd.y), escapeEnd] }
+            + uniqueY.map { [escapeStart, CGPoint(x: escapeStart.x, y: $0), CGPoint(x: escapeEnd.x, y: $0), escapeEnd] }
         let safePath = candidates
             .filter { pointsAreClear($0, from: rectangles) }
             .min { pathLength($0) < pathLength($1) }
-            ?? [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
+            ?? [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
         var path = Path()
-        path.move(to: safePath[0])
+        path.move(to: start)
+        path.addLine(to: escapeStart)
         for point in safePath.dropFirst() { path.addLine(to: point) }
+        path.addLine(to: end)
         return path
+    }
+
+    private func escapePoint(for target: SchematicTarget, slot: Int) -> CGPoint {
+        let point = connectionPoint(for: target, slot: slot)
+        let angle = connectionAngle(for: target, slot: slot) * Double.pi / 180
+        let distance: CGFloat = target.kind == .junction ? 24 : (target.isCompact ? 24 : 36) * target.scale
+        return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
+    }
+
+    private func startTargetSlot(_ target: SchematicTarget, point: CGPoint) -> Int {
+        nearestConnectionSlot(for: target, to: point)
+    }
+
+    private func endTargetSlot(_ target: SchematicTarget, point: CGPoint) -> Int {
+        nearestConnectionSlot(for: target, to: point)
+    }
+
+    private func nearestConnectionSlot(for target: SchematicTarget, to point: CGPoint) -> Int {
+        (0..<max(target.maxConnections, 1)).min { lhs, rhs in
+            let lhsPoint = connectionPoint(for: target, slot: lhs)
+            let rhsPoint = connectionPoint(for: target, slot: rhs)
+            return hypot(lhsPoint.x - point.x, lhsPoint.y - point.y) < hypot(rhsPoint.x - point.x, rhsPoint.y - point.y)
+        } ?? 0
     }
 
     private func pathLength(_ points: [CGPoint]) -> CGFloat {
