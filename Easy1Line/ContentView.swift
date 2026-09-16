@@ -105,6 +105,8 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(minWidth: 220)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1) }
         .presentationCompactAdaptation(.popover)
     }
 
@@ -289,16 +291,13 @@ struct ContentView: View {
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
-            }
-
-            if let anchorID = overlapAnchorID,
-               let anchor = target(with: anchorID),
-               !overlapChoices.isEmpty {
-                overlapChooser
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1) }
-                    .position(x: anchor.position.x + 150, y: anchor.position.y)
-                    .zIndex(100)
+                .overlay(alignment: .leading) {
+                    if overlapAnchorID == target.id && !overlapChoices.isEmpty {
+                        overlapChooser
+                            .offset(x: 72)
+                            .zIndex(100)
+                    }
+                }
             }
         }
         .offset(canvasOffset)
