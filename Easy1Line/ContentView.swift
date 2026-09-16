@@ -718,6 +718,7 @@ struct ContentView: View {
                 splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
                     ? splitCandidate(at: document.targets[index].position, excluding: target.id)?.segment.id
                     : nil
+                autoPanCanvasIfNeeded(for: document.targets[index].position)
             }
             .onEnded { _ in
                 guard !target.locked else { return }
@@ -728,6 +729,21 @@ struct ContentView: View {
                 splitCandidateSegmentID = nil
                 draggingTargetID = nil
             }
+    }
+
+    private func autoPanCanvasIfNeeded(for canvasPoint: CGPoint) {
+        guard !canvasLocked, editorSize != .zero else { return }
+        let screenPoint = screenPoint(forCanvas: canvasPoint)
+        let edgeInset: CGFloat = 110
+        let step: CGFloat = 8
+        var offsetDelta = CGSize.zero
+        if screenPoint.x < edgeInset { offsetDelta.width = step }
+        else if screenPoint.x > editorSize.width - edgeInset { offsetDelta.width = -step }
+        if screenPoint.y < 84 + edgeInset { offsetDelta.height = step }
+        else if screenPoint.y > editorSize.height - edgeInset { offsetDelta.height = -step }
+        canvasOffset.width += offsetDelta.width
+        canvasOffset.height += offsetDelta.height
+        panStart = canvasOffset
     }
 
     private func targetTapped(_ target: SchematicTarget) {
