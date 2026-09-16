@@ -1807,7 +1807,10 @@ struct ContentView: View {
                 continue
             }
             if startMoved && endMoved {
-                document.segments[index].routePoints = points.map { CGPoint(x: $0.x + translation.width, y: $0.y + translation.height) }
+                let movedPoints = points.map { CGPoint(x: $0.x + translation.width, y: $0.y + translation.height) }
+                if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+                    document.segments[index].routePoints = routeWithClearStubs(movedPoints, segment: segment, startTarget: start, endTarget: end)
+                }
                 continue
             }
             let targetID = startMoved ? segment.startID : segment.endID
@@ -1850,7 +1853,9 @@ struct ContentView: View {
                     }
                 }
             }
-            document.segments[index].routePoints = points
+            if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+                document.segments[index].routePoints = routeWithClearStubs(points, segment: segment, startTarget: start, endTarget: end)
+            }
         }
     }
 
@@ -1902,9 +1907,26 @@ struct ContentView: View {
         return path
     }
 
+    private func routeWithClearStubs(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
+        var points = orthogonalizedPoints(routePoints)
+        guard points.count > 1 else { return points }
+        let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
+        let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
+        let startPin = connectionPoint(for: startTarget, slot: startSlot)
+        let endPin = connectionPoint(for: endTarget, slot: endSlot)
+        let startEscape = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
+        let endEscape = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
+        if points.count == 2 { return orthogonalizedPoints([startPin, startEscape, endEscape, endPin]) }
+        points[0] = startPin
+        points[1] = startEscape
+        points[points.count - 1] = endPin
+        points[points.count - 2] = endEscape
+        return orthogonalizedPoints(points)
+    }
+
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
         if segment.routePoints.count > 1 {
-            return orthogonalizedPoints(segment.routePoints)
+            return routeWithClearStubs(segment.routePoints, segment: segment, startTarget: startTarget, endTarget: endTarget)
         }
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
