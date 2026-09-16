@@ -31,6 +31,7 @@ struct ContentView: View {
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showLineLibrary = false
+    @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
@@ -655,34 +656,47 @@ struct ContentView: View {
                 Text("LINE LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
                 Spacer()
                 Button { document.lineDefinitions.append(.defaultLine) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
+                Button { showLineLibrary = false } label: { Image(systemName: "xmark") }.foregroundStyle(.white.opacity(0.65))
             }
-            ForEach(document.lineDefinitions) { line in
-                Button {
-                    selectedLineDefinitionID = line.id
-                    if let selectedSegmentID {
-                        applyLineDefinition(line, to: selectedSegmentID)
-                    } else {
-                        applyLineDefinition(line, to: selectedSegmentIDs)
-                    }
-                    showLineLibrary = false
-                } label: {
-                    HStack(spacing: 9) {
-                        Circle().fill(Color(hex: line.colorHex)).frame(width: 12, height: 12)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(line.name).font(.system(size: 13, weight: .semibold))
-                            Text("\(line.material.rawValue) · \(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+            TextField("Search material or wire size", text: $lineLibrarySearch)
+                .textFieldStyle(.roundedBorder)
+
+            let filteredLines = document.lineDefinitions.filter {
+                lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.material.rawValue.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch)
+            }
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(filteredLines) { line in
+                        Button {
+                            selectedLineDefinitionID = line.id
+                            if let selectedSegmentID {
+                                applyLineDefinition(line, to: selectedSegmentID)
+                            } else {
+                                applyLineDefinition(line, to: selectedSegmentIDs)
+                            }
+                            showLineLibrary = false
+                        } label: {
+                            HStack(spacing: 9) {
+                                Circle().fill(Color(hex: line.colorHex)).frame(width: 10, height: 10)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(line.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                                    Text("\(line.material.rawValue) · \(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+                                }
+                                Spacer()
+                                if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(height: 38)
+                            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                         }
-                        Spacer()
-                        if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
-                .padding(9)
-                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
             }
+            .frame(maxHeight: 420)
         }
-        .padding(14)
-        .frame(width: 270)
+        .padding(12)
+        .frame(width: 320, height: 520)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
