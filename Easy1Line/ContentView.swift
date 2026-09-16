@@ -1157,10 +1157,10 @@ private struct TargetView: View {
                 if target.kind == .junction {
                     Circle().stroke(.cyan, lineWidth: 3).frame(width: 30, height: 30).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else if target.isCompact {
-                    Circle().stroke(.cyan, lineWidth: 3).frame(width: 52, height: 52).shadow(color: .cyan.opacity(0.8), radius: 8)
+                    Circle().stroke(.cyan, lineWidth: 3).frame(width: 44, height: 44).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else {
-                    RoundedRectangle(cornerRadius: 14).stroke(.cyan, lineWidth: 3).frame(width: 78, height: 66).shadow(color: .cyan.opacity(0.8), radius: 8)
-                        .offset(y: -14)
+                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 64, height: 54).shadow(color: .cyan.opacity(0.8), radius: 8)
+                        .offset(y: -9)
                 }
             }
         }
