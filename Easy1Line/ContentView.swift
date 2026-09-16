@@ -33,25 +33,6 @@ private struct SchematicFileDocument: FileDocument {
     }
 }
 
-private struct SchematicPDFDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.pdf] }
-    static var writableContentTypes: [UTType] { [.pdf] }
-
-    let data: Data
-
-    init(data: Data) {
-        self.data = data
-    }
-
-    init(configuration: ReadConfiguration) throws {
-        data = configuration.file.regularFileContents ?? Data()
-    }
-
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: data)
-    }
-}
-
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
@@ -95,7 +76,8 @@ struct ContentView: View {
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
     @State private var showFileExporter = false
-    @State private var showPDFExporter = false
+    @State private var showPDFShareSheet = false
+    @State private var pdfShareURL: URL?
     @State private var showFileImporter = false
     @State private var showInfoPanel = false
     @State private var doubleTapInfoTargetIDs: [UUID] = []
@@ -232,13 +214,10 @@ struct ContentView: View {
         ) { result in
             if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
         }
-        .fileExporter(
-            isPresented: $showPDFExporter,
-            document: SchematicPDFDocument(data: makePDFData()),
-            contentType: .pdf,
-            defaultFilename: document.name
-        ) { result in
-            if case .failure(let error) = result { cloudStatus = "PDF export failed: \(error.localizedDescription)" }
+        .sheet(isPresented: $showPDFShareSheet) {
+            if let pdfShareURL {
+                ActivityView(activityItems: [pdfShareURL])
+            }
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
@@ -284,7 +263,7 @@ struct ContentView: View {
                 Button("Drawings") { showLibrary.toggle() }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
                 Button("Export .line") { showFileExporter = true }
-                Button("Export PDF") { showPDFExporter = true }
+                Button("Export PDF") { preparePDFShare() }
                 Button("Import .line") { showFileImporter = true }
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
@@ -439,6 +418,18 @@ struct ContentView: View {
             UIColor.white.setFill()
             context.fill(pageRect)
             UIImage(cgImage: cgImage).draw(in: imageRect)
+        }
+    }
+
+    private func preparePDFShare() {
+        let filename = document.name.replacingOccurrences(of: "/", with: "-") + ".pdf"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        do {
+            try makePDFData().write(to: url, options: .atomic)
+            pdfShareURL = url
+            showPDFShareSheet = true
+        } catch {
+            cloudStatus = "PDF share failed: \(error.localizedDescription)"
         }
     }
 
@@ -2214,6 +2205,16 @@ private struct CloudDrawingChoice: Identifiable {
     let id: UUID
     let name: String
     let data: Data
+}
+
+private struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
 private struct SchematicDocument: Identifiable, Codable, Equatable {
