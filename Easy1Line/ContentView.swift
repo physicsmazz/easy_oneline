@@ -644,11 +644,12 @@ struct ContentView: View {
 
     private func placeDockItem(_ kind: TargetKind, at screenLocation: CGPoint) {
         guard editorSize != .zero else { return }
-        let point = canvasDropPoint(screenLocation, canvasSize: editorSize)
-        addTarget(kind, at: point)
+        let dropPoint = canvasDropPoint(screenLocation, canvasSize: editorSize)
+        let iconPoint = CGPoint(x: dropPoint.x, y: dropPoint.y + (kind == .junction ? 0 : 9))
+        addTarget(kind, at: iconPoint)
         guard let id = document.targets.last?.id,
               let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
-        document.targets[index].position = snapToGrid ? snappedPosition(point) : point
+        document.targets[index].position = snapToGrid ? snappedPosition(iconPoint) : iconPoint
         splitSegmentIfNeeded(for: id)
     }
 
