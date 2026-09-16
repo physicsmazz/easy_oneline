@@ -892,7 +892,7 @@ struct ContentView: View {
             points[sectionIndex].y = movedCoordinate
             points[sectionIndex + 1].y = movedCoordinate
         }
-        document.segments[index].routePoints = points
+        document.segments[index].routePoints = orthogonalizedPoints(points)
         selectedTargetIDs.removeAll()
     }
 
@@ -922,7 +922,7 @@ struct ContentView: View {
 
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
         if segment.routePoints.count > 1 {
-            return segment.routePoints
+            return orthogonalizedPoints(segment.routePoints)
         }
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
@@ -981,6 +981,19 @@ struct ContentView: View {
         path.move(to: start)
         path.addLine(to: end)
         return path
+    }
+
+    private func orthogonalizedPoints(_ points: [CGPoint]) -> [CGPoint] {
+        guard points.count > 1 else { return points }
+        var result = [points[0]]
+        for point in points.dropFirst() {
+            guard let previous = result.last else { continue }
+            if abs(point.x - previous.x) > 0.5 && abs(point.y - previous.y) > 0.5 {
+                result.append(CGPoint(x: point.x, y: previous.y))
+            }
+            result.append(point)
+        }
+        return simplifyOrthogonalPoints(result)
     }
 
     private func simplifyOrthogonalPoints(_ points: [CGPoint]) -> [CGPoint] {
