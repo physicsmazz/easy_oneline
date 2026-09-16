@@ -312,9 +312,6 @@ struct ContentView: View {
                         connectionDragStartAngles.removeValue(forKey: connectionDragKey(target.id, slot: slot))
                     }
                 )
-                .position(target.position)
-                .gesture(targetDragGesture(for: target, canvasSize: size))
-                .onTapGesture { targetTapped(target) }
                 .overlay(alignment: .leading) {
                     if overlapAnchorID == target.id && !overlapChoices.isEmpty {
                         overlapChooser
@@ -322,6 +319,9 @@ struct ContentView: View {
                             .zIndex(100)
                     }
                 }
+                .position(target.position)
+                .gesture(targetDragGesture(for: target, canvasSize: size))
+                .onTapGesture { targetTapped(target) }
             }
         }
         .offset(canvasOffset)
