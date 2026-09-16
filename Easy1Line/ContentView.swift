@@ -2,6 +2,7 @@ import SwiftUI
 import Foundation
 import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
@@ -40,6 +41,7 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
+    @State private var isCanvasDropTargeted = false
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
 
@@ -216,7 +218,7 @@ struct ContentView: View {
                 ScrollView {
                     ForEach(TargetKind.palette) { kind in
                         PaletteItem(kind: kind)
-                            .draggable(kind.rawValue)
+                            .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
                             .onTapGesture { addTarget(kind) }
                     }
                 }
@@ -371,15 +373,20 @@ struct ContentView: View {
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
-        .dropDestination(for: String.self) { items, location in
-            guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
-            let point = canvasDropPoint(location, canvasSize: size)
-            addTarget(kind, at: point)
-            if let id = document.targets.last?.id {
-                document.targets[document.targets.count - 1].position = point
-                splitSegmentIfNeeded(for: id)
-                if snapToGrid, let index = document.targets.firstIndex(where: { $0.id == id }) {
-                    document.targets[index].position = snappedPosition(document.targets[index].position)
+        .onDrop(of: [UTType.text], isTargeted: $isCanvasDropTargeted) { providers, location in
+            guard let provider = providers.first else { return false }
+            provider.loadObject(ofClass: NSString.self) { object, _ in
+                guard let rawKind = object as? String, let kind = TargetKind(rawValue: rawKind) else { return }
+                Task { @MainActor in
+                    let point = canvasDropPoint(location, canvasSize: size)
+                    addTarget(kind, at: point)
+                    if let id = document.targets.last?.id {
+                        document.targets[document.targets.count - 1].position = point
+                        splitSegmentIfNeeded(for: id)
+                        if snapToGrid, let index = document.targets.firstIndex(where: { $0.id == id }) {
+                            document.targets[index].position = snappedPosition(document.targets[index].position)
+                        }
+                    }
                 }
             }
             return true
