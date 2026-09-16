@@ -914,11 +914,30 @@ struct ContentView: View {
             }
         }
         var path = Path()
-        path.move(to: start)
-        path.addLine(to: escapeStart)
-        for point in adjustedPath.dropFirst() { path.addLine(to: point) }
-        path.addLine(to: end)
+        let routePoints = simplifyOrthogonalPoints([start, escapeStart] + adjustedPath.dropFirst() + [end])
+        path.move(to: routePoints[0])
+        for point in routePoints.dropFirst() { path.addLine(to: point) }
         return path
+    }
+
+    private func simplifyOrthogonalPoints(_ points: [CGPoint]) -> [CGPoint] {
+        guard points.count > 2 else { return points }
+        var simplified = [points[0]]
+        for point in points.dropFirst() {
+            guard let previous = simplified.last else { continue }
+            if abs(point.x - previous.x) < 0.5 && abs(point.y - previous.y) < 0.5 { continue }
+            if simplified.count >= 2 {
+                let before = simplified[simplified.count - 2]
+                let isCollinear = (abs(before.x - previous.x) < 0.5 && abs(previous.x - point.x) < 0.5) ||
+                    (abs(before.y - previous.y) < 0.5 && abs(previous.y - point.y) < 0.5)
+                if isCollinear {
+                    simplified[simplified.count - 1] = point
+                    continue
+                }
+            }
+            simplified.append(point)
+        }
+        return simplified
     }
 
     private func offsetConnectionPoint(for target: SchematicTarget, slot: Int?, toward other: SchematicTarget, by offset: CGFloat) -> CGPoint {
