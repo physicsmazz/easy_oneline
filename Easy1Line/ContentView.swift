@@ -78,7 +78,7 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if infoSelectorEnabled && hasSelection {
+            if (infoSelectorEnabled && hasSelection) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
