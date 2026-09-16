@@ -234,6 +234,8 @@ struct ContentView: View {
                     selectedTargetIDs.removeAll()
                     selectedSegmentID = nil
                     selectedSegmentIDs.removeAll()
+                        overlapChoices.removeAll()
+                        overlapAnchorID = nil
                 }
 
             Canvas { context, _ in
@@ -287,12 +289,16 @@ struct ContentView: View {
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
-                .popover(isPresented: Binding(
-                    get: { overlapAnchorID == target.id && !overlapChoices.isEmpty },
-                    set: { if !$0 { overlapChoices.removeAll(); overlapAnchorID = nil } }
-                )) {
-                    overlapChooser
-                }
+            }
+
+            if let anchorID = overlapAnchorID,
+               let anchor = target(with: anchorID),
+               !overlapChoices.isEmpty {
+                overlapChooser
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.15), lineWidth: 1) }
+                    .position(x: anchor.position.x + 150, y: anchor.position.y)
+                    .zIndex(100)
             }
         }
         .offset(canvasOffset)
@@ -335,6 +341,10 @@ struct ContentView: View {
 
     private func targetTapped(_ target: SchematicTarget) {
         if selectedConnectionSlots[target.id] != nil { return }
+        if selectedTargetIDs.contains(target.id) {
+            cycleConnectionPoint(for: target)
+            return
+        }
         let overlappingTargets = document.targets.filter {
             $0.id != target.id && obstacleRect(for: $0).intersects(obstacleRect(for: target))
         }
@@ -344,6 +354,15 @@ struct ContentView: View {
         } else {
             selectTarget(target)
         }
+    }
+
+    private func cycleConnectionPoint(for target: SchematicTarget) {
+        guard target.kind != .junction else { return }
+        let availableSlots = (0..<target.maxConnections).filter { !occupiedSlots(for: target.id).contains($0) }
+        guard !availableSlots.isEmpty else { return }
+        let currentSlot = selectedConnectionSlots[target.id]
+        let nextIndex = currentSlot.flatMap { slot in availableSlots.firstIndex(of: slot).map { ($0 + 1) % availableSlots.count } } ?? 0
+        selectedConnectionSlots[target.id] = availableSlots[nextIndex]
     }
 
     private func selectTarget(_ target: SchematicTarget) {
