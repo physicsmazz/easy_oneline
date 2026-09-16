@@ -1911,7 +1911,7 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
-        let rectangles: [CGRect] = []
+        let rectangles = obstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
         var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
         var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
         for rectangle in rectangles {
@@ -2054,7 +2054,15 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let distance: CGFloat = target.kind == .junction ? 32 : max((target.isCompact ? 24 : 36) * target.scale, 48)
+        let halfExtent: CGFloat
+        if target.kind == .junction {
+            halfExtent = 9
+        } else if target.isCompact {
+            halfExtent = 20
+        } else {
+            halfExtent = abs(cos(angle)) > abs(sin(angle)) ? 54 : 38
+        }
+        let distance = halfExtent * target.scale + 14
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
