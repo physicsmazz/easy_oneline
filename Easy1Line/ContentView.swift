@@ -882,8 +882,11 @@ struct ContentView: View {
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
-                TextField("SF Symbol name", text: targetBinding(target).symbol)
-                    .textFieldStyle(.roundedBorder)
+                Button {
+                    rotateTarget(target, by: 90)
+                } label: {
+                    Label("Rotate 90°", systemImage: "rotate.right")
+                }
                 Button {
                     editingConnectionPoints.toggle()
                 } label: {
@@ -1436,6 +1439,17 @@ struct ContentView: View {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
         document.targets[index].imageData = nil
         selectedPhotoItem = nil
+    }
+
+    private func rotateTarget(_ target: SchematicTarget, by degrees: Double) {
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+        if document.targets[index].connectionAngles.isEmpty {
+            document.targets[index].connectionAngle = (document.targets[index].connectionAngle + degrees).truncatingRemainder(dividingBy: 360)
+        } else {
+            document.targets[index].connectionAngles = document.targets[index].connectionAngles.map {
+                ($0 + degrees).truncatingRemainder(dividingBy: 360)
+            }
+        }
     }
 
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
