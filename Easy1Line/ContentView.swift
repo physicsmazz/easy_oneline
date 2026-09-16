@@ -62,6 +62,7 @@ struct ContentView: View {
     @State private var gestureStartRotation: Angle?
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var targetDragStartCanvasOffset: CGSize?
     @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
     @State private var draggingTargetID: UUID?
     @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
@@ -706,11 +707,18 @@ struct ContentView: View {
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil {
                     dragStartPositions[target.id] = document.targets[index].position
+                    targetDragStartCanvasOffset = canvasOffset
                     captureAttachedRoutes(for: target.id)
                 }
                 guard let start = dragStartPositions[target.id] else { return }
+                autoPanCanvasIfNeeded(for: document.targets[index].position)
                 let delta = canvasDelta(for: value.translation)
-                let proposedPosition = CGPoint(x: start.x + delta.width, y: start.y + delta.height)
+                let canvasPan = CGSize(
+                    width: (targetDragStartCanvasOffset?.width ?? canvasOffset.width) - canvasOffset.width,
+                    height: (targetDragStartCanvasOffset?.height ?? canvasOffset.height) - canvasOffset.height
+                )
+                let panCompensation = canvasDelta(for: canvasPan)
+                let proposedPosition = CGPoint(x: start.x + delta.width + panCompensation.width, y: start.y + delta.height + panCompensation.height)
                 document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
                 updateAttachedRoutes(for: target.id, translation: CGSize(width: document.targets[index].position.x - start.x, height: document.targets[index].position.y - start.y))
                 selectedTargetIDs = [target.id]
@@ -719,11 +727,11 @@ struct ContentView: View {
                 splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
                     ? splitCandidate(at: document.targets[index].position, excluding: target.id)?.segment.id
                     : nil
-                autoPanCanvasIfNeeded(for: document.targets[index].position)
             }
             .onEnded { _ in
                 guard !target.locked else { return }
                 dragStartPositions.removeValue(forKey: target.id)
+                targetDragStartCanvasOffset = nil
                 targetDragStartRoutes.removeAll()
                 snapTarget(target.id, canvasSize: canvasSize)
                 splitSegmentIfNeeded(for: target.id)
