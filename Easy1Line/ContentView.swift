@@ -100,6 +100,12 @@ struct ContentView: View {
     @State private var targetNameEditingID: UUID?
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
+    @State private var undoStack: [SchematicDocument] = []
+    @State private var redoStack: [SchematicDocument] = []
+    @State private var isApplyingHistory = false
+    @State private var lastHistoryCaptureDate: Date?
+    private let documentHistoryLimit = 25
+    private let documentHistoryGroupingInterval: TimeInterval = 0.75
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -197,8 +203,14 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onChange(of: document) { _, _ in
-            SchematicDocument.saveLast(document)
+        .onChange(of: document) { oldDocument, newDocument in
+            if isApplyingHistory {
+                isApplyingHistory = false
+                SchematicDocument.saveLast(newDocument)
+            } else {
+                recordHistoryChange(from: oldDocument, to: newDocument)
+                SchematicDocument.saveLast(newDocument)
+            }
         }
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item, let targetID = selectedTargetIDs.first else { return }
@@ -290,6 +302,20 @@ struct ContentView: View {
             Button(showConnectionNames ? "Pins: On" : "Pins: Off") { showConnectionNames.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
                 .accessibilityLabel("Show connection names")
+
+            Button("Undo") { undoDocumentChange() }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(!canUndo)
+                .opacity(canUndo ? 1 : 0.4)
+                .keyboardShortcut("z", modifiers: .command)
+                .accessibilityLabel("Undo last edit")
+
+            Button("Redo") { redoDocumentChange() }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(!canRedo)
+                .opacity(canRedo ? 1 : 0.4)
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .accessibilityLabel("Redo last undone edit")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
@@ -1136,6 +1162,63 @@ struct ContentView: View {
             return "HTTP \(code) \(body.prefix(120))"
         }
         return error.localizedDescription
+    }
+
+    private var canUndo: Bool { !undoStack.isEmpty }
+    private var canRedo: Bool { !redoStack.isEmpty }
+
+    private func recordHistoryChange(from oldDocument: SchematicDocument, to newDocument: SchematicDocument) {
+        guard oldDocument != newDocument else { return }
+        let now = Date()
+        if lastHistoryCaptureDate.map({ now.timeIntervalSince($0) > documentHistoryGroupingInterval }) ?? true {
+            undoStack.append(oldDocument)
+            if undoStack.count > documentHistoryLimit {
+                undoStack.removeFirst(undoStack.count - documentHistoryLimit)
+            }
+        }
+        lastHistoryCaptureDate = now
+        redoStack.removeAll()
+    }
+
+    private func undoDocumentChange() {
+        guard let previousDocument = undoStack.popLast() else { return }
+        redoStack.append(document)
+        if redoStack.count > documentHistoryLimit {
+            redoStack.removeFirst(redoStack.count - documentHistoryLimit)
+        }
+        restoreHistoryDocument(previousDocument)
+    }
+
+    private func redoDocumentChange() {
+        guard let nextDocument = redoStack.popLast() else { return }
+        undoStack.append(document)
+        if undoStack.count > documentHistoryLimit {
+            undoStack.removeFirst(undoStack.count - documentHistoryLimit)
+        }
+        restoreHistoryDocument(nextDocument)
+    }
+
+    private func restoreHistoryDocument(_ restoredDocument: SchematicDocument) {
+        isApplyingHistory = true
+        lastHistoryCaptureDate = nil
+        document = restoredDocument
+        reconcileSelection(with: restoredDocument)
+    }
+
+    private func reconcileSelection(with restoredDocument: SchematicDocument) {
+        let targetIDs = Set(restoredDocument.targets.map(\.id))
+        let segmentIDs = Set(restoredDocument.segments.map(\.id))
+        selectedTargetIDs.removeAll { !targetIDs.contains($0) }
+        selectedSegmentIDs = selectedSegmentIDs.intersection(segmentIDs)
+        if let selectedSegmentID, !segmentIDs.contains(selectedSegmentID) {
+            self.selectedSegmentID = nil
+            selectedSegmentSectionIndex = nil
+        }
+        selectedConnectionSlots = selectedConnectionSlots.filter { targetIDs.contains($0.key) }
+        if let targetNameEditingID, !targetIDs.contains(targetNameEditingID) {
+            self.targetNameEditingID = nil
+            targetNameDraft = ""
+        }
     }
 
     private func newSchematic() {
