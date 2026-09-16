@@ -96,6 +96,7 @@ struct ContentView: View {
     @State private var targetsPanelResizeStart: Double?
     @State private var targetsPanelWidthResizeStart: Double?
     @State private var splitCandidateSegmentID: UUID?
+    @State private var wireAlignmentPreviewSegmentID: UUID?
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
     @State private var selectionBoxOffset = CGSize.zero
@@ -528,6 +529,9 @@ struct ContentView: View {
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
+                    if wireAlignmentPreviewSegmentID == segment.id {
+                        context.stroke(path, with: .color(.yellow.opacity(0.7)), style: StrokeStyle(lineWidth: segment.displayWidth + 10, lineCap: .round, lineJoin: .round))
+                    }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
@@ -562,6 +566,7 @@ struct ContentView: View {
                                 moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
+                                finalizeWireSectionDrag(segment.id)
                             }, onTap: {
                                 if selectedSegmentID == segment.id {
                                     selectedSegmentSectionIndex = sectionIndex
@@ -1029,7 +1034,7 @@ struct ContentView: View {
                     [startEscape, CGPoint(x: startEscape.x, y: endEscape.y), endEscape],
                     [startEscape, CGPoint(x: midX, y: startEscape.y), CGPoint(x: midX, y: endEscape.y), endEscape],
                     [startEscape, CGPoint(x: startEscape.x, y: midY), CGPoint(x: endEscape.x, y: midY), endEscape]
-                ].map(orthogonalizedPoints(_:)).filter { pointsAreClear($0, from: obstacles) }
+                ].map { orthogonalizedPoints($0) }.filter { pointsAreClear($0, from: obstacles) }
                 let routePoints: [CGPoint]
                 if let middleRoute = candidates.min(by: { pathLength($0) < pathLength($1) }) {
                     routePoints = orthogonalizedPoints([startPoint, startEscape] + middleRoute.dropFirst().dropLast() + [endEscape, endPoint])
@@ -1904,8 +1909,29 @@ struct ContentView: View {
             points[sectionIndex].y = movedCoordinate
             points[sectionIndex + 1].y = movedCoordinate
         }
-        document.segments[index].routePoints = orthogonalizedPoints(points)
+        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0.5)
+        wireAlignmentPreviewSegmentID = hasNearAlignment(in: dragRoute) ? id : nil
+        document.segments[index].routePoints = dragRoute
         selectedTargetIDs.removeAll()
+    }
+
+    private func finalizeWireSectionDrag(_ id: UUID) {
+        guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
+        document.segments[index].routePoints = orthogonalizedPoints(document.segments[index].routePoints, alignmentTolerance: 4)
+        wireAlignmentPreviewSegmentID = nil
+    }
+
+    private func hasNearAlignment(in points: [CGPoint]) -> Bool {
+        guard points.count > 2 else { return false }
+        for index in 1..<(points.count - 1) {
+            let before = points[index - 1]
+            let current = points[index]
+            let after = points[index + 1]
+            let vertical = abs(before.x - current.x) < 4 && abs(current.x - after.x) < 4
+            let horizontal = abs(before.y - current.y) < 4 && abs(current.y - after.y) < 4
+            if vertical || horizontal { return true }
+        }
+        return false
     }
 
     private func snappedPosition(_ position: CGPoint) -> CGPoint {
@@ -2048,7 +2074,7 @@ struct ContentView: View {
         return path
     }
 
-    private func orthogonalizedPoints(_ points: [CGPoint]) -> [CGPoint] {
+    private func orthogonalizedPoints(_ points: [CGPoint], alignmentTolerance: CGFloat = 4) -> [CGPoint] {
         guard points.count > 1 else { return points }
         var result = [points[0]]
         for point in points.dropFirst() {
@@ -2058,12 +2084,11 @@ struct ContentView: View {
             }
             result.append(point)
         }
-        return simplifyOrthogonalPoints(result)
+        return simplifyOrthogonalPoints(result, alignmentTolerance: alignmentTolerance)
     }
 
-    private func simplifyOrthogonalPoints(_ points: [CGPoint]) -> [CGPoint] {
+    private func simplifyOrthogonalPoints(_ points: [CGPoint], alignmentTolerance: CGFloat = 4) -> [CGPoint] {
         guard points.count > 2 else { return points }
-        let alignmentTolerance: CGFloat = 4
         var simplified = [points[0]]
         for point in points.dropFirst() {
             guard let previous = simplified.last else { continue }
