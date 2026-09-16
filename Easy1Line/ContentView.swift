@@ -50,6 +50,7 @@ struct ContentView: View {
     @State private var dockDragKind: TargetKind?
     @State private var dockDragLocation = CGPoint.zero
     @AppStorage("targetsPanelListHeight") private var targetsPanelListHeight: Double = 460
+    @AppStorage("canvasLocked") private var canvasLocked = false
     @State private var targetsPanelResizeStart: Double?
     @State private var splitCandidateSegmentID: UUID?
     @State private var targetNameDraft = ""
@@ -298,7 +299,7 @@ struct ContentView: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 2)
+                        DragGesture(minimumDistance: 2, coordinateSpace: .global)
                             .onChanged { value in
                                 if targetsPanelResizeStart == nil { targetsPanelResizeStart = targetsPanelListHeight }
                                 targetsPanelListHeight = min(max((targetsPanelResizeStart ?? targetsPanelListHeight) + value.translation.height, 80), 900)
@@ -435,12 +436,14 @@ struct ContentView: View {
         .ignoresSafeArea(edges: .bottom)
         .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
+            guard !canvasLocked else { return }
             if gestureStartScale == nil { gestureStartScale = canvasScale }
             canvasScale = min(2.5, max(0.5, (gestureStartScale ?? 1) * value))
         }.onEnded { _ in
             gestureStartScale = nil
         })
         .simultaneousGesture(RotationGesture().onChanged { value in
+            guard !canvasLocked else { return }
             if gestureStartRotation == nil { gestureStartRotation = canvasRotation }
             canvasRotation = (gestureStartRotation ?? .zero) + value
         }.onEnded { _ in
@@ -448,6 +451,8 @@ struct ContentView: View {
         })
         .overlay(alignment: .topTrailing) {
             zoomControls
+                .disabled(canvasLocked)
+                .opacity(canvasLocked ? 0.5 : 1)
                 .padding(.top, 88)
                 .padding(.trailing, 24)
         }
@@ -492,6 +497,9 @@ struct ContentView: View {
             } label: { Text("Reset") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
+            Button(canvasLocked ? "Locked" : "Lock") { canvasLocked.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: canvasLocked))
+                .help("Lock canvas position and zoom")
         }
         .padding(6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -501,6 +509,7 @@ struct ContentView: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
+                guard !canvasLocked else { return }
                 canvasOffset = CGSize(width: panStart.width + value.translation.width, height: panStart.height + value.translation.height)
             }
             .onEnded { _ in panStart = canvasOffset }
@@ -906,7 +915,9 @@ struct ContentView: View {
                             ForEach(materialLines) { line in
                                 Button {
                                     selectedLineDefinitionID = line.id
-                                    if let selectedSegmentID {
+                                    if selectedSegmentIDs.count > 1 {
+                                        applyLineDefinition(line, to: selectedSegmentIDs)
+                                    } else if let selectedSegmentID {
                                         applyLineDefinition(line, to: selectedSegmentID)
                                     } else {
                                         applyLineDefinition(line, to: selectedSegmentIDs)
@@ -1036,8 +1047,8 @@ struct ContentView: View {
             if selectedSegmentIDs.count > 1 {
                 Text("WIRES").inspectorLabel()
                 Text("\(selectedSegmentIDs.count) wires selected").font(.headline)
-                ForEach(Array(selectedSegmentIDs).compactMap { segment(with: $0) }) { wire in
-                    wireEditor(wire, compact: true)
+                if let primary = selectedSegment ?? selectedSegmentIDs.compactMap({ segment(with: $0) }).first {
+                    wireEditor(primary, compact: true, applyToAll: true)
                 }
                 Button {
                     showLineLibrary = true
@@ -1234,11 +1245,11 @@ struct ContentView: View {
         )
     }
 
-    private func wireEditor(_ wire: SchematicSegment, compact: Bool = false) -> some View {
-        let binding = segmentBinding(wire)
+    private func wireEditor(_ wire: SchematicSegment, compact: Bool = false, applyToAll: Bool = false) -> some View {
+        let binding = segmentBinding(wire, applyToAll: applyToAll)
         return VStack(alignment: .leading, spacing: 7) {
             HStack {
-                Text(wire.id.uuidString.prefix(8)).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.4))
+                Text(applyToAll ? "\(selectedSegmentIDs.count) wires" : String(wire.id.uuidString.prefix(8))).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.4))
                 Spacer()
                 Text("WIRE").font(.caption2.weight(.bold)).foregroundStyle(.cyan)
             }
@@ -1693,7 +1704,9 @@ struct ContentView: View {
         guard freeSlots >= 2 else { return }
         guard let hit = splitCandidate(at: document.targets[targetIndex].position, excluding: targetID) else { return }
         let segment = hit.segment
-        let junctionPosition = snapToGrid ? snappedPosition(hit.point) : hit.point
+        let isJunction = document.targets[targetIndex].kind == .junction
+        // A junction sits exactly on the wire (never grid-snapped off it) so the wire itself doesn't move.
+        let junctionPosition = isJunction ? hit.point : (snapToGrid ? snappedPosition(hit.point) : hit.point)
         // Sit the dropped item on the wire so both halves terminate at its pins.
         document.targets[targetIndex].position = junctionPosition
         let splitRoutes = splitRoutePoints(hit.route, at: junctionPosition)
@@ -1701,8 +1714,14 @@ struct ContentView: View {
         let startSlot = segment.startSlot ?? 0
         let endSlot = segment.endSlot ?? 0
         let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
+        if isJunction {
+            let secondSlot = firstSlot + 1
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: hit.index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: hit.index + 1)
+            return
+        }
         // Rotate so the first pin faces back along the wire: sides for a horizontal wire, top/bottom for vertical.
-        if document.targets[targetIndex].kind != .junction, let section = nearestSection(of: hit.route, to: hit.point) {
+        if let section = nearestSection(of: hit.route, to: hit.point) {
             let wireIsHorizontal = abs(section.start.y - section.end.y) < 0.5
             let desired: Double = wireIsHorizontal ? (section.start.x < section.end.x ? 180 : 0) : (section.start.y < section.end.y ? 270 : 90)
             let current = connectionAngle(for: document.targets[targetIndex], slot: firstSlot).truncatingRemainder(dividingBy: 360)
@@ -1786,12 +1805,14 @@ struct ContentView: View {
         return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
     }
 
-    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>, netName: Binding<String>) {
+    private func segmentBinding(_ segment: SchematicSegment, applyToAll: Bool = false) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>, netName: Binding<String>) {
         let id = segment.id
         func current() -> SchematicSegment { document.segments.first { $0.id == id } ?? segment }
         func update(_ change: (inout SchematicSegment) -> Void) {
-            guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
-            change(&document.segments[index])
+            let ids: Set<UUID> = applyToAll ? selectedSegmentIDs.union([id]) : [id]
+            for index in document.segments.indices where ids.contains(document.segments[index].id) {
+                change(&document.segments[index])
+            }
         }
         return (
             Binding(get: { current().name }, set: { value in update { $0.name = value } }),
