@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var showLineLibrary = false
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
+    @State private var showNetlist = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var connectionDragStartAngles: [String: Double] = [:]
@@ -81,6 +82,13 @@ struct ContentView: View {
                     .padding(.leading, 205)
             }
 
+            if showNetlist {
+                netlistPanel
+                    .padding(.top, 84)
+                    .padding(.trailing, 20)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
             if connectionMode {
                 Rectangle()
                     .stroke(.yellow, lineWidth: 4)
@@ -121,6 +129,21 @@ struct ContentView: View {
 
             Spacer()
 
+            Menu("File") {
+                Button("Drawings") { showLibrary.toggle() }
+                Button("Save locally") { saveCurrent() }
+                Button("Save to cloud") { Task { await saveToCloud() } }
+                Button("Load from cloud") { Task { await loadFromCloud() } }
+                Button("View netlist") { showNetlist.toggle() }
+            }
+            .buttonStyle(EditorButtonStyle())
+
+            Menu("Libraries") {
+                Button("Wires") { showLineLibrary.toggle() }
+                Button("Targets") { showTargetLibrary.toggle() }
+            }
+            .buttonStyle(EditorButtonStyle())
+
             Button(snapToGrid ? "Snap: On" : "Snap: Off") { snapToGrid.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
 
@@ -130,20 +153,6 @@ struct ContentView: View {
             Button(infoSelectorEnabled ? "Info: On" : "Info: Off") { infoSelectorEnabled.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
                 .accessibilityLabel("Toggle item information")
-
-            Menu("File") {
-                Button("Drawings") { showLibrary.toggle() }
-                Button("Save locally") { saveCurrent() }
-                Button("Save to cloud") { Task { await saveToCloud() } }
-                Button("Load from cloud") { Task { await loadFromCloud() } }
-            }
-            .buttonStyle(EditorButtonStyle())
-
-            Menu("Libraries") {
-                Button("Wires") { showLineLibrary.toggle() }
-                Button("Targets") { showTargetLibrary.toggle() }
-            }
-            .buttonStyle(EditorButtonStyle())
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode || canConnectSelection))
@@ -287,6 +296,7 @@ struct ContentView: View {
                     connectedColors: connectedColors(for: target.id),
                     occupiedSlots: occupiedSlots(for: target.id),
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
+                    connectionNames: target.connectionNames,
                     onSelectConnectionPoint: { slot in
                         selectConnectionPoint(targetID: target.id, slot: slot)
                     },
@@ -711,6 +721,47 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var netlistPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("NETLIST").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                ShareLink(item: netlistText, subject: Text("Easy1Line netlist"), message: Text("SPICE-style netlist")) {
+                    Text("Export")
+                }
+                .buttonStyle(.borderedProminent)
+                Button { showNetlist = false } label: { Image(systemName: "xmark") }
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            ScrollView {
+                Text(netlistText)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 460)
+        }
+        .padding(14)
+        .frame(width: 360, height: 540)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var netlistText: String {
+        document.targets.map { target in
+            let pins = (0..<target.maxConnections).map { slot in
+                let pinName = target.connectionNames.indices.contains(slot) ? target.connectionNames[slot] : defaultConnectionName(for: slot)
+                let netNames = document.segments.compactMap { segment -> String? in
+                    guard (segment.startID == target.id && segment.startSlot == slot) || (segment.endID == target.id && segment.endSlot == slot) else { return nil }
+                    return segment.netName
+                }
+                return "\(pinName)=\((netNames.first ?? "NC"))"
+            }.joined(separator: " ")
+            return "\(target.name) \(pins)"
+        }.joined(separator: "\n")
+    }
+
+
     private var targetLibraryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -823,6 +874,14 @@ struct ContentView: View {
                 } label: {
                     Label(editingConnectionPoints ? "Done editing points" : "Edit connection points", systemImage: "point.3.connected.trianglepath.dotted")
                 }
+                Text("PIN NAMES").inspectorLabel()
+                ForEach(0..<target.maxConnections, id: \.self) { slot in
+                    HStack {
+                        Text("Pin \(slot + 1)").font(.caption)
+                        TextField("A, B, GND...", text: connectionNameBinding(target, slot: slot))
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     Label(target.imageData == nil ? "Upload image icon" : "Replace image icon", systemImage: "photo.badge.plus")
                 }
@@ -868,6 +927,21 @@ struct ContentView: View {
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
+    private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
+
+    private func connectionNameBinding(_ target: SchematicTarget, slot: Int) -> Binding<String> {
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
+        return Binding(
+            get: {
+                if document.targets[index].connectionNames.indices.contains(slot) { return document.targets[index].connectionNames[slot] }
+                return defaultConnectionName(for: slot)
+            },
+            set: {
+                while document.targets[index].connectionNames.count <= slot { document.targets[index].connectionNames.append(defaultConnectionName(for: document.targets[index].connectionNames.count)) }
+                document.targets[index].connectionNames[slot] = $0
+            }
+        )
+    }
 
     private func wireEditor(_ wire: SchematicSegment, compact: Bool = false) -> some View {
         let binding = segmentBinding(wire)
@@ -887,6 +961,7 @@ struct ContentView: View {
                 }
             }
             TextField("Covering", text: binding.covering).textFieldStyle(.roundedBorder)
+            TextField("Net name", text: binding.netName).textFieldStyle(.roundedBorder)
             Stepper("Display size: \(wire.displayWidth, specifier: "%.1f") pt", value: binding.displayWidth, in: 1...20, step: 0.5)
         }
         .padding(10)
@@ -1307,7 +1382,7 @@ struct ContentView: View {
         return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
     }
 
-    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>) {
+    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>, netName: Binding<String>) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { fatalError("Segment disappeared") }
         return (
             Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }),
@@ -1316,7 +1391,8 @@ struct ContentView: View {
             Binding(get: { ConductorMaterial(rawValue: document.segments[index].material) ?? .copper }, set: { document.segments[index].material = $0.rawValue }),
             Binding(get: { document.segments[index].displayWidth }, set: { document.segments[index].displayWidth = $0 }),
             Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 }),
-            Binding(get: { document.segments[index].covering }, set: { document.segments[index].covering = $0 })
+            Binding(get: { document.segments[index].covering }, set: { document.segments[index].covering = $0 }),
+            Binding(get: { document.segments[index].netName }, set: { document.segments[index].netName = $0 })
         )
     }
 
@@ -1410,10 +1486,11 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var imageData: Data?
     var connectionAngle: Double
     var connectionAngles: [Double]
+    var connectionNames: [String]
     var scale: Double
     var isCompact: Bool
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], scale: Double = 1, isCompact: Bool = false) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], connectionNames: [String] = [], scale: Double = 1, isCompact: Bool = false) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -1424,6 +1501,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.imageData = imageData
         self.connectionAngle = connectionAngle
         self.connectionAngles = connectionAngles
+        self.connectionNames = connectionNames
         self.scale = scale
         self.isCompact = isCompact
     }
@@ -1440,6 +1518,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
         connectionAngle = try container.decodeIfPresent(Double.self, forKey: .connectionAngle) ?? 0
         connectionAngles = try container.decodeIfPresent([Double].self, forKey: .connectionAngles) ?? []
+        connectionNames = try container.decodeIfPresent([String].self, forKey: .connectionNames) ?? []
         scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
         isCompact = try container.decodeIfPresent(Bool.self, forKey: .isCompact) ?? false
     }
@@ -1500,15 +1579,16 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var wireSize: String
     var material: String
     var covering: String
+    var netName: String
     var displayWidth: Double
     var description: String
     var bendOffset: CGFloat
     var routePoints: [CGPoint]
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.covering = covering; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
+        self.wireSize = wireSize; self.material = material; self.covering = covering; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
     }
 
     init(from decoder: Decoder) throws {
@@ -1523,6 +1603,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
         material = try container.decodeIfPresent(String.self, forKey: .material) ?? "Copper"
         covering = try container.decodeIfPresent(String.self, forKey: .covering) ?? "None"
+        netName = try container.decodeIfPresent(String.self, forKey: .netName) ?? "N001"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         bendOffset = try container.decodeIfPresent(CGFloat.self, forKey: .bendOffset) ?? 0
@@ -1619,6 +1700,7 @@ private struct TargetView: View {
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
     let selectedSlots: Set<Int>
+    let connectionNames: [String]
     let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
@@ -1706,6 +1788,12 @@ private struct TargetView: View {
             .fill(selectedSlots.contains(slot) ? Color.cyan : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
             .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
+            .overlay(alignment: .bottomTrailing) {
+                Text(connectionNames.indices.contains(slot) ? connectionNames[slot] : String(UnicodeScalar(65 + min(slot, 25))!))
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .offset(x: 12, y: 10)
+            }
 
         if editingConnectionPoints {
             point
