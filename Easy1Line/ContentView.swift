@@ -199,6 +199,7 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode))
                 }
                 .fixedSize(horizontal: true, vertical: false)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity)
         }
