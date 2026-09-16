@@ -19,6 +19,8 @@ struct ContentView: View {
     @State private var selectedSegmentSectionIndex: Int?
     @State private var segmentDragStartPoints: [UUID: [CGPoint]] = [:]
     @State private var selectedTargetIDs: [UUID] = []
+    @State private var connectionMode = false
+    @State private var connectionModeTargetIDs: [UUID] = []
     @AppStorage("targetsPanelExpanded") private var targetsPanelExpanded = true
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
@@ -77,6 +79,14 @@ struct ContentView: View {
                     .padding(.top, 84)
                     .padding(.leading, 205)
             }
+
+            if connectionMode {
+                Rectangle()
+                    .stroke(.yellow, lineWidth: 4)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .zIndex(900)
+            }
         }
         .preferredColorScheme(.dark)
         .onChange(of: document) { _, _ in
@@ -131,9 +141,8 @@ struct ContentView: View {
             }
             .buttonStyle(EditorButtonStyle())
 
-            Button("Connect") { connectSelection() }
-                .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
-                .disabled(!canConnectSelection)
+            Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
+                .buttonStyle(EditorButtonStyle(isActive: connectionMode || canConnectSelection))
         }
 
         .padding(.horizontal, 24)
@@ -395,11 +404,33 @@ struct ContentView: View {
     }
 
     private func targetTapped(_ target: SchematicTarget) {
+        if connectionMode {
+            handleConnectionModeTap(target)
+            return
+        }
         if selectedTargetIDs.contains(target.id) {
             cycleConnectionPoint(for: target)
             return
         }
         selectTarget(target)
+    }
+
+    private func toggleConnectionMode() {
+        connectionMode.toggle()
+        connectionModeTargetIDs.removeAll()
+        selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+    }
+
+    private func handleConnectionModeTap(_ target: SchematicTarget) {
+        guard connectionModeTargetIDs.last != target.id else { return }
+        if let previousID = connectionModeTargetIDs.last {
+            connectTargets(previousID, target.id)
+        }
+        connectionModeTargetIDs.append(target.id)
+        selectedTargetIDs = [target.id]
     }
 
     private func cycleConnectionPoint(for target: SchematicTarget) {
@@ -437,14 +468,20 @@ struct ContentView: View {
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            guard let startSlot = selectedConnectionSlots[startID] ?? closestAvailableSlot(for: startID, to: endID), let endSlot = selectedConnectionSlots[endID] ?? closestAvailableSlot(for: endID, to: startID) else { continue }
-            guard !occupiedSlots(for: startID).contains(startSlot), !occupiedSlots(for: endID).contains(endSlot) else { continue }
-            guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
-            let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-            document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
+            connectTargets(startID, endID, startSlot: selectedConnectionSlots[startID], endSlot: selectedConnectionSlots[endID])
         }
         selectedTargetIDs.removeAll()
         selectedConnectionSlots.removeAll()
+    }
+
+    private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) {
+        guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
+              let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
+              !occupiedSlots(for: startID).contains(resolvedStartSlot),
+              !occupiedSlots(for: endID).contains(resolvedEndSlot),
+              !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return }
+        let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
+        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
     }
 
     private var canConnectSelection: Bool {
