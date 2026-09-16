@@ -497,9 +497,11 @@ struct ContentView: View {
             } label: { Text("Reset") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
-            Button(canvasLocked ? "Locked" : "Lock") { canvasLocked.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: canvasLocked))
-                .help("Lock canvas position and zoom")
+            Button { canvasLocked.toggle() } label: {
+                Image(systemName: canvasLocked ? "lock.fill" : "lock.open")
+            }
+            .buttonStyle(EditorButtonStyle(isActive: canvasLocked))
+            .help(canvasLocked ? "Unlock canvas position and zoom" : "Lock canvas position and zoom")
         }
         .padding(6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
