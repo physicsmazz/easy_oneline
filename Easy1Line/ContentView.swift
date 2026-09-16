@@ -310,6 +310,21 @@ struct ContentView: View {
                         connectionDragStartAngles.removeValue(forKey: connectionDragKey(target.id, slot: slot))
                     }
                 )
+                .overlay(alignment: .topTrailing) {
+                    if selectedTargetIDs.count >= 2, selectedTargetIDs.last == target.id {
+                        Button {
+                            connectSelection()
+                        } label: {
+                            Label("Connect", systemImage: "point.3.connected.trianglepath.dotted")
+                                .font(.system(size: 11, weight: .semibold))
+                                .padding(.horizontal, 9)
+                                .frame(height: 30)
+                        }
+                        .buttonStyle(EditorButtonStyle(isActive: true))
+                        .offset(x: 12, y: -38)
+                        .zIndex(200)
+                    }
+                }
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
