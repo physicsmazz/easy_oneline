@@ -8,6 +8,9 @@ struct ContentView: View {
     @State private var savedDocuments = SchematicDocument.loadAll()
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
+    @State private var canvasRotation = Angle.zero
+    @State private var gestureStartScale: CGFloat?
+    @State private var gestureStartRotation: Angle?
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
@@ -108,9 +111,6 @@ struct ContentView: View {
 
             Menu("View") {
                 Button(snapToGrid ? "Snap to grid: On" : "Snap to grid: Off") { snapToGrid.toggle() }
-                Button("Zoom out") { canvasScale = max(0.5, canvasScale - 0.25) }
-                Button("Zoom in") { canvasScale = min(2.5, canvasScale + 0.25) }
-                Text("Zoom: \(Int(canvasScale * 100))%")
                 Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
                 Button(infoSelectorEnabled ? "Info panel: On" : "Info panel: Off") { infoSelectorEnabled.toggle() }
             }
@@ -307,6 +307,7 @@ struct ContentView: View {
         }
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
+        .rotationEffect(canvasRotation)
         .dropDestination(for: String.self) { items, location in
             guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
             let point = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
@@ -315,6 +316,44 @@ struct ContentView: View {
             return true
         }
         .ignoresSafeArea(edges: .bottom)
+        .simultaneousGesture(MagnificationGesture().onChanged { value in
+            if gestureStartScale == nil { gestureStartScale = canvasScale }
+            canvasScale = min(2.5, max(0.5, (gestureStartScale ?? 1) * value))
+        }.onEnded { _ in
+            gestureStartScale = nil
+        })
+        .simultaneousGesture(RotationGesture().onChanged { value in
+            if gestureStartRotation == nil { gestureStartRotation = canvasRotation }
+            canvasRotation = (gestureStartRotation ?? .zero) + value
+        }.onEnded { _ in
+            gestureStartRotation = nil
+        })
+        .overlay(alignment: .topTrailing) {
+            zoomControls
+                .padding(.top, 88)
+                .padding(.trailing, 24)
+        }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 6) {
+            Button { canvasScale = max(0.5, canvasScale - 0.25) } label: { Text("−") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Zoom out")
+            Text("\(Int(canvasScale * 100))%")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(minWidth: 44)
+            Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Zoom in")
+            Button { canvasRotation = .zero } label: { Text("Reset") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Reset rotation")
+        }
+        .padding(6)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1) }
     }
 
     private var panGesture: some Gesture {
