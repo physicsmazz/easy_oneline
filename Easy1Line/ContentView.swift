@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
+    @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     private let linePadding: CGFloat = 16
@@ -153,6 +154,10 @@ struct ContentView: View {
             Button(infoSelectorEnabled ? "Info: On" : "Info: Off") { infoSelectorEnabled.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
                 .accessibilityLabel("Toggle item information")
+
+            Button(showConnectionNames ? "Pins: On" : "Pins: Off") { showConnectionNames.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
+                .accessibilityLabel("Show connection names")
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode || canConnectSelection))
@@ -306,6 +311,7 @@ struct ContentView: View {
                     occupiedSlots: occupiedSlots(for: target.id),
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
+                    showConnectionNames: showConnectionNames,
                     onSelectConnectionPoint: { slot in
                         selectConnectionPoint(targetID: target.id, slot: slot)
                     },
@@ -1711,6 +1717,7 @@ private struct TargetView: View {
     let occupiedSlots: Set<Int>
     let selectedSlots: Set<Int>
     let connectionNames: [String]
+    let showConnectionNames: Bool
     let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
@@ -1799,10 +1806,12 @@ private struct TargetView: View {
             .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
             .overlay(alignment: .bottomTrailing) {
+                if showConnectionNames {
                 Text(connectionNames.indices.contains(slot) ? connectionNames[slot] : String(UnicodeScalar(65 + min(slot, 25))!))
                     .font(.system(size: 8, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.8))
                     .offset(x: 12, y: 10)
+                }
             }
 
         if editingConnectionPoints {
