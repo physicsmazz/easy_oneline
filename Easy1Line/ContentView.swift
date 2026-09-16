@@ -99,6 +99,14 @@ struct ContentView: View {
                 }
             }
 
+            Button { snapToGrid.toggle() } label: {
+                Image(systemName: "magnet")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+            .help(snapToGrid ? "Snap to grid: on" : "Snap to grid: off")
+            .accessibilityLabel("Snap to grid")
+
             Spacer()
 
             Button { showLibrary.toggle() } label: {
@@ -154,14 +162,6 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
             .help("Toggle item information")
             .accessibilityLabel("Toggle item information")
-
-            Button { snapToGrid.toggle() } label: {
-                Image(systemName: "magnet")
-                    .frame(width: 42, height: 42)
-            }
-            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
-            .help(snapToGrid ? "Snap to grid: on" : "Snap to grid: off")
-            .accessibilityLabel("Snap to grid")
         }
 
         .padding(.horizontal, 24)
@@ -302,7 +302,6 @@ struct ContentView: View {
             guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
             let point = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
             addTarget(kind, at: point)
-            if let id = document.targets.last?.id { splitSegmentIfNeeded(for: id) }
             return true
         }
         .ignoresSafeArea(edges: .bottom)
@@ -333,7 +332,6 @@ struct ContentView: View {
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
                 snapTarget(target.id, canvasSize: canvasSize)
-                splitSegmentIfNeeded(for: target.id)
                 draggingTargetID = nil
             }
     }
