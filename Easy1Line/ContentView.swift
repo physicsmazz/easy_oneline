@@ -100,6 +100,7 @@ struct ContentView: View {
     @State private var targetNameEditingID: UUID?
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
+    @State private var showDeleteWarning = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -209,6 +210,10 @@ struct ContentView: View {
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(deleteWarningTitle, isPresented: $showDeleteWarning, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteSelectedContent() }
             Button("Cancel", role: .cancel) {}
         }
         .fileExporter(
@@ -1353,6 +1358,31 @@ struct ContentView: View {
         }.joined(separator: "\n")
     }
 
+    private var deleteWarningTitle: String {
+        if !selectedTargetIDs.isEmpty {
+            return selectedTargetIDs.count == 1 ? "Delete selected item?" : "Delete selected items?"
+        }
+        return selectedSegmentIDs.count == 1 ? "Delete selected wire?" : "Delete selected wires?"
+    }
+
+    private func deleteSelectedContent() {
+        if selectedTargetIDs.count == 1,
+           let targetID = selectedTargetIDs.first,
+           let target = target(with: targetID) {
+            deleteTargetPreservingWire(target)
+        } else if !selectedTargetIDs.isEmpty {
+            let targetIDs = Set(selectedTargetIDs)
+            document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
+            document.targets.removeAll { targetIDs.contains($0.id) }
+        } else {
+            document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
+        }
+        selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        selectedSegmentIDs.removeAll()
+        selectedSegmentID = nil
+    }
+
 
     private var targetLibraryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1419,9 +1449,7 @@ struct ContentView: View {
                     Label("Choose wire type", systemImage: "list.bullet.rectangle")
                 }
                 Button(role: .destructive) {
-                    document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
-                    selectedSegmentIDs.removeAll()
-                    selectedSegmentID = nil
+                    showDeleteWarning = true
                 } label: {
                     Label("Delete wires", systemImage: "trash")
                 }
@@ -1434,9 +1462,7 @@ struct ContentView: View {
                     Label("Split wire", systemImage: "scissors")
                 }
                 Button(role: .destructive) {
-                    document.segments.removeAll { $0.id == segment.id }
-                    selectedSegmentIDs.remove(segment.id)
-                    selectedSegmentID = nil
+                    showDeleteWarning = true
                 } label: {
                     Label("Delete wire", systemImage: "trash")
                 }
@@ -1522,7 +1548,7 @@ struct ContentView: View {
                     Label("Save as target type", systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive) {
-                    deleteTargetPreservingWire(target)
+                    showDeleteWarning = true
                 } label: { Label("Delete target", systemImage: "trash") }
             }
         }
@@ -1567,21 +1593,7 @@ struct ContentView: View {
                     .accessibilityLabel("Split selected wire")
             }
             Button(role: .destructive) {
-                if selectedSegmentIDs.isEmpty, selectedTargetIDs.count == 1,
-                   let targetID = selectedTargetIDs.first,
-                   let target = target(with: targetID) {
-                    deleteTargetPreservingWire(target)
-                } else if selectedSegmentIDs.isEmpty {
-                    let targetIDs = Set(selectedTargetIDs)
-                    document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
-                    document.targets.removeAll { targetIDs.contains($0.id) }
-                } else {
-                    document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
-                }
-                selectedTargetIDs.removeAll()
-                selectedConnectionSlots.removeAll()
-                selectedSegmentIDs.removeAll()
-                selectedSegmentID = nil
+                showDeleteWarning = true
             } label: { Image(systemName: "trash") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Delete selected items")
