@@ -134,6 +134,11 @@ struct ContentView: View {
             GridBackground()
                 .contentShape(Rectangle())
                 .gesture(panGesture)
+                .onTapGesture {
+                    selectedTargetIDs.removeAll()
+                    selectedSegmentID = nil
+                    showInspector = false
+                }
 
             Canvas { context, _ in
                 for segment in document.segments {
