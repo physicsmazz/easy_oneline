@@ -33,6 +33,11 @@ private struct SchematicFileDocument: FileDocument {
     }
 }
 
+private struct PDFShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
@@ -76,8 +81,7 @@ struct ContentView: View {
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
     @State private var showFileExporter = false
-    @State private var showPDFShareSheet = false
-    @State private var pdfShareURL: URL?
+    @State private var pdfShareItem: PDFShareItem?
     @State private var showFileImporter = false
     @State private var showInfoPanel = false
     @State private var doubleTapInfoTargetIDs: [UUID] = []
@@ -214,10 +218,8 @@ struct ContentView: View {
         ) { result in
             if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
         }
-        .sheet(isPresented: $showPDFShareSheet) {
-            if let pdfShareURL {
-                ActivityView(activityItems: [pdfShareURL])
-            }
+        .sheet(item: $pdfShareItem) { item in
+            ActivityView(activityItems: [item.url])
         }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
@@ -426,8 +428,7 @@ struct ContentView: View {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         do {
             try makePDFData().write(to: url, options: .atomic)
-            pdfShareURL = url
-            showPDFShareSheet = true
+            pdfShareItem = PDFShareItem(url: url)
         } catch {
             cloudStatus = "PDF share failed: \(error.localizedDescription)"
         }
@@ -2211,7 +2212,18 @@ private struct ActivityView: UIViewControllerRepresentable {
     let activityItems: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+        controller.modalPresentationStyle = .pageSheet
+        if let sheet = controller.sheetPresentationController {
+            sheet.detents = [.medium(), .large()]
+            sheet.prefersGrabberVisible = true
+        }
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = controller.view
+            popover.sourceRect = CGRect(x: controller.view.bounds.midX, y: controller.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        return controller
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
