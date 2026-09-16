@@ -1640,19 +1640,8 @@ struct ContentView: View {
 
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
         guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
-        guard snapToGrid else {
-            document.targets[index].position.x = min(max(document.targets[index].position.x, 180), max(180, canvasSize.width - 80))
-            document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
-            return
-        }
+        guard snapToGrid else { return }
         document.targets[index].position = snappedPosition(document.targets[index].position)
-        let gridSize: CGFloat = 32
-        let minimumX = ceil(180 / gridSize) * gridSize
-        let minimumY = ceil(120 / gridSize) * gridSize
-        let maximumX = floor(max(180, canvasSize.width - 80) / gridSize) * gridSize
-        let maximumY = floor(max(120, canvasSize.height - 80) / gridSize) * gridSize
-        document.targets[index].position.x = min(max(document.targets[index].position.x, minimumX), max(minimumX, maximumX))
-        document.targets[index].position.y = min(max(document.targets[index].position.y, minimumY), max(minimumY, maximumY))
     }
 
     private func snapAllTargets() {
