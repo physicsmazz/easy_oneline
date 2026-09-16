@@ -377,6 +377,14 @@ struct ContentView: View {
             }
             return true
         }
+        .overlay(alignment: .center) {
+            if targetsPanelExpanded {
+                Text("Drop to place")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.12))
+                    .allowsHitTesting(false)
+            }
+        }
         .ignoresSafeArea(edges: .bottom)
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             if gestureStartScale == nil { gestureStartScale = canvasScale }
@@ -507,7 +515,6 @@ struct ContentView: View {
     }
 
     private func selectTarget(_ target: SchematicTarget) {
-        selectedConnectionSlots.removeAll()
         editingConnectionPoints = false
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
