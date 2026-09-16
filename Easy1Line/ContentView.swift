@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showInspector = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
+    @State private var showTargetLibrary = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var cloudStatus = ""
@@ -50,6 +51,12 @@ struct ContentView: View {
 
             if showLineLibrary {
                 lineLibraryPanel
+                    .padding(.top, 84)
+                    .padding(.leading, 205)
+            }
+
+            if showTargetLibrary {
+                targetLibraryPanel
                     .padding(.top, 84)
                     .padding(.leading, 205)
             }
@@ -93,6 +100,11 @@ struct ContentView: View {
                 Label("Lines", systemImage: "line.3.horizontal")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
+
+            Button { showTargetLibrary.toggle() } label: {
+                Label("Targets", systemImage: "square.grid.2x2")
+            }
+            .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
 
             Button { saveCurrent() } label: {
                 Label("Save", systemImage: "square.and.arrow.down")
@@ -291,6 +303,20 @@ struct ContentView: View {
         showInspector = true
     }
 
+    private func addTarget(from template: TargetDefinition) {
+        let position = CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
+        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData))
+        selectedTargetIDs = [document.targets.last!.id]
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        showTargetLibrary = false
+        showInspector = true
+    }
+
+    private func saveTargetTemplate(_ target: SchematicTarget) {
+        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData))
+    }
+
     private func duplicateTarget(_ target: SchematicTarget) {
         var copy = target
         copy.id = UUID()
@@ -427,6 +453,58 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var targetLibraryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TARGET LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { addTarget(.junction) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
+            }
+
+            Text("PROJECT TARGETS").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            ForEach(document.targets) { target in
+                Button {
+                    selectedTargetIDs = [target.id]
+                    selectedSegmentID = nil
+                    selectedSegmentIDs.removeAll()
+                    showInspector = true
+                    showTargetLibrary = false
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: target.symbol).foregroundStyle(Color(hex: target.colorHex))
+                        Text(target.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Spacer()
+                        Text("\(connectionCount(for: target.id)) / \(target.kind == .junction ? "∞" : "\(target.maxConnections)")")
+                            .font(.caption2).foregroundStyle(.white.opacity(0.4))
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+
+            Divider().overlay(.white.opacity(0.12))
+            Text("SAVED TARGET TYPES").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            ForEach(document.targetDefinitions) { template in
+                Button { addTarget(from: template) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: template.symbol).foregroundStyle(Color(hex: template.colorHex))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(template.name).font(.system(size: 12, weight: .semibold))
+                            Text(template.kind.title).font(.caption2).foregroundStyle(.white.opacity(0.4))
+                        }
+                        Spacer()
+                        Image(systemName: "plus.circle").foregroundStyle(.cyan)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+            }
+        }
+        .padding(14)
+        .frame(width: 290)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
             if selectedSegmentIDs.count > 1 {
@@ -493,6 +571,9 @@ struct ContentView: View {
                 Button { duplicateTarget(target) } label: {
                     Label("Duplicate target", systemImage: "plus.square.on.square")
                 }
+                Button { saveTargetTemplate(target) } label: {
+                    Label("Save as target type", systemImage: "square.and.arrow.down")
+                }
                 Button(role: .destructive) {
                     document.segments.removeAll { $0.startID == target.id || $0.endID == target.id }
                     document.targets.removeAll { $0.id == target.id }
@@ -511,6 +592,7 @@ struct ContentView: View {
 
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
+    private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
     private func occupiedSlots(for id: UUID) -> Set<Int> {
         var slots = Set<Int>()
@@ -643,9 +725,10 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var targets: [SchematicTarget] = []
     var segments: [SchematicSegment] = []
     var lineDefinitions: [LineDefinition] = [.defaultLine]
+    var targetDefinitions: [TargetDefinition] = []
 
-    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = [.defaultLine]) {
-        self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions
+    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = [.defaultLine], targetDefinitions: [TargetDefinition] = []) {
+        self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions; self.targetDefinitions = targetDefinitions
     }
 
     init(from decoder: Decoder) throws {
@@ -655,6 +738,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         targets = try container.decodeIfPresent([SchematicTarget].self, forKey: .targets) ?? []
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
         lineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? [.defaultLine]
+        targetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
     }
 
     static func loadLast() -> SchematicDocument {
@@ -701,6 +785,16 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
     }
+}
+
+private struct TargetDefinition: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var kind: TargetKind
+    var name: String
+    var maxConnections: Int
+    var colorHex: String
+    var symbol: String
+    var imageData: Data?
 }
 
 private struct SchematicSegment: Identifiable, Codable, Equatable {
