@@ -295,7 +295,7 @@ struct ContentView: View {
                                 moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
-                            }) {
+                            }, onTap: {
                                 if selectedSegmentID == segment.id {
                                     selectedSegmentSectionIndex = sectionIndex
                                 } else {
@@ -304,14 +304,18 @@ struct ContentView: View {
                                     selectedSegmentSectionIndex = nil
                                 }
                                 selectedTargetIDs.removeAll()
-                            }
+                            }, onDoubleTap: {
+                                openWireInfo(segment, sectionIndex: sectionIndex)
+                            })
                         } else {
-                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}) {
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}, onTap: {
                                 selectedSegmentIDs = [segment.id]
                                 selectedSegmentID = segment.id
                                 selectedSegmentSectionIndex = nil
                                 selectedTargetIDs.removeAll()
-                            }
+                            }, onDoubleTap: {
+                                openWireInfo(segment, sectionIndex: sectionIndex)
+                            })
                         }
                     }
                 }
@@ -343,6 +347,9 @@ struct ContentView: View {
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
+                .onTapGesture(count: 2) {
+                    openTargetInfo(target)
+                }
             }
 
             if selectedTargetIDs.count >= 2,
@@ -484,6 +491,24 @@ struct ContentView: View {
             return
         }
         selectTarget(target)
+    }
+
+    private func openTargetInfo(_ target: SchematicTarget) {
+        if !selectedTargetIDs.contains(target.id) {
+            selectedTargetIDs = [target.id]
+        }
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        infoSelectorEnabled = true
+    }
+
+    private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
+        selectedTargetIDs.removeAll()
+        selectedSegmentIDs = [wire.id]
+        selectedSegmentID = wire.id
+        selectedSegmentSectionIndex = sectionIndex
+        infoSelectorEnabled = true
     }
 
     private func toggleConnectionMode() {
@@ -1468,15 +1493,17 @@ struct ContentView: View {
         let position = document.targets[targetIndex].position
         for (index, segment) in document.segments.enumerated() {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id && $0.id != targetID })
             let candidate = nearestPoint(on: route, to: position)
             guard candidate.distance <= 52 else { continue }
             guard document.targets[targetIndex].maxConnections >= 2 else { return }
+            let junctionPosition = snapToGrid ? snappedPosition(candidate.point) : candidate.point
+            let splitRoutes = splitRoutePoints(route, at: junctionPosition)
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
             let endSlot = segment.endSlot ?? 0
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
             return
         }
     }
@@ -2019,10 +2046,12 @@ private struct SegmentHitArea: View {
     let onDrag: (CGSize) -> Void
     let onEndDrag: () -> Void
     let onTap: () -> Void
+    let onDoubleTap: () -> Void
     var body: some View {
         path.stroke(isSectionSelected ? Color.yellow.opacity(0.85) : isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: isSectionSelected ? 12 : 24, lineCap: .round, lineJoin: .round))
             .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
+            .onTapGesture(count: 2, perform: onDoubleTap)
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
     }
 }
