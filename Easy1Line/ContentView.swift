@@ -10,7 +10,7 @@ struct ContentView: View {
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedTargetIDs: [UUID] = []
-    @State private var targetsPanelExpanded = true
+    @AppStorage("targetsPanelExpanded") private var targetsPanelExpanded = true
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
@@ -197,27 +197,28 @@ struct ContentView: View {
 
     private var palette: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                if targetsPanelExpanded {
-                    Text("TARGETS")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(.white.opacity(0.45))
-                } else {
-                    Image(systemName: "square.grid.2x2")
-                        .foregroundStyle(.cyan)
-                }
-                Spacer()
-                Button {
+            Button {
                     withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
-                } label: {
+            } label: {
+                HStack(spacing: 8) {
+                    if targetsPanelExpanded {
+                        Text("TARGETS")
+                            .font(.system(size: 10, weight: .bold))
+                            .tracking(1.4)
+                            .foregroundStyle(.white.opacity(0.45))
+                    } else {
+                        Image(systemName: "square.grid.2x2")
+                            .foregroundStyle(.cyan)
+                    }
+                    Spacer()
                     Image(systemName: targetsPanelExpanded ? "chevron.left" : "chevron.right")
                         .frame(width: 24, height: 24)
+                        .foregroundStyle(.white.opacity(0.7))
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white.opacity(0.7))
-                .accessibilityLabel(targetsPanelExpanded ? "Collapse targets" : "Expand targets")
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(targetsPanelExpanded ? "Collapse targets" : "Expand targets")
 
             if targetsPanelExpanded {
                 ScrollView {
