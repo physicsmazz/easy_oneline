@@ -1874,10 +1874,11 @@ private struct TargetView: View {
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
             .overlay(alignment: .bottomTrailing) {
                 if showConnectionNames {
+                let labelAngle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
                 Text(connectionNames.indices.contains(slot) ? connectionNames[slot] : String(UnicodeScalar(65 + min(slot, 25))!))
                     .font(.system(size: 8, weight: .bold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.8))
-                    .offset(x: 12, y: 10)
+                    .offset(x: 12 * CGFloat(cos(labelAngle)), y: 12 * CGFloat(sin(labelAngle)))
                 }
             }
 
