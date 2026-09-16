@@ -2360,12 +2360,12 @@ private struct TargetView: View {
         .overlay {
             if target.locked {
                 if target.kind == .junction {
-                    Circle().stroke(lockedBorderStyle, lineWidth: 3).frame(width: 28, height: 28)
+                    Circle().stroke(lockedBorderStyle, lineWidth: 1.5).frame(width: 28, height: 28)
                 } else if target.isCompact {
-                    Circle().stroke(lockedBorderStyle, lineWidth: 3).frame(width: 52, height: 52)
+                    Circle().stroke(lockedBorderStyle, lineWidth: 1.5).frame(width: 52, height: 52)
                 } else {
                     RoundedRectangle(cornerRadius: 13)
-                        .stroke(lockedBorderStyle, lineWidth: 3)
+                        .stroke(lockedBorderStyle, lineWidth: 1.5)
                         .frame(width: 72, height: 62)
                         .offset(y: -9)
                 }
