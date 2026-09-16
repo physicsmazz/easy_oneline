@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var canvasOffset = CGSize.zero
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var draggingTargetID: UUID?
     @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
     @State private var selectedTargetIDs: [UUID] = []
     @AppStorage("targetsPanelExpanded") private var targetsPanelExpanded = true
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @AppStorage("snapToGrid") private var snapToGrid = true
+    @AppStorage("linePadding") private var linePadding = 16.0
     @State private var showLibrary = false
     @State private var showLineLibrary = false
     @State private var showTargetLibrary = false
@@ -159,6 +161,17 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
             .help("Snap items to grid")
             .accessibilityLabel("Snap items to grid")
+
+            Menu {
+                Text("Line spacing: \(linePadding, specifier: "%.0f") pt")
+                Slider(value: $linePadding, in: 4...48, step: 4)
+            } label: {
+                Image(systemName: "ruler")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: linePadding > 0))
+            .help("Adjust line spacing")
+            .accessibilityLabel("Adjust line spacing")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -315,6 +328,7 @@ struct ContentView: View {
         DragGesture()
             .onChanged { value in
                 guard !editingConnectionPoints else { return }
+                draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
                 guard let start = dragStartPositions[target.id] else { return }
@@ -327,6 +341,7 @@ struct ContentView: View {
                 dragStartPositions.removeValue(forKey: target.id)
                 snapTarget(target.id, canvasSize: canvasSize)
                 splitSegmentIfNeeded(for: target.id)
+                draggingTargetID = nil
             }
     }
 
@@ -804,8 +819,9 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start))
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end))
-        let routeObstacles = obstacles + [startTarget, endTarget]
-        let rectangles = routeObstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        let routeObstacles = (draggingTargetID == nil ? obstacles : []) + [startTarget, endTarget]
+        let padding = CGFloat(linePadding)
+        let rectangles = routeObstacles.map { obstacleRect(for: $0).insetBy(dx: -padding, dy: -padding) }
         var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
         var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
         for rectangle in rectangles {
@@ -850,7 +866,7 @@ struct ContentView: View {
             ($0.startID == segment.endID && $0.endID == segment.startID)
         }.sorted { $0.id.uuidString < $1.id.uuidString }
         guard parallel.count > 1, let index = parallel.firstIndex(where: { $0.id == segment.id }) else { return 0 }
-        return (CGFloat(index) - CGFloat(parallel.count - 1) / 2) * 16
+        return (CGFloat(index) - CGFloat(parallel.count - 1) / 2) * CGFloat(linePadding)
     }
 
     private func offsetConnectionPoint(for target: SchematicTarget, slot: Int?, toward other: SchematicTarget, by offset: CGFloat) -> CGPoint {
@@ -864,7 +880,7 @@ struct ContentView: View {
     private func escapePoint(for target: SchematicTarget, slot: Int) -> CGPoint {
         let point = connectionPoint(for: target, slot: slot)
         let angle = connectionAngle(for: target, slot: slot) * Double.pi / 180
-        let distance: CGFloat = target.kind == .junction ? 24 : (target.isCompact ? 24 : 36) * target.scale
+        let distance: CGFloat = target.kind == .junction ? 24 : max((target.isCompact ? 24 : 36) * target.scale, CGFloat(linePadding) + 12)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
