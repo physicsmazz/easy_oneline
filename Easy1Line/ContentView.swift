@@ -414,6 +414,8 @@ struct ContentView: View {
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
+                TextField("SF Symbol name", text: targetBinding(target).symbol)
+                    .textFieldStyle(.roundedBorder)
                 Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
                 Button { duplicateTarget(target) } label: {
@@ -519,9 +521,14 @@ struct ContentView: View {
         )
     }
 
-    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, maxConnections: Binding<Int>, color: Binding<Color>) {
+    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, color: Binding<Color>) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
-        return (Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }), Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }), Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString }))
+        return (
+            Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }),
+            Binding(get: { document.targets[index].symbol }, set: { document.targets[index].symbol = $0 }),
+            Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }),
+            Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString })
+        )
     }
 
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
@@ -579,6 +586,28 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var position: CGPoint
     var maxConnections: Int
     var colorHex: String
+    var symbol: String
+
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.position = position
+        self.maxConnections = maxConnections
+        self.colorHex = colorHex
+        self.symbol = symbol ?? kind.symbol
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        kind = try container.decode(TargetKind.self, forKey: .kind)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
+        position = try container.decode(CGPoint.self, forKey: .position)
+        maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
+        symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
+    }
 }
 
 private struct SchematicSegment: Identifiable, Codable, Equatable {
@@ -662,7 +691,7 @@ private struct TargetView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         RoundedRectangle(cornerRadius: 10).stroke(isSelected || isConnectionStart ? Color(hex: target.colorHex) : .white.opacity(0.18), lineWidth: isSelected || isConnectionStart ? 2 : 1)
-                        Image(systemName: target.kind.symbol).font(.system(size: 22, weight: .medium)).foregroundStyle(Color(hex: target.colorHex))
+                        Image(systemName: target.symbol).font(.system(size: 22, weight: .medium)).foregroundStyle(Color(hex: target.colorHex))
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }.frame(width: 108, height: 76)
