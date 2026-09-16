@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedTargetIDs: [UUID] = []
     @State private var selectedSegmentID: UUID?
+    @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var showInspector = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
@@ -150,6 +151,7 @@ struct ContentView: View {
                 .onTapGesture {
                     selectedTargetIDs.removeAll()
                     selectedSegmentID = nil
+                    selectedSegmentIDs.removeAll()
                     showInspector = false
                 }
 
@@ -165,8 +167,13 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot)), isSelected: segment.id == selectedSegmentID) {
-                        selectedSegmentID = segment.id
+                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot)), isSelected: selectedSegmentIDs.contains(segment.id)) {
+                        if selectedSegmentIDs.contains(segment.id) {
+                            selectedSegmentIDs.remove(segment.id)
+                        } else {
+                            selectedSegmentIDs.insert(segment.id)
+                        }
+                        selectedSegmentID = selectedSegmentIDs.count == 1 ? selectedSegmentIDs.first : nil
                         selectedTargetIDs.removeAll()
                         showInspector = true
                     }
@@ -215,6 +222,7 @@ struct ContentView: View {
                 document.targets[index].position = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height)
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
+                selectedSegmentIDs.removeAll()
             }
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
@@ -225,6 +233,7 @@ struct ContentView: View {
 
     private func targetTapped(_ target: SchematicTarget) {
         selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
         } else {
@@ -252,6 +261,8 @@ struct ContentView: View {
         document.targets.append(SchematicTarget(kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        selectedSegmentIDs.removeAll()
         showInspector = true
     }
 
@@ -276,6 +287,7 @@ struct ContentView: View {
         document = SchematicDocument(name: "Untitled schematic")
         selectedTargetIDs.removeAll()
         selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
         showLibrary = false
     }
 
@@ -283,6 +295,7 @@ struct ContentView: View {
         document = saved
         selectedTargetIDs.removeAll()
         selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
         showLibrary = false
     }
 
@@ -332,6 +345,8 @@ struct ContentView: View {
                     selectedLineDefinitionID = line.id
                     if let selectedSegmentID {
                         applyLineDefinition(line, to: selectedSegmentID)
+                    } else {
+                        applyLineDefinition(line, to: selectedSegmentIDs)
                     }
                     showLineLibrary = false
                 } label: {
@@ -357,7 +372,23 @@ struct ContentView: View {
 
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let segment = selectedSegment {
+            if selectedSegmentIDs.count > 1 {
+                Text("LINES").inspectorLabel()
+                Text("\(selectedSegmentIDs.count) lines selected").font(.headline)
+                Button {
+                    showLineLibrary = true
+                } label: {
+                    Label("Choose line type", systemImage: "list.bullet.rectangle")
+                }
+                Button(role: .destructive) {
+                    document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
+                    selectedSegmentIDs.removeAll()
+                    selectedSegmentID = nil
+                    showInspector = false
+                } label: {
+                    Label("Delete lines", systemImage: "trash")
+                }
+            } else if let segment = selectedSegment {
                 Text("SEGMENT").inspectorLabel()
                 TextField("Line name", text: segmentBinding(segment).name)
                     .textFieldStyle(.roundedBorder)
@@ -375,7 +406,11 @@ struct ContentView: View {
                 } label: {
                     Label("Add to line library", systemImage: "plus.circle")
                 }
-                Button(role: .destructive) { document.segments.removeAll { $0.id == segment.id }; selectedSegmentID = nil } label: { Label("Delete line", systemImage: "trash") }
+                Button(role: .destructive) {
+                    document.segments.removeAll { $0.id == segment.id }
+                    selectedSegmentIDs.removeAll()
+                    selectedSegmentID = nil
+                } label: { Label("Delete line", systemImage: "trash") }
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
@@ -496,6 +531,12 @@ struct ContentView: View {
         document.segments[index].wireSize = line.wireSize
         document.segments[index].displayWidth = line.displayWidth
         document.segments[index].description = line.description
+    }
+
+    private func applyLineDefinition(_ line: LineDefinition, to segmentIDs: Set<UUID>) {
+        for segmentID in segmentIDs {
+            applyLineDefinition(line, to: segmentID)
+        }
     }
 }
 
