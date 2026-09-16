@@ -11,6 +11,8 @@ struct ContentView: View {
     @State private var selectedSegmentID: UUID?
     @State private var showInspector = false
     @State private var showLibrary = false
+    @State private var showLineLibrary = false
+    @State private var selectedLineDefinitionID: UUID?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -40,6 +42,12 @@ struct ContentView: View {
                     .padding(.trailing, 20)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
+
+            if showLineLibrary {
+                lineLibraryPanel
+                    .padding(.top, 84)
+                    .padding(.leading, 205)
+            }
         }
         .preferredColorScheme(.dark)
         .onChange(of: document) { _, _ in
@@ -66,6 +74,11 @@ struct ContentView: View {
                 Label("Schematics", systemImage: "folder")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLibrary))
+
+            Button { showLineLibrary.toggle() } label: {
+                Label("Lines", systemImage: "line.3.horizontal")
+            }
+            .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
 
             Button { saveCurrent() } label: {
                 Label("Save", systemImage: "square.and.arrow.down")
@@ -145,7 +158,7 @@ struct ContentView: View {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(from: start.position, to: end.position)
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
-                    context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                    context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
             }
             .allowsHitTesting(false)
@@ -227,7 +240,8 @@ struct ContentView: View {
             let endID = ids[pairIndex + 1]
             guard connectionCount(for: startID) < (target(with: startID)?.maxConnections ?? 0), connectionCount(for: endID) < (target(with: endID)?.maxConnections ?? 0) else { continue }
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
-            document.segments.append(SchematicSegment(startID: startID, endID: endID, name: "Connection \(document.segments.count + 1)", colorHex: "31D7E8"))
+            let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
+            document.segments.append(SchematicSegment(startID: startID, endID: endID, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, displayWidth: line.displayWidth, description: line.description))
         }
         selectedTargetIDs.removeAll()
     }
@@ -295,6 +309,38 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var lineLibraryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("LINE LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { document.lineDefinitions.append(.defaultLine) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
+            }
+            ForEach(document.lineDefinitions) { line in
+                Button {
+                    selectedLineDefinitionID = line.id
+                    showLineLibrary = false
+                } label: {
+                    HStack(spacing: 9) {
+                        Circle().fill(Color(hex: line.colorHex)).frame(width: 12, height: 12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(line.name).font(.system(size: 13, weight: .semibold))
+                            Text("\(line.wireSize) · \(line.displayWidth, specifier: "%.1f") pt · \(line.description)").font(.caption2).foregroundStyle(.white.opacity(0.4)).lineLimit(1)
+                        }
+                        Spacer()
+                        if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(9)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+            }
+        }
+        .padding(14)
+        .frame(width: 270)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let segment = selectedSegment {
@@ -302,6 +348,14 @@ struct ContentView: View {
                 TextField("Line name", text: segmentBinding(segment).name)
                     .textFieldStyle(.roundedBorder)
                 ColorPicker("Line color", selection: segmentBinding(segment).color)
+                TextField("Wire size", text: segmentBinding(segment).wireSize).textFieldStyle(.roundedBorder)
+                TextField("Description", text: segmentBinding(segment).description).textFieldStyle(.roundedBorder)
+                Stepper("Display width: \(segment.displayWidth, specifier: "%.1f")", value: segmentBinding(segment).displayWidth, in: 1...20, step: 0.5)
+                Button {
+                    document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description))
+                } label: {
+                    Label("Add to line library", systemImage: "plus.circle")
+                }
                 Button(role: .destructive) { document.segments.removeAll { $0.id == segment.id }; selectedSegmentID = nil } label: { Label("Delete line", systemImage: "trash") }
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
@@ -350,8 +404,8 @@ struct ContentView: View {
             guard candidate.distance <= 30 else { continue }
             document.targets[targetIndex].position = candidate.point
             document.segments.remove(at: index)
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, name: segment.name + " A", colorHex: segment.colorHex), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, name: segment.name + " B", colorHex: segment.colorHex), at: index + 1)
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
             return
         }
     }
@@ -369,9 +423,20 @@ struct ContentView: View {
         return best
     }
 
-    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>) {
+    private var selectedLineDefinition: LineDefinition? {
+        guard let selectedLineDefinitionID else { return nil }
+        return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
+    }
+
+    private func segmentBinding(_ segment: SchematicSegment) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, displayWidth: Binding<Double>, description: Binding<String>) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { fatalError("Segment disappeared") }
-        return (Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }), Binding(get: { Color(hex: document.segments[index].colorHex) }, set: { document.segments[index].colorHex = $0.hexString }))
+        return (
+            Binding(get: { document.segments[index].name }, set: { document.segments[index].name = $0 }),
+            Binding(get: { Color(hex: document.segments[index].colorHex) }, set: { document.segments[index].colorHex = $0.hexString }),
+            Binding(get: { document.segments[index].wireSize }, set: { document.segments[index].wireSize = $0 }),
+            Binding(get: { document.segments[index].displayWidth }, set: { document.segments[index].displayWidth = $0 }),
+            Binding(get: { document.segments[index].description }, set: { document.segments[index].description = $0 })
+        )
     }
 
     private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, maxConnections: Binding<Int>, color: Binding<Color>) {
@@ -385,9 +450,19 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var name: String
     var targets: [SchematicTarget] = []
     var segments: [SchematicSegment] = []
+    var lineDefinitions: [LineDefinition] = [.defaultLine]
 
-    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = []) {
-        self.name = name; self.targets = targets; self.segments = segments
+    init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = [.defaultLine]) {
+        self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled schematic"
+        targets = try container.decodeIfPresent([SchematicTarget].self, forKey: .targets) ?? []
+        segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
+        lineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? [.defaultLine]
     }
 
     static func loadLast() -> SchematicDocument {
@@ -417,7 +492,38 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var endID: UUID
     var name: String
     var colorHex: String
+    var wireSize: String
+    var displayWidth: Double
+    var description: String
     var color: Color { Color(hex: colorHex) }
+
+    init(startID: UUID, endID: UUID, name: String, colorHex: String, wireSize: String = "14 AWG", displayWidth: Double = 3, description: String = "") {
+        self.startID = startID; self.endID = endID; self.name = name; self.colorHex = colorHex
+        self.wireSize = wireSize; self.displayWidth = displayWidth; self.description = description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        startID = try container.decode(UUID.self, forKey: .startID)
+        endID = try container.decode(UUID.self, forKey: .endID)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Connection"
+        colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
+        wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
+        displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+    }
+}
+
+private struct LineDefinition: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var name: String
+    var colorHex: String
+    var wireSize: String
+    var displayWidth: Double
+    var description: String
+
+    static let defaultLine = LineDefinition(name: "Standard wire", colorHex: "31D7E8", wireSize: "14 AWG", displayWidth: 3, description: "General purpose connection")
 }
 
 private enum TargetKind: String, CaseIterable, Identifiable, Codable {
