@@ -21,6 +21,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
+    @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
@@ -136,6 +137,8 @@ struct ContentView: View {
                         .disabled(!canConnectSelection)
                     Button { infoSelectorEnabled.toggle() } label: { Text("Info") }
                         .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
+                    Button { wireBridgesEnabled.toggle() } label: { Text(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") }
+                        .buttonStyle(EditorButtonStyle(isActive: wireBridgesEnabled))
                 }
                 .padding(.vertical, 2)
             }
@@ -229,7 +232,8 @@ struct ContentView: View {
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
 
-                for firstIndex in document.segments.indices {
+                if wireBridgesEnabled {
+                    for firstIndex in document.segments.indices {
                     guard let firstStart = target(with: document.segments[firstIndex].startID), let firstEnd = target(with: document.segments[firstIndex].endID) else { continue }
                     let firstPoints = orthogonalPoints(for: document.segments[firstIndex], from: firstStart, to: firstEnd, avoiding: document.targets.filter { $0.id != firstStart.id && $0.id != firstEnd.id })
                     for secondIndex in document.segments.indices.dropFirst(firstIndex + 1) {
@@ -241,6 +245,7 @@ struct ContentView: View {
                             context.stroke(bridge, with: .color(Color(red: 0.07, green: 0.09, blue: 0.105)), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth + 7, lineCap: .round, lineJoin: .round))
                             context.stroke(bridge, with: .color(bridgeColor), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth, lineCap: .round, lineJoin: .round))
                         }
+                    }
                     }
                 }
             }
