@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct ContentView: View {
     @State private var nodes: [SchematicNode] = [
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedNodeID: UUID?
+    @State private var selectedSegmentID: UUID?
     @State private var connectionStartID: UUID?
     @State private var showInspector = false
 
@@ -40,6 +42,11 @@ struct ContentView: View {
                     .padding(.trailing, 20)
                     .padding(.top, 84)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+            } else if showInspector, let selectedSegment {
+                segmentInspector(for: selectedSegment)
+                    .padding(.trailing, 20)
+                    .padding(.top, 84)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .preferredColorScheme(.dark)
@@ -48,6 +55,11 @@ struct ContentView: View {
     private var selectedNode: SchematicNode? {
         guard let selectedNodeID else { return nil }
         return nodes.first { $0.id == selectedNodeID }
+    }
+
+    private var selectedSegment: SchematicSegment? {
+        guard let selectedSegmentID else { return nil }
+        return segments.first { $0.id == selectedSegmentID }
     }
 
     private var header: some View {
@@ -106,6 +118,9 @@ struct ContentView: View {
             ForEach(NodeKind.palette) { kind in
                 PaletteItem(kind: kind)
                     .draggable(kind.rawValue)
+                    .onDrag {
+                        NSItemProvider(object: kind.rawValue as NSString)
+                    }
                     .onTapGesture {
                         addNode(kind)
                     }
@@ -145,6 +160,19 @@ struct ContentView: View {
             }
             .allowsHitTesting(false)
 
+            ForEach(segments) { segment in
+                if let start = node(with: segment.startID), let end = node(with: segment.endID) {
+                    SegmentHitArea(
+                        path: orthogonalPath(from: start.position, to: end.position),
+                        isSelected: segment.id == selectedSegmentID
+                    ) {
+                        selectedSegmentID = segment.id
+                        selectedNodeID = nil
+                        showInspector = true
+                    }
+                }
+            }
+
             ForEach(nodes) { node in
                 NodeView(node: node, isSelected: node.id == selectedNodeID, isConnectionStart: node.id == connectionStartID)
                     .position(node.position)
@@ -159,6 +187,7 @@ struct ContentView: View {
             guard let rawKind = items.first, let kind = NodeKind(rawValue: rawKind) else { return false }
             let worldPoint = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
             nodes.append(SchematicNode(kind: kind, position: worldPoint))
+            splitSegmentIfNeeded(for: nodes[nodes.count - 1].id)
             return true
         }
         .ignoresSafeArea(edges: .bottom)
@@ -189,6 +218,7 @@ struct ContentView: View {
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: node.id)
                 snapNode(node.id, canvasSize: canvasSize)
+                splitSegmentIfNeeded(for: node.id)
             }
     }
 
@@ -200,6 +230,7 @@ struct ContentView: View {
             self.connectionStartID = nil
         } else {
             selectedNodeID = node.id
+            selectedSegmentID = nil
             connectionStartID = connectionStartID == node.id ? nil : node.id
         }
     }
@@ -213,6 +244,7 @@ struct ContentView: View {
     private func addNode(_ kind: NodeKind) {
         nodes.append(SchematicNode(kind: kind, position: CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)))
         selectedNodeID = nodes.last?.id
+        selectedSegmentID = nil
     }
 
     private func node(with id: UUID) -> SchematicNode? {
@@ -227,6 +259,49 @@ struct ContentView: View {
         path.addLine(to: CGPoint(x: midpointX, y: end.y))
         path.addLine(to: end)
         return path
+    }
+
+    private func splitSegmentIfNeeded(for nodeID: UUID) {
+        guard let nodeIndex = nodes.firstIndex(where: { $0.id == nodeID }) else { return }
+        let nodePosition = nodes[nodeIndex].position
+
+        for (segmentIndex, segment) in segments.enumerated() {
+            guard segment.startID != nodeID, segment.endID != nodeID,
+                  let start = node(with: segment.startID), let end = node(with: segment.endID) else { continue }
+
+            let candidate = nearestPoint(on: orthogonalPoints(from: start.position, to: end.position), to: nodePosition)
+            guard candidate.distance <= 30 else { continue }
+
+            nodes[nodeIndex].position = candidate.point
+            segments.remove(at: segmentIndex)
+            segments.insert(SchematicSegment(startID: segment.startID, endID: nodeID), at: segmentIndex)
+            segments.insert(SchematicSegment(startID: nodeID, endID: segment.endID), at: segmentIndex + 1)
+            selectedSegmentID = nil
+            return
+        }
+    }
+
+    private func orthogonalPoints(from start: CGPoint, to end: CGPoint) -> [CGPoint] {
+        let midpointX = (start.x + end.x) / 2
+        return [start, CGPoint(x: midpointX, y: start.y), CGPoint(x: midpointX, y: end.y), end]
+    }
+
+    private func nearestPoint(on points: [CGPoint], to target: CGPoint) -> (point: CGPoint, distance: CGFloat) {
+        var best = (point: points[0], distance: CGFloat.greatestFiniteMagnitude)
+        for index in 0..<(points.count - 1) {
+            let start = points[index]
+            let end = points[index + 1]
+            let vector = CGPoint(x: end.x - start.x, y: end.y - start.y)
+            let lengthSquared = vector.x * vector.x + vector.y * vector.y
+            let projection = lengthSquared == 0 ? 0 : ((target.x - start.x) * vector.x + (target.y - start.y) * vector.y) / lengthSquared
+            let t = min(max(projection, 0), 1)
+            let point = CGPoint(x: start.x + vector.x * t, y: start.y + vector.y * t)
+            let distance = hypot(point.x - target.x, point.y - target.y)
+            if distance < best.distance {
+                best = (point, distance)
+            }
+        }
+        return best
     }
 
     private func inspector(for node: SchematicNode) -> some View {
@@ -257,6 +332,36 @@ struct ContentView: View {
         }
         .padding(16)
         .frame(width: 220)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func segmentInspector(for segment: SchematicSegment) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("SELECTED SEGMENT")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(1.2)
+                .foregroundStyle(.white.opacity(0.4))
+            HStack {
+                Image(systemName: "line.diagonal")
+                    .foregroundStyle(.cyan)
+                Text("Orthogonal line")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    segments.removeAll { $0.id == segment.id }
+                    selectedSegmentID = nil
+                    showInspector = false
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .foregroundStyle(.red.opacity(0.8))
+            }
+            Text("Drop an icon onto it to split the line")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.45))
+        }
+        .padding(16)
+        .frame(width: 240)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
@@ -329,6 +434,21 @@ private struct PaletteItem: View {
         .padding(.horizontal, 9)
         .frame(height: 38)
         .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+private struct SegmentHitArea: View {
+    let path: Path
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        path.stroke(
+            isSelected ? Color.cyan.opacity(0.18) : Color.white.opacity(0.001),
+            style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)
+        )
+        .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
+        .onTapGesture(perform: onTap)
     }
 }
 
