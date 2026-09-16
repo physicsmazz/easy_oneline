@@ -1993,8 +1993,8 @@ struct ContentView: View {
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
         let startPin = connectionPoint(for: startTarget, slot: startSlot)
         let endPin = connectionPoint(for: endTarget, slot: endSlot)
-        let startEscape = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
-        let endEscape = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
+        let startEscape = preservedStub(from: points[0], to: points[1], minimumLength: 15, fallback: escapePoint(for: startTarget, slot: startSlot, toward: endTarget))
+        let endEscape = preservedStub(from: points[points.count - 1], to: points[points.count - 2], minimumLength: 15, fallback: escapePoint(for: endTarget, slot: endSlot, toward: startTarget))
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0.5)
         }
@@ -2003,6 +2003,15 @@ struct ContentView: View {
         points[points.count - 1] = endPin
         points[points.count - 2] = endEscape
         return orthogonalizedPoints(points, alignmentTolerance: 0.5)
+    }
+
+    private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint) -> CGPoint {
+        let dx = existingPoint.x - pin.x
+        let dy = existingPoint.y - pin.y
+        let length = hypot(dx, dy)
+        guard length > 0.5 else { return fallback }
+        let actualLength = max(minimumLength, length)
+        return CGPoint(x: pin.x + dx / length * actualLength, y: pin.y + dy / length * actualLength)
     }
 
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
