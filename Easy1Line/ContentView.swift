@@ -795,12 +795,14 @@ struct ContentView: View {
     }
 
     private func moveSegment(_ id: UUID, translation: CGSize) {
+        guard selectedSegmentIDs.contains(id) else { return }
         guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
+        guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartOffsets[id] == nil {
             segmentDragStartOffsets[id] = document.segments[index].bendOffset
         }
         let startOffset = segmentDragStartOffsets[id] ?? 0
-        let delta = abs(translation.width) >= abs(translation.height) ? translation.width : translation.height
+        let delta = abs(end.position.x - start.position.x) >= abs(end.position.y - start.position.y) ? translation.width : translation.height
         document.segments[index].bendOffset = startOffset + delta
         selectedSegmentID = id
         selectedSegmentIDs = [id]
