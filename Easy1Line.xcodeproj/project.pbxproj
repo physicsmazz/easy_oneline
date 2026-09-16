@@ -10,9 +10,22 @@
 		2E81DB09305ACB5200ECEB68 /* Easy1Line.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Easy1Line.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2E81DB0C305ACB5200ECEB68 /* Exceptions for "Easy1Line" folder in "Easy1Line" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2E81DB08305ACB5200ECEB68 /* Easy1Line */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		2E81DB0B305ACB5200ECEB68 /* Easy1Line */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2E81DB0C305ACB5200ECEB68 /* Exceptions for "Easy1Line" folder in "Easy1Line" target */,
+			);
 			path = Easy1Line;
 			sourceTree = "<group>";
 		};
@@ -255,8 +268,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Easy1Line;
-				INFOPLIST_KEY_SUPABASE_ANON_KEY = sb_publishable_iaTMBFN570O3NfYjz_pjgw_RaJ28_RV;
-				INFOPLIST_KEY_SUPABASE_URL = "https://ukiksqzsdsjszhhtpqjl.supabase.co";
+				SUPABASE_ANON_KEY = sb_publishable_iaTMBFN570O3NfYjz_pjgw_RaJ28_RV;
+				SUPABASE_URL = "https://ukiksqzsdsjszhhtpqjl.supabase.co";
+				INFOPLIST_FILE = Easy1Line/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -290,8 +304,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Easy1Line;
-				INFOPLIST_KEY_SUPABASE_ANON_KEY = sb_publishable_iaTMBFN570O3NfYjz_pjgw_RV;
-				INFOPLIST_KEY_SUPABASE_URL = "https://ukiksqzsdsjszhhtpqjl.supabase.co";
+				SUPABASE_ANON_KEY = sb_publishable_iaTMBFN570O3NfYjz_pjgw_RV;
+				SUPABASE_URL = "https://ukiksqzsdsjszhhtpqjl.supabase.co";
+				INFOPLIST_FILE = Easy1Line/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
