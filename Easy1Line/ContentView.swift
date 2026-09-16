@@ -131,7 +131,7 @@ struct ContentView: View {
                     .font(.system(size: 12, weight: .medium))
                     .textFieldStyle(.plain)
                     .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 180)
+                    .frame(width: 150)
                 if !cloudStatus.isEmpty {
                     Text(cloudStatus)
                         .font(.system(size: 10, weight: .medium))
@@ -139,8 +139,8 @@ struct ContentView: View {
                 }
             }
 
-            Spacer()
-
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
                 Button("Save locally") { saveCurrent() }
@@ -173,6 +173,10 @@ struct ContentView: View {
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode || canConnectSelection))
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .frame(maxWidth: .infinity)
         }
 
         .padding(.horizontal, 24)
@@ -1950,7 +1954,15 @@ private struct GridBackground: View {
 private struct EditorButtonStyle: ButtonStyle {
     var isActive = false
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.font(.system(size: 13, weight: .semibold)).foregroundStyle(isActive ? .cyan : .white.opacity(0.82)).padding(.horizontal, 13).frame(height: 42).background(isActive ? .cyan.opacity(0.12) : .white.opacity(configuration.isPressed ? 0.14 : 0.07), in: RoundedRectangle(cornerRadius: 8)).overlay { RoundedRectangle(cornerRadius: 8).stroke(isActive ? .cyan.opacity(0.45) : .white.opacity(0.1), lineWidth: 1) }
+        configuration.label
+            .font(.system(size: 13, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(isActive ? .cyan : .white.opacity(0.82))
+            .padding(.horizontal, 13)
+            .frame(height: 42)
+            .background(isActive ? .cyan.opacity(0.12) : .white.opacity(configuration.isPressed ? 0.14 : 0.07), in: RoundedRectangle(cornerRadius: 8))
+            .overlay { RoundedRectangle(cornerRadius: 8).stroke(isActive ? .cyan.opacity(0.45) : .white.opacity(0.1), lineWidth: 1) }
     }
 }
 
