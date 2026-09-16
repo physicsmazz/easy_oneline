@@ -2322,12 +2322,10 @@ private struct TargetView: View {
         Group {
             if target.kind == .junction {
                 ZStack {
-                    if target.locked { Circle().fill(.red.opacity(0.2)).frame(width: 30, height: 30).blur(radius: 3) }
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
                 }
             } else if target.isCompact {
                 ZStack {
-                    if target.locked { Circle().fill(.red.opacity(0.2)).frame(width: 54, height: 54).blur(radius: 5) }
                     Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                     Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                     if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
@@ -2340,7 +2338,6 @@ private struct TargetView: View {
             } else {
                 VStack(spacing: 5) {
                     ZStack {
-                        if target.locked { RoundedRectangle(cornerRadius: 14).fill(.red.opacity(0.2)).frame(width: 76, height: 66).blur(radius: 6) }
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
@@ -2358,6 +2355,20 @@ private struct TargetView: View {
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }.frame(width: 108, height: 76)
+            }
+        }
+        .overlay {
+            if target.locked {
+                if target.kind == .junction {
+                    Circle().stroke(lockedBorderStyle, lineWidth: 3).frame(width: 28, height: 28)
+                } else if target.isCompact {
+                    Circle().stroke(lockedBorderStyle, lineWidth: 3).frame(width: 52, height: 52)
+                } else {
+                    RoundedRectangle(cornerRadius: 13)
+                        .stroke(lockedBorderStyle, lineWidth: 3)
+                        .frame(width: 72, height: 62)
+                        .offset(y: -9)
+                }
             }
         }
         .overlay {
@@ -2452,6 +2463,16 @@ private struct TargetView: View {
             return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
         }
         return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
+    }
+
+    private var lockedBorderStyle: AnyShapeStyle {
+        AnyShapeStyle(
+            LinearGradient(
+                colors: [Color.red, Color(red: 0.55, green: 0.02, blue: 0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
     }
 }
 
