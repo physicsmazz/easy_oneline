@@ -111,6 +111,8 @@ struct ContentView: View {
     @State private var splitCandidateSegmentID: UUID?
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
+    @State private var selectionBoxOffset = CGSize.zero
+    @State private var selectionBoxDragStart: CGSize?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -153,6 +155,16 @@ struct ContentView: View {
             if !inspectorVisible, let lastID = selectedTargetIDs.last, let lastTarget = target(with: lastID), editorSize != .zero {
                 selectionBox
                     .position(selectionBoxPosition(near: lastTarget.position))
+                    .offset(selectionBoxOffset)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 4)
+                            .onChanged { value in
+                                if selectionBoxDragStart == nil { selectionBoxDragStart = selectionBoxOffset }
+                                let start = selectionBoxDragStart ?? selectionBoxOffset
+                                selectionBoxOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                            }
+                            .onEnded { _ in selectionBoxDragStart = nil }
+                    )
                     .zIndex(900)
             }
 
