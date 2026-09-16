@@ -513,6 +513,7 @@ struct ContentView: View {
 
             ZStack {
             Canvas { context, _ in
+                context.translateBy(x: 5000 - size.width / 2, y: 5000 - size.height / 2)
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
@@ -544,6 +545,8 @@ struct ContentView: View {
                 }
             }
             .allowsHitTesting(false)
+            .frame(width: 10000, height: 10000)
+            .position(x: size.width / 2, y: size.height / 2)
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
