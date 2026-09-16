@@ -139,9 +139,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
-            if !inspectorVisible, let lastID = selectedTargetIDs.last, let lastTarget = target(with: lastID), editorSize != .zero {
+            if !inspectorVisible, let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
                 selectionBox
-                    .position(selectionBoxPosition(near: lastTarget.position))
+                    .position(selectionBoxPosition(near: selectionAnchor))
                     .offset(selectionBoxOffset)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 4)
@@ -1529,7 +1529,12 @@ struct ContentView: View {
     }
 
     private var selectionBoxSize: CGSize {
-        let actionCount = selectedTargetIDs.count == 1 ? 4 : 3
+        let actionCount: Int
+        if !selectedTargetIDs.isEmpty {
+            actionCount = selectedTargetIDs.count == 1 ? 4 : 3
+        } else {
+            actionCount = selectedSegmentIDs.count == 1 ? 2 : 1
+        }
         let buttonWidth: CGFloat = 40
         let countWidth: CGFloat = 16
         let spacing = CGFloat(actionCount) * 8
@@ -1539,29 +1544,41 @@ struct ContentView: View {
 
     private var selectionBox: some View {
         HStack(spacing: 8) {
-            Text("\(selectedTargetIDs.count)")
+            Text("\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count)")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
                 .frame(width: 16)
-                .accessibilityLabel("\(selectedTargetIDs.count) selected items")
-            Button { connectSelectedTargets() } label: { Image(systemName: "link") }
-                .buttonStyle(EditorButtonStyle())
-                .disabled(selectedTargetIDs.count < 2)
-                .opacity(selectedTargetIDs.count < 2 ? 0.4 : 1)
-                .help("Connect selected items")
-                .accessibilityLabel("Connect selected items")
+                .accessibilityLabel("\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count) selected")
+            if !selectedTargetIDs.isEmpty {
+                Button { connectSelectedTargets() } label: { Image(systemName: "link") }
+                    .buttonStyle(EditorButtonStyle())
+                    .disabled(selectedTargetIDs.count < 2)
+                    .opacity(selectedTargetIDs.count < 2 ? 0.4 : 1)
+                    .help("Connect selected items")
+                    .accessibilityLabel("Connect selected items")
+            }
+            if selectedTargetIDs.isEmpty, selectedSegmentIDs.count == 1, let segment = selectedSegment {
+                Button { splitWire(segment) } label: { Image(systemName: "scissors") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Split selected wire")
+                    .accessibilityLabel("Split selected wire")
+            }
             Button(role: .destructive) {
-                if selectedTargetIDs.count == 1,
+                if selectedSegmentIDs.isEmpty, selectedTargetIDs.count == 1,
                    let targetID = selectedTargetIDs.first,
                    let target = target(with: targetID) {
                     deleteTargetPreservingWire(target)
-                } else {
+                } else if selectedSegmentIDs.isEmpty {
                     let targetIDs = Set(selectedTargetIDs)
                     document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
                     document.targets.removeAll { targetIDs.contains($0.id) }
+                } else {
+                    document.segments.removeAll { selectedSegmentIDs.contains($0.id) }
                 }
                 selectedTargetIDs.removeAll()
                 selectedConnectionSlots.removeAll()
+                selectedSegmentIDs.removeAll()
+                selectedSegmentID = nil
             } label: { Image(systemName: "trash") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Delete selected items")
@@ -1591,6 +1608,14 @@ struct ContentView: View {
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1) }
+    }
+
+    private var selectionBoxAnchor: CGPoint? {
+        if let targetID = selectedTargetIDs.last, let target = target(with: targetID) { return target.position }
+        guard let segment = selectedSegment,
+              let start = target(with: segment.startID),
+              let end = target(with: segment.endID) else { return nil }
+        return CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)
     }
 
     // Screen-space inverse of canvasDropPoint.
