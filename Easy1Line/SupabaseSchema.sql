@@ -148,8 +148,12 @@ begin
     select (line->>'id')::uuid, p_id, line->>'name', coalesce(line->>'colorHex', '31D7E8'), coalesce(line->>'wireSize', '14 AWG'), coalesce(line->>'material', 'Copper'), coalesce((line->>'displayWidth')::double precision, 3), coalesce(line->>'description', '')
     from jsonb_array_elements(coalesce(p_data->'lineDefinitions', '[]'::jsonb)) as line;
 
+    -- Swift's Codable encodes CGPoint as [x, y]; also accept {"x":..,"y":..}.
     insert into public.drawing_targets (id, drawing_id, kind, name, canvas_x, canvas_y, symbol, image_path, color_hex, max_connections, scale, connection_angle, connection_angles, is_compact)
-    select (target->>'id')::uuid, p_id, target->>'kind', target->>'name', (target->'position'->>'x')::double precision, (target->'position'->>'y')::double precision, target->>'symbol', null, coalesce(target->>'colorHex', '31D7E8'), (target->>'maxConnections')::integer, coalesce((target->>'scale')::double precision, 1), coalesce((target->>'connectionAngle')::double precision, 0), coalesce(target->'connectionAngles', '[]'::jsonb), coalesce((target->>'isCompact')::boolean, false)
+    select (target->>'id')::uuid, p_id, target->>'kind', target->>'name',
+        coalesce(target->'position'->>'x', target->'position'->>0)::double precision,
+        coalesce(target->'position'->>'y', target->'position'->>1)::double precision,
+        target->>'symbol', null, coalesce(target->>'colorHex', '31D7E8'), (target->>'maxConnections')::integer, coalesce((target->>'scale')::double precision, 1), coalesce((target->>'connectionAngle')::double precision, 0), coalesce(target->'connectionAngles', '[]'::jsonb), coalesce((target->>'isCompact')::boolean, false)
     from jsonb_array_elements(coalesce(p_data->'targets', '[]'::jsonb)) as target;
 
     insert into public.drawing_segments (id, drawing_id, start_target_id, end_target_id, start_slot, end_slot, name, color_hex, wire_size, material, display_width, description)
