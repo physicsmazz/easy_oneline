@@ -810,6 +810,17 @@ struct ContentView: View {
         document.targets[index].locked.toggle()
     }
 
+    private var selectedTargetsAreLocked: Bool {
+        !selectedTargetIDs.isEmpty && selectedTargetIDs.allSatisfy { target(with: $0)?.locked == true }
+    }
+
+    private func toggleSelectedTargetLocks() {
+        let shouldLock = !selectedTargetsAreLocked
+        for index in document.targets.indices where selectedTargetIDs.contains(document.targets[index].id) {
+            document.targets[index].locked = shouldLock
+        }
+    }
+
     private func promptForSaveName(toCloud: Bool) {
         saveNameDraft = document.name
         pendingSaveToCloud = toCloud
@@ -1274,34 +1285,53 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private let selectionBoxSize = CGSize(width: 232, height: 128)
+    private var selectionBoxSize: CGSize {
+        let actionCount = selectedTargetIDs.count == 1 ? 4 : 3
+        return CGSize(width: CGFloat(actionCount * 36 + (actionCount - 1) * 8 + 24), height: 60)
+    }
 
     private var selectionBox: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("\(selectedTargetIDs.count) selected")
-                .font(.system(size: 12, weight: .semibold))
+        HStack(spacing: 8) {
+            Text("\(selectedTargetIDs.count)")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
-            HStack(spacing: 8) {
-                Button { connectSelectedTargets() } label: { Label("Connect", systemImage: "link") }
-                    .buttonStyle(EditorButtonStyle())
-                    .disabled(selectedTargetIDs.count < 2)
-                    .opacity(selectedTargetIDs.count < 2 ? 0.4 : 1)
-                Button(role: .destructive) {
-                    let targetIDs = Set(selectedTargetIDs)
-                    document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
-                    document.targets.removeAll { targetIDs.contains($0.id) }
-                    selectedTargetIDs.removeAll()
-                    selectedConnectionSlots.removeAll()
-                } label: { Label("Delete", systemImage: "trash") }
-                    .buttonStyle(EditorButtonStyle())
+                .frame(width: 16)
+                .accessibilityLabel("\(selectedTargetIDs.count) selected items")
+            Button { connectSelectedTargets() } label: { Image(systemName: "link") }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(selectedTargetIDs.count < 2)
+                .opacity(selectedTargetIDs.count < 2 ? 0.4 : 1)
+                .help("Connect selected items")
+                .accessibilityLabel("Connect selected items")
+            Button(role: .destructive) {
+                let targetIDs = Set(selectedTargetIDs)
+                document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
+                document.targets.removeAll { targetIDs.contains($0.id) }
+                selectedTargetIDs.removeAll()
+                selectedConnectionSlots.removeAll()
+            } label: { Image(systemName: "trash") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Delete selected items")
+                .accessibilityLabel("Delete selected items")
+            if selectedTargetIDs.count > 1 {
+                Button { toggleSelectedTargetLocks() } label: {
+                    Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
+                }
+                    .buttonStyle(EditorButtonStyle(isActive: selectedTargetsAreLocked))
+                    .help(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
+                    .accessibilityLabel(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
-                Button { duplicateTarget(target) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                Button { duplicateTarget(target) } label: { Image(systemName: "plus.square.on.square") }
                     .buttonStyle(EditorButtonStyle())
+                    .help("Duplicate selected item")
+                    .accessibilityLabel("Duplicate selected item")
                 Button { toggleTargetLock(target) } label: {
-                    Label(target.locked ? "Unlock" : "Lock", systemImage: target.locked ? "lock.open" : "lock")
+                    Image(systemName: target.locked ? "lock.open" : "lock")
                 }
                     .buttonStyle(EditorButtonStyle(isActive: target.locked))
+                    .help(target.locked ? "Unlock selected item" : "Lock selected item")
+                    .accessibilityLabel(target.locked ? "Unlock selected item" : "Lock selected item")
             }
         }
         .padding(12)
@@ -2347,6 +2377,19 @@ private struct TargetView: View {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
                     connectionPoint(slot: slot)
                 }
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if target.locked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.yellow)
+                    .padding(5)
+                    .background(.black.opacity(0.82), in: Circle())
+                    .overlay { Circle().stroke(.yellow.opacity(0.75), lineWidth: 1) }
+                    .offset(x: -6, y: -6)
+                    .allowsHitTesting(false)
+                    .accessibilityLabel("Locked")
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
