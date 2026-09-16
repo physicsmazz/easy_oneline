@@ -18,7 +18,7 @@ struct ContentView: View {
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @AppStorage("snapToGrid") private var snapToGrid = true
-    @AppStorage("linePadding") private var linePadding = 16.0
+    private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showLineLibrary = false
     @State private var showTargetLibrary = false
@@ -154,17 +154,8 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
             .help("Toggle item information")
             .accessibilityLabel("Toggle item information")
-
-            Menu {
-                Text("Line spacing: \(linePadding, specifier: "%.0f") pt")
-                Slider(value: $linePadding, in: 4...48, step: 4)
-            } label: {
-                Label("Spacing", systemImage: "ruler")
-            }
-            .buttonStyle(EditorButtonStyle(isActive: linePadding > 0))
-            .help("Adjust line spacing")
-            .accessibilityLabel("Adjust line spacing")
         }
+
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
         .background(.ultraThinMaterial)
