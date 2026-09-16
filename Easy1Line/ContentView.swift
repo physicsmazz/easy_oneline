@@ -26,7 +26,6 @@ struct ContentView: View {
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
-    @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
     @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
@@ -41,6 +40,7 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
+    @State private var showInfoPanel = true
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
     @State private var dockDragLocation = CGPoint.zero
@@ -78,7 +78,7 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if (infoSelectorEnabled && hasSelection) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
+            if (hasSelection && showInfoPanel) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
@@ -130,6 +130,7 @@ struct ContentView: View {
         .onAppear { if snapToGrid { snapAllTargets() } }
         .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
         .onChange(of: selectedTargetIDs) { _, ids in
+            if !ids.isEmpty { showInfoPanel = true }
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
                 targetNameDraft = ""
@@ -182,13 +183,13 @@ struct ContentView: View {
             Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: wireBridgesEnabled))
 
-            Button(infoSelectorEnabled ? "Info: On" : "Info: Off") { infoSelectorEnabled.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
-                .accessibilityLabel("Toggle item information")
-
             Button(showConnectionNames ? "Pins: On" : "Pins: Off") { showConnectionNames.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
                 .accessibilityLabel("Show connection names")
+
+            Button("Info") { showInfoPanel.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
+                .accessibilityLabel("Show item information")
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode))
@@ -523,7 +524,6 @@ struct ContentView: View {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         selectedConnectionSlots.removeAll()
-        infoSelectorEnabled = true
     }
 
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
@@ -531,7 +531,6 @@ struct ContentView: View {
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
         selectedSegmentSectionIndex = sectionIndex
-        infoSelectorEnabled = true
     }
 
     private func toggleConnectionMode() {
@@ -2111,9 +2110,9 @@ private struct EditorButtonStyle: ButtonStyle {
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(isActive ? .cyan : .white.opacity(0.82))
             .padding(.horizontal, 13)
-            .frame(height: 42)
-            .background(isActive ? .cyan.opacity(0.12) : .white.opacity(configuration.isPressed ? 0.14 : 0.07), in: RoundedRectangle(cornerRadius: 8))
-            .overlay { RoundedRectangle(cornerRadius: 8).stroke(isActive ? .cyan.opacity(0.45) : .white.opacity(0.1), lineWidth: 1) }
+            .frame(height: 36)
+            .background(isActive ? .cyan.opacity(0.14) : .white.opacity(configuration.isPressed ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 6))
+            .overlay { RoundedRectangle(cornerRadius: 6).stroke(isActive ? .cyan.opacity(0.5) : .white.opacity(0.08), lineWidth: 1) }
     }
 }
 
