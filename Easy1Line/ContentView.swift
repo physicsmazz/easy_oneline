@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var selectedTargetIDs: [UUID] = []
+    @State private var targetsPanelExpanded = true
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
@@ -194,36 +195,55 @@ struct ContentView: View {
 
     private var palette: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TARGETS")
-                .font(.system(size: 10, weight: .bold))
-                .tracking(1.4)
-                .foregroundStyle(.white.opacity(0.45))
-
-            ScrollView {
-                ForEach(TargetKind.palette) { kind in
-                    PaletteItem(kind: kind)
-                        .draggable(kind.rawValue)
-                        .onTapGesture { addTarget(kind) }
+            HStack(spacing: 8) {
+                if targetsPanelExpanded {
+                    Text("TARGETS")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.4)
+                        .foregroundStyle(.white.opacity(0.45))
+                } else {
+                    Image(systemName: "square.grid.2x2")
+                        .foregroundStyle(.cyan)
                 }
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
+                } label: {
+                    Image(systemName: targetsPanelExpanded ? "chevron.left" : "chevron.right")
+                        .frame(width: 24, height: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.7))
+                .accessibilityLabel(targetsPanelExpanded ? "Collapse targets" : "Expand targets")
             }
-            .frame(maxHeight: 460)
 
-            Divider().overlay(.white.opacity(0.12)).padding(.vertical, 4)
+            if targetsPanelExpanded {
+                ScrollView {
+                    ForEach(TargetKind.palette) { kind in
+                        PaletteItem(kind: kind)
+                            .draggable(kind.rawValue)
+                            .onTapGesture { addTarget(kind) }
+                    }
+                }
+                .frame(maxHeight: 460)
 
-            Button { addTarget(.junction) } label: {
-                Label("Add junction", systemImage: "plus.circle")
-                    .font(.system(size: 12, weight: .semibold))
+                Divider().overlay(.white.opacity(0.12)).padding(.vertical, 4)
+
+                Button { addTarget(.junction) } label: {
+                    Label("Add junction", systemImage: "plus.circle")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.cyan)
+
+                Text("Drag to place\nTap to add at center")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.cyan)
-
-            Text("Drag to place\nTap to add at center")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.35))
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
-        .frame(width: 170)
+        .frame(width: targetsPanelExpanded ? 170 : 52)
         .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
     }
