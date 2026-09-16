@@ -567,6 +567,7 @@ struct ContentView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 } else {
                     Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
+                    Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
                 }
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
                 Button { duplicateTarget(target) } label: {
@@ -626,7 +627,7 @@ struct ContentView: View {
 
     private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
         let slotIndex = slot ?? 0
-        let angle = (2 * Double.pi * Double(slotIndex) / Double(max(target.maxConnections, 1))) - Double.pi / 2
+        let angle = (2 * Double.pi * Double(slotIndex) / Double(max(target.maxConnections, 1))) - Double.pi / 2 + target.connectionAngle * Double.pi / 180
         let radius: CGFloat = target.kind == .junction ? 0 : 42
         return CGPoint(x: target.position.x + radius * CGFloat(cos(angle)), y: target.position.y + radius * CGFloat(sin(angle)))
     }
@@ -690,12 +691,13 @@ struct ContentView: View {
         )
     }
 
-    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, color: Binding<Color>) {
+    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
         return (
             Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }),
             Binding(get: { document.targets[index].symbol }, set: { document.targets[index].symbol = $0 }),
             Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }),
+            Binding(get: { document.targets[index].connectionAngle }, set: { document.targets[index].connectionAngle = $0 }),
             Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString })
         )
     }
@@ -772,8 +774,9 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var colorHex: String
     var symbol: String
     var imageData: Data?
+    var connectionAngle: Double
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -782,6 +785,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.colorHex = colorHex
         self.symbol = symbol ?? kind.symbol
         self.imageData = imageData
+        self.connectionAngle = connectionAngle
     }
 
     init(from decoder: Decoder) throws {
@@ -794,6 +798,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        connectionAngle = try container.decodeIfPresent(Double.self, forKey: .connectionAngle) ?? 0
     }
 }
 
@@ -937,8 +942,8 @@ private struct TargetView: View {
     }
 
     private func connectionPointOffset(for slot: Int) -> CGSize {
-        let angle = (2 * Double.pi * Double(slot) / Double(max(target.maxConnections, 1))) - Double.pi / 2
-        let radius: CGFloat = target.kind == .junction ? 14 : 42
+        let angle = (2 * Double.pi * Double(slot) / Double(max(target.maxConnections, 1))) - Double.pi / 2 + target.connectionAngle * Double.pi / 180
+        let radius: CGFloat = target.kind == .junction ? 0 : 42
         return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
     }
 
