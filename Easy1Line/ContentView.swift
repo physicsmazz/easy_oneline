@@ -177,7 +177,7 @@ struct ContentView: View {
                 TargetView(
                     target: target,
                     isSelected: selectedTargetIDs.contains(target.id),
-                    selectionOrder: selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 },
+                    selectionOrder: selectedTargetIDs.count > 2 ? selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 } : nil,
                     isConnectionStart: selectedTargetIDs.contains(target.id),
                     connectedColor: connectedColor(for: target.id)
                 )
