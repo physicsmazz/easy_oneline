@@ -1702,8 +1702,7 @@ struct ContentView: View {
         guard let hit = splitCandidate(at: document.targets[targetIndex].position, excluding: targetID) else { return }
         let segment = hit.segment
         let isJunction = document.targets[targetIndex].kind == .junction
-        // A junction sits exactly on the wire (never grid-snapped off it) so the wire itself doesn't move.
-        let junctionPosition = isJunction ? hit.point : (snapToGrid ? snappedPosition(hit.point) : hit.point)
+        let junctionPosition = hit.point
         // Sit the dropped item on the wire so both halves terminate at its pins.
         document.targets[targetIndex].position = junctionPosition
         let splitRoutes = splitRoutePoints(hit.route, at: junctionPosition)
