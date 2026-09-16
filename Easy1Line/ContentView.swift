@@ -156,7 +156,7 @@ struct ContentView: View {
             Canvas { context, _ in
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(from: start.position, to: end.position)
+                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot))
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
@@ -165,7 +165,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(from: start.position, to: end.position), isSelected: segment.id == selectedSegmentID) {
+                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot)), isSelected: segment.id == selectedSegmentID) {
                         selectedSegmentID = segment.id
                         selectedTargetIDs.removeAll()
                         showInspector = true
@@ -179,7 +179,8 @@ struct ContentView: View {
                     isSelected: selectedTargetIDs.contains(target.id),
                     selectionOrder: selectedTargetIDs.count > 2 ? selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 } : nil,
                     isConnectionStart: selectedTargetIDs.contains(target.id),
-                    connectedColor: connectedColor(for: target.id)
+                    connectedColor: connectedColor(for: target.id),
+                    occupiedSlots: occupiedSlots(for: target.id)
                 )
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
@@ -238,10 +239,10 @@ struct ContentView: View {
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            guard connectionCount(for: startID) < (target(with: startID)?.maxConnections ?? 0), connectionCount(for: endID) < (target(with: endID)?.maxConnections ?? 0) else { continue }
+            guard let startSlot = firstEmptySlot(for: startID), let endSlot = firstEmptySlot(for: endID) else { continue }
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
             let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-            document.segments.append(SchematicSegment(startID: startID, endID: endID, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, displayWidth: line.displayWidth, description: line.description))
+            document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, displayWidth: line.displayWidth, description: line.description))
         }
         selectedTargetIDs.removeAll()
     }
@@ -401,8 +402,28 @@ struct ContentView: View {
 
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
-    private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
+    private func occupiedSlots(for id: UUID) -> Set<Int> {
+        var slots = Set<Int>()
+        for segment in document.segments {
+            if segment.startID == id { slots.insert(segment.startSlot ?? 0) }
+            if segment.endID == id { slots.insert(segment.endSlot ?? 0) }
+        }
+        return slots
+    }
+
+    private func firstEmptySlot(for id: UUID) -> Int? {
+        guard let target = target(with: id) else { return nil }
+        let occupied = occupiedSlots(for: id)
+        return (0..<target.maxConnections).first { !occupied.contains($0) }
+    }
+
+    private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
+        let slotIndex = slot ?? 0
+        let angle = (2 * Double.pi * Double(slotIndex) / Double(max(target.maxConnections, 1))) - Double.pi / 2
+        let radius: CGFloat = target.kind == .junction ? 14 : 42
+        return CGPoint(x: target.position.x + radius * CGFloat(cos(angle)), y: target.position.y + radius * CGFloat(sin(angle)))
+    }
 
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
         guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
@@ -424,9 +445,12 @@ struct ContentView: View {
             let candidate = nearestPoint(on: [start.position, CGPoint(x: (start.position.x + end.position.x) / 2, y: start.position.y), CGPoint(x: (start.position.x + end.position.x) / 2, y: end.position.y), end.position], to: position)
             guard candidate.distance <= 30 else { continue }
             document.targets[targetIndex].position = candidate.point
+            guard document.targets[targetIndex].maxConnections >= 2 else { return }
             document.segments.remove(at: index)
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
+            let startSlot = segment.startSlot ?? 0
+            let endSlot = segment.endSlot ?? 0
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, displayWidth: segment.displayWidth, description: segment.description), at: index + 1)
             return
         }
     }
@@ -520,6 +544,8 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var id = UUID()
     var startID: UUID
     var endID: UUID
+    var startSlot: Int?
+    var endSlot: Int?
     var name: String
     var colorHex: String
     var wireSize: String
@@ -527,8 +553,8 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var description: String
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, name: String, colorHex: String, wireSize: String = "14 AWG", displayWidth: Double = 3, description: String = "") {
-        self.startID = startID; self.endID = endID; self.name = name; self.colorHex = colorHex
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", displayWidth: Double = 3, description: String = "") {
+        self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
         self.wireSize = wireSize; self.displayWidth = displayWidth; self.description = description
     }
 
@@ -537,6 +563,8 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         startID = try container.decode(UUID.self, forKey: .startID)
         endID = try container.decode(UUID.self, forKey: .endID)
+        startSlot = try container.decodeIfPresent(Int.self, forKey: .startSlot)
+        endSlot = try container.decodeIfPresent(Int.self, forKey: .endSlot)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Connection"
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
@@ -582,6 +610,7 @@ private struct TargetView: View {
     let selectionOrder: Int?
     let isConnectionStart: Bool
     let connectedColor: Color
+    let occupiedSlots: Set<Int>
 
     var body: some View {
         Group {
@@ -598,6 +627,15 @@ private struct TargetView: View {
                 }.frame(width: 108, height: 76)
             }
         }
+        .overlay {
+            ForEach(0..<target.maxConnections, id: \.self) { slot in
+                Circle()
+                    .fill(occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+                    .frame(width: 9, height: 9)
+                    .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
+                    .offset(connectionPointOffset(for: slot))
+            }
+        }
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
                 Text("\(selectionOrder)")
@@ -610,6 +648,12 @@ private struct TargetView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private func connectionPointOffset(for slot: Int) -> CGSize {
+        let angle = (2 * Double.pi * Double(slot) / Double(max(target.maxConnections, 1))) - Double.pi / 2
+        let radius: CGFloat = target.kind == .junction ? 14 : 42
+        return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
     }
 }
 
