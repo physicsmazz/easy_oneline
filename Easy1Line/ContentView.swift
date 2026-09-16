@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("infoSelectorEnabled") private var infoSelectorEnabled = false
+    @AppStorage("snapToGrid") private var snapToGrid = true
     @State private var showLibrary = false
     @State private var showLineLibrary = false
     @State private var showTargetLibrary = false
@@ -149,6 +150,14 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
             .help("Toggle item information")
             .accessibilityLabel("Toggle item information")
+
+            Button { snapToGrid.toggle() } label: {
+                Image(systemName: "magnet")
+                    .frame(width: 42, height: 42)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+            .help("Snap items to grid")
+            .accessibilityLabel("Snap items to grid")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -228,7 +237,7 @@ struct ContentView: View {
             Canvas { context, _ in
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), startTarget: start, endTarget: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -240,7 +249,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot), startTarget: start, endTarget: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
+                    SegmentHitArea(path: orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id)) {
                         if selectedSegmentIDs.contains(segment.id) {
                             selectedSegmentIDs.remove(segment.id)
                         } else {
@@ -372,7 +381,8 @@ struct ContentView: View {
     }
 
     private func addTarget(_ kind: TargetKind, at point: CGPoint? = nil) {
-        let position = point ?? CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
+        let rawPosition = point ?? CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
+        let position = snappedPosition(rawPosition)
         document.targets.append(SchematicTarget(kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
@@ -382,7 +392,7 @@ struct ContentView: View {
     }
 
     private func addTarget(from template: TargetDefinition) {
-        let position = CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
+        let position = snappedPosition(CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height))
         document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
@@ -398,7 +408,7 @@ struct ContentView: View {
         var copy = target
         copy.id = UUID()
         copy.name = "\(target.name) copy"
-        copy.position = CGPoint(x: target.position.x + 48, y: target.position.y + 48)
+        copy.position = snappedPosition(CGPoint(x: target.position.x + 48, y: target.position.y + 48))
         document.targets.append(copy)
         selectedTargetIDs = [copy.id]
         selectedSegmentID = nil
@@ -759,11 +769,21 @@ struct ContentView: View {
 
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
         guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
+        document.targets[index].position = snappedPosition(document.targets[index].position)
         document.targets[index].position.x = min(max(document.targets[index].position.x, 180), max(180, canvasSize.width - 80))
         document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
     }
 
-    private func orthogonalPath(from start: CGPoint, to end: CGPoint, startTarget: SchematicTarget, endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
+    private func snappedPosition(_ position: CGPoint) -> CGPoint {
+        guard snapToGrid else { return position }
+        let gridSize: CGFloat = 32
+        return CGPoint(x: (position.x / gridSize).rounded() * gridSize, y: (position.y / gridSize).rounded() * gridSize)
+    }
+
+    private func orthogonalPath(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
+        let laneOffset = parallelLaneOffset(for: segment)
+        let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
+        let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start))
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end))
         let routeObstacles = obstacles + [startTarget, endTarget]
@@ -796,6 +816,23 @@ struct ContentView: View {
         for point in safePath.dropFirst() { path.addLine(to: point) }
         path.addLine(to: end)
         return path
+    }
+
+    private func parallelLaneOffset(for segment: SchematicSegment) -> CGFloat {
+        let parallel = document.segments.filter {
+            ($0.startID == segment.startID && $0.endID == segment.endID) ||
+            ($0.startID == segment.endID && $0.endID == segment.startID)
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+        guard parallel.count > 1, let index = parallel.firstIndex(where: { $0.id == segment.id }) else { return 0 }
+        return (CGFloat(index) - CGFloat(parallel.count - 1) / 2) * 16
+    }
+
+    private func offsetConnectionPoint(for target: SchematicTarget, slot: Int?, toward other: SchematicTarget, by offset: CGFloat) -> CGPoint {
+        let point = connectionPoint(for: target, slot: slot)
+        let dx = other.position.x - target.position.x
+        let dy = other.position.y - target.position.y
+        let length = max(hypot(dx, dy), 1)
+        return CGPoint(x: point.x - dy / length * offset, y: point.y + dx / length * offset)
     }
 
     private func escapePoint(for target: SchematicTarget, slot: Int) -> CGPoint {
