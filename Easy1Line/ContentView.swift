@@ -7,11 +7,10 @@ struct ContentView: View {
     @State private var canvasOffset = CGSize.zero
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
-    @State private var selectedTargetIDs: Set<UUID> = []
+    @State private var selectedTargetIDs: [UUID] = []
     @State private var selectedSegmentID: UUID?
     @State private var showInspector = false
     @State private var showLibrary = false
-    @State private var connectMode = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -74,15 +73,12 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle())
 
             Button {
-                if connectMode {
-                    connectSelectedTargets()
-                } else {
-                    connectMode = true
-                }
+                connectSelectedTargets()
             } label: {
-                Label(connectMode ? "Connect \(selectedTargetIDs.count)" : "Connect", systemImage: "point.3.connected.trianglepath.dotted")
+                Label(selectedTargetIDs.count >= 2 ? "Connect \(selectedTargetIDs.count)" : "Connect", systemImage: "point.3.connected.trianglepath.dotted")
             }
-            .buttonStyle(EditorButtonStyle(isActive: connectMode))
+            .buttonStyle(EditorButtonStyle(isActive: selectedTargetIDs.count >= 2))
+            .disabled(selectedTargetIDs.count < 2)
 
             Button { showInspector.toggle() } label: {
                 Image(systemName: "slider.horizontal.3")
@@ -163,7 +159,8 @@ struct ContentView: View {
                 TargetView(
                     target: target,
                     isSelected: selectedTargetIDs.contains(target.id),
-                    isConnectionStart: connectMode && selectedTargetIDs.contains(target.id),
+                    selectionOrder: selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 },
+                    isConnectionStart: selectedTargetIDs.contains(target.id),
                     connectedColor: connectedColor(for: target.id)
                 )
                 .position(target.position)
@@ -193,7 +190,7 @@ struct ContentView: View {
     private func targetDragGesture(for target: SchematicTarget, canvasSize: CGSize) -> some Gesture {
         DragGesture()
             .onChanged { value in
-                guard !connectMode, let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+                guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
                 guard let start = dragStartPositions[target.id] else { return }
                 document.targets[index].position = CGPoint(x: start.x + value.translation.width, y: start.y + value.translation.height)
@@ -209,17 +206,17 @@ struct ContentView: View {
 
     private func targetTapped(_ target: SchematicTarget) {
         selectedSegmentID = nil
-        if connectMode {
-            if selectedTargetIDs.contains(target.id) { selectedTargetIDs.remove(target.id) } else { selectedTargetIDs.insert(target.id) }
-            return
+        if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
+            selectedTargetIDs.remove(at: selectedIndex)
+        } else {
+            selectedTargetIDs.append(target.id)
         }
-        selectedTargetIDs = [target.id]
         showInspector = true
     }
 
     private func connectSelectedTargets() {
         let ids = Array(selectedTargetIDs)
-        guard ids.count >= 2 else { connectMode = false; return }
+        guard ids.count >= 2 else { return }
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
@@ -227,7 +224,6 @@ struct ContentView: View {
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
             document.segments.append(SchematicSegment(startID: startID, endID: endID, name: "Connection \(document.segments.count + 1)", colorHex: "31D7E8"))
         }
-        connectMode = false
         selectedTargetIDs.removeAll()
     }
 
@@ -442,6 +438,7 @@ private struct PaletteItem: View {
 private struct TargetView: View {
     let target: SchematicTarget
     let isSelected: Bool
+    let selectionOrder: Int?
     let isConnectionStart: Bool
     let connectedColor: Color
 
@@ -458,6 +455,17 @@ private struct TargetView: View {
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }.frame(width: 108, height: 76)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if let selectionOrder {
+                Text("\(selectionOrder)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.black)
+                    .frame(width: 20, height: 20)
+                    .background(.cyan, in: Circle())
+                    .overlay { Circle().stroke(.black.opacity(0.4), lineWidth: 1) }
+                    .offset(x: 4, y: -4)
             }
         }
         .contentShape(Rectangle())
