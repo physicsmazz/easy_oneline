@@ -1264,7 +1264,7 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private let selectionBoxSize = CGSize(width: 232, height: 92)
+    private let selectionBoxSize = CGSize(width: 232, height: 128)
 
     private var selectionBox: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1283,6 +1283,10 @@ struct ContentView: View {
                     selectedTargetIDs.removeAll()
                     selectedConnectionSlots.removeAll()
                 } label: { Label("Delete", systemImage: "trash") }
+                    .buttonStyle(EditorButtonStyle())
+            }
+            if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
+                Button { duplicateTarget(target) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                     .buttonStyle(EditorButtonStyle())
             }
         }
