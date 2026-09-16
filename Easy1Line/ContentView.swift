@@ -366,9 +366,15 @@ struct ContentView: View {
         .rotationEffect(canvasRotation)
         .dropDestination(for: String.self) { items, location in
             guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
-            let point = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
+            let point = canvasDropPoint(location, canvasSize: size)
             addTarget(kind, at: point)
-            if let id = document.targets.last?.id { splitSegmentIfNeeded(for: id) }
+            if let id = document.targets.last?.id {
+                document.targets[document.targets.count - 1].position = point
+                splitSegmentIfNeeded(for: id)
+                if snapToGrid, let index = document.targets.firstIndex(where: { $0.id == id }) {
+                    document.targets[index].position = snappedPosition(document.targets[index].position)
+                }
+            }
             return true
         }
         .ignoresSafeArea(edges: .bottom)
@@ -389,6 +395,17 @@ struct ContentView: View {
                 .padding(.top, 88)
                 .padding(.trailing, 24)
         }
+    }
+
+    private func canvasDropPoint(_ location: CGPoint, canvasSize: CGSize) -> CGPoint {
+        let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        let translated = CGPoint(x: location.x - center.x - canvasOffset.width, y: location.y - center.y - canvasOffset.height)
+        let inverseAngle = -canvasRotation.radians
+        let rotated = CGPoint(
+            x: translated.x * CGFloat(cos(inverseAngle)) - translated.y * CGFloat(sin(inverseAngle)),
+            y: translated.x * CGFloat(sin(inverseAngle)) + translated.y * CGFloat(cos(inverseAngle))
+        )
+        return CGPoint(x: rotated.x / canvasScale + center.x, y: rotated.y / canvasScale + center.y)
     }
 
     private var zoomControls: some View {
@@ -1384,7 +1401,7 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let distance: CGFloat = target.kind == .junction ? 24 : max((target.isCompact ? 24 : 36) * target.scale, CGFloat(linePadding) + 12)
+        let distance: CGFloat = target.kind == .junction ? 32 : max((target.isCompact ? 24 : 36) * target.scale, 48)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
@@ -1446,7 +1463,7 @@ struct ContentView: View {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
             let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
             let candidate = nearestPoint(on: route, to: position)
-            guard candidate.distance <= 36 else { continue }
+            guard candidate.distance <= 52 else { continue }
             guard document.targets[targetIndex].maxConnections >= 2 else { return }
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
