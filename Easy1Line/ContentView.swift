@@ -1004,11 +1004,17 @@ struct ContentView: View {
             let firstOtherID = first.startID == target.id ? first.endID : first.startID
             let secondOtherID = second.startID == target.id ? second.endID : second.startID
             if firstOtherID != secondOtherID {
+                guard let firstOther = self.target(with: firstOtherID), let secondOther = self.target(with: secondOtherID) else { return }
+                let firstOuterSlot = first.startID == target.id ? first.endSlot : first.startSlot
+                let secondOuterSlot = second.startID == target.id ? second.endSlot : second.startSlot
+                let startPoint = connectionPoint(for: firstOther, slot: firstOuterSlot)
+                let endPoint = connectionPoint(for: secondOther, slot: secondOuterSlot)
+                let corner = CGPoint(x: endPoint.x, y: startPoint.y)
                 let replacement = SchematicSegment(
                     startID: firstOtherID,
                     endID: secondOtherID,
-                    startSlot: first.startID == target.id ? first.endSlot : first.startSlot,
-                    endSlot: second.startID == target.id ? second.endSlot : second.startSlot,
+                    startSlot: firstOuterSlot,
+                    endSlot: secondOuterSlot,
                     name: first.name,
                     colorHex: first.colorHex,
                     wireSize: first.wireSize,
@@ -1016,7 +1022,8 @@ struct ContentView: View {
                     covering: first.covering,
                     netName: first.netName,
                     displayWidth: first.displayWidth,
-                    description: first.description
+                    description: first.description,
+                    routePoints: orthogonalizedPoints([startPoint, corner, endPoint])
                 )
                 document.segments.removeAll { $0.id == first.id || $0.id == second.id }
                 document.segments.append(replacement)
