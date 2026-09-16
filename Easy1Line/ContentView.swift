@@ -384,8 +384,8 @@ struct ContentView: View {
         .rotationEffect(canvasRotation)
         .onDrop(of: [UTType.text], isTargeted: $isCanvasDropTargeted) { providers, location in
             guard let provider = providers.first else { return false }
-            provider.loadObject(ofClass: NSString.self) { object, _ in
-                guard let rawKind = object as? String, let kind = TargetKind(rawValue: rawKind) else { return }
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.text.identifier) { data, _ in
+                guard let data, let rawKind = String(data: data, encoding: .utf8), let kind = TargetKind(rawValue: rawKind) else { return }
                 Task { @MainActor in
                     let point = canvasDropPoint(location, canvasSize: size)
                     addTarget(kind, at: point)
