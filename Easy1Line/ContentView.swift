@@ -1961,8 +1961,17 @@ struct ContentView: View {
         guard points.count > 1 else { return points }
         let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
-        points[0] = connectionPoint(for: startTarget, slot: startSlot)
-        points[points.count - 1] = connectionPoint(for: endTarget, slot: endSlot)
+        let startPin = connectionPoint(for: startTarget, slot: startSlot)
+        let endPin = connectionPoint(for: endTarget, slot: endSlot)
+        let startEscape = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
+        let endEscape = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
+        if points.count == 2 {
+            return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0.5)
+        }
+        points[0] = startPin
+        points[1] = startEscape
+        points[points.count - 1] = endPin
+        points[points.count - 2] = endEscape
         return orthogonalizedPoints(points, alignmentTolerance: 0.5)
     }
 
@@ -2118,15 +2127,7 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let halfExtent: CGFloat
-        if target.kind == .junction {
-            halfExtent = 9
-        } else if target.isCompact {
-            halfExtent = 20
-        } else {
-            halfExtent = abs(cos(angle)) > abs(sin(angle)) ? 54 : 38
-        }
-        let distance = halfExtent * target.scale + 14
+        let distance: CGFloat = 25
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
