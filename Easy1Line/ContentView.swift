@@ -302,6 +302,7 @@ struct ContentView: View {
             guard let rawKind = items.first, let kind = TargetKind(rawValue: rawKind) else { return false }
             let point = CGPoint(x: location.x - canvasOffset.width, y: location.y - canvasOffset.height)
             addTarget(kind, at: point)
+            if let id = document.targets.last?.id { splitSegmentIfNeeded(for: id) }
             return true
         }
         .ignoresSafeArea(edges: .bottom)
@@ -332,6 +333,7 @@ struct ContentView: View {
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
                 snapTarget(target.id, canvasSize: canvasSize)
+                splitSegmentIfNeeded(for: target.id)
                 draggingTargetID = nil
             }
     }
@@ -976,7 +978,6 @@ struct ContentView: View {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
             let candidate = nearestPoint(on: [start.position, CGPoint(x: (start.position.x + end.position.x) / 2, y: start.position.y), CGPoint(x: (start.position.x + end.position.x) / 2, y: end.position.y), end.position], to: position)
             guard candidate.distance <= 30 else { continue }
-            document.targets[targetIndex].position = candidate.point
             guard document.targets[targetIndex].maxConnections >= 2 else { return }
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
