@@ -40,6 +40,8 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
+    @State private var targetNameDraft = ""
+    @State private var targetNameEditingID: UUID?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -108,6 +110,15 @@ struct ContentView: View {
         }
         .onAppear { if snapToGrid { snapAllTargets() } }
         .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
+        .onChange(of: selectedTargetIDs) { _, ids in
+            guard let id = ids.last, let target = target(with: id) else {
+                targetNameEditingID = nil
+                targetNameDraft = ""
+                return
+            }
+            targetNameEditingID = id
+            targetNameDraft = target.name
+        }
     }
 
     private var header: some View {
@@ -881,7 +892,13 @@ struct ContentView: View {
                 */
             } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
                 Text("TARGET").inspectorLabel()
-                TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
+                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder)
+                HStack {
+                    Button("Save") { saveTargetName(target) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Cancel") { cancelTargetName(target) }
+                        .buttonStyle(.bordered)
+                }
                 Button {
                     rotateTarget(target, by: 90)
                 } label: {
@@ -1450,6 +1467,17 @@ struct ContentView: View {
                 ($0 + degrees).truncatingRemainder(dividingBy: 360)
             }
         }
+    }
+
+    private func saveTargetName(_ target: SchematicTarget) {
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+        let trimmedName = targetNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        document.targets[index].name = trimmedName.isEmpty ? target.kind.title : trimmedName
+        targetNameDraft = document.targets[index].name
+    }
+
+    private func cancelTargetName(_ target: SchematicTarget) {
+        targetNameDraft = target.name
     }
 
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
