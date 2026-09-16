@@ -750,7 +750,7 @@ struct ContentView: View {
                 updateAttachedRoutes(for: Set(activeTargetDragIDs), translation: groupDelta, onlyFullySelected: activeTargetDragIDs.count > 1)
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
-                splitCandidateSegmentID = occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
+                splitCandidateSegmentID = connectionCount(for: target.id) == 0 && occupiedSlots(for: target.id).count + 2 <= document.targets[index].maxConnections
                     ? splitCandidate(at: document.targets[index].position, excluding: target.id)?.segment.id
                     : nil
             }
@@ -761,7 +761,9 @@ struct ContentView: View {
                 targetDragStartRoutes.removeAll()
                 for targetID in activeTargetDragIDs {
                     snapTarget(targetID, canvasSize: canvasSize)
-                    splitSegmentIfNeeded(for: targetID)
+                    if connectionCount(for: targetID) == 0 {
+                        splitSegmentIfNeeded(for: targetID)
+                    }
                 }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
@@ -2169,6 +2171,7 @@ struct ContentView: View {
 
     private func splitSegmentIfNeeded(for targetID: UUID) {
         guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }) else { return }
+        guard connectionCount(for: targetID) == 0 else { return }
         let freeSlots = document.targets[targetIndex].maxConnections - occupiedSlots(for: targetID).count
         guard freeSlots >= 2 else { return }
         guard let hit = splitCandidate(at: document.targets[targetIndex].position, excluding: targetID) else { return }
