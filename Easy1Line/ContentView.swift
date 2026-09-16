@@ -413,8 +413,8 @@ struct ContentView: View {
     }
 
     private func makePDFData() -> Data {
-        let canvasSize = CGSize(width: 1000, height: 700)
-        let imageRenderer = ImageRenderer(content: pdfCanvas(in: canvasSize))
+        let contentBounds = pdfContentBounds()
+        let imageRenderer = ImageRenderer(content: pdfCanvas(in: contentBounds.size, origin: contentBounds.origin))
         imageRenderer.scale = 2
         guard let image = imageRenderer.uiImage, let cgImage = image.cgImage else { return Data() }
 
@@ -429,37 +429,65 @@ struct ContentView: View {
         }
     }
 
-    private func pdfCanvas(in size: CGSize) -> some View {
+    private func pdfContentBounds() -> CGRect {
+        var bounds = CGRect.null
+        for target in document.targets {
+            let halfWidth: CGFloat = target.kind == .junction ? 9 : target.isCompact ? 20 : 54
+            let halfHeight: CGFloat = target.kind == .junction ? 9 : target.isCompact ? 20 : 38
+            let scale = CGFloat(target.scale)
+            let rect = CGRect(
+                x: target.position.x - halfWidth * scale,
+                y: target.position.y - halfHeight * scale,
+                width: halfWidth * 2 * scale,
+                height: halfHeight * 2 * scale
+            )
+            bounds = bounds.union(rect)
+        }
+        for segment in document.segments {
+            guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
+            let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            for point in points {
+                bounds = bounds.union(CGRect(x: point.x, y: point.y, width: 1, height: 1))
+            }
+        }
+        if bounds.isNull { return CGRect(x: 0, y: 0, width: 1000, height: 700) }
+        return bounds.insetBy(dx: -40, dy: -40)
+    }
+
+    private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
         ZStack {
             GridBackground()
-            Canvas { context, _ in
-                for segment in document.segments {
-                    guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
-                    context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
+            ZStack {
+                Canvas { context, _ in
+                    for segment in document.segments {
+                        guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
+                        let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                        context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
+                    }
+                }
+                .allowsHitTesting(false)
+
+                ForEach(document.targets) { target in
+                    TargetView(
+                        target: target,
+                        isSelected: false,
+                        selectionOrder: nil,
+                        isConnectionStart: false,
+                        connectedColor: connectedColor(for: target.id),
+                        connectedColors: connectedColors(for: target.id),
+                        occupiedSlots: occupiedSlots(for: target.id),
+                        selectedSlots: [],
+                        connectionNames: target.connectionNames,
+                        showConnectionNames: showConnectionNames,
+                        onSelectConnectionPoint: { _ in },
+                        editingConnectionPoints: false,
+                        onMoveConnectionPoint: { _, _ in },
+                        onEndConnectionPointMove: { _ in }
+                    )
+                    .position(target.position)
                 }
             }
-            .allowsHitTesting(false)
-
-            ForEach(document.targets) { target in
-                TargetView(
-                    target: target,
-                    isSelected: false,
-                    selectionOrder: nil,
-                    isConnectionStart: false,
-                    connectedColor: connectedColor(for: target.id),
-                    connectedColors: connectedColors(for: target.id),
-                    occupiedSlots: occupiedSlots(for: target.id),
-                    selectedSlots: [],
-                    connectionNames: target.connectionNames,
-                    showConnectionNames: showConnectionNames,
-                    onSelectConnectionPoint: { _ in },
-                    editingConnectionPoints: false,
-                    onMoveConnectionPoint: { _, _ in },
-                    onEndConnectionPointMove: { _ in }
-                )
-                .position(target.position)
-            }
+            .offset(x: -origin.x, y: -origin.y)
         }
         .frame(width: size.width, height: size.height)
         .clipped()
