@@ -254,6 +254,16 @@ struct ContentView: View {
         showInspector = true
     }
 
+    private func duplicateTarget(_ target: SchematicTarget) {
+        var copy = target
+        copy.id = UUID()
+        copy.name = "\(target.name) copy"
+        copy.position = CGPoint(x: target.position.x + 48, y: target.position.y + 48)
+        document.targets.append(copy)
+        selectedTargetIDs = [copy.id]
+        selectedSegmentID = nil
+    }
+
     private func saveCurrent() {
         if let index = savedDocuments.firstIndex(where: { $0.id == document.id }) { savedDocuments[index] = document } else { savedDocuments.append(document) }
         SchematicDocument.saveAll(savedDocuments)
@@ -362,6 +372,9 @@ struct ContentView: View {
                 TextField("Target name", text: targetBinding(target).name).textFieldStyle(.roundedBorder)
                 Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
+                Button { duplicateTarget(target) } label: {
+                    Label("Duplicate target", systemImage: "plus.square.on.square")
+                }
                 Button(role: .destructive) {
                     document.segments.removeAll { $0.startID == target.id || $0.endID == target.id }
                     document.targets.removeAll { $0.id == target.id }
