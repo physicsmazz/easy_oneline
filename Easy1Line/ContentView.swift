@@ -218,8 +218,17 @@ struct ContentView: View {
                 ScrollView {
                     ForEach(TargetKind.palette) { kind in
                         PaletteItem(kind: kind)
-                            .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
+                            .contentShape(Rectangle())
                             .onTapGesture { addTarget(kind) }
+                            .overlay(alignment: .trailing) {
+                                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.45))
+                                    .frame(width: 36, height: 36)
+                                    .contentShape(Rectangle())
+                                    .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
+                                    .accessibilityLabel("Drag \(kind.title) to canvas")
+                            }
                     }
                 }
                 .frame(maxHeight: 460)
