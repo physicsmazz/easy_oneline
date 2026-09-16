@@ -63,6 +63,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("showConnectionNames") private var showConnectionNames = true
+    @AppStorage("showWireLengths") private var showWireLengths = true
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     private let linePadding: CGFloat = 16
@@ -296,6 +297,10 @@ struct ContentView: View {
             Button(showConnectionNames ? "Pins: On" : "Pins: Off") { showConnectionNames.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
                 .accessibilityLabel("Show connection names")
+
+            Button(showWireLengths ? "Lengths: On" : "Lengths: Off") { showWireLengths.toggle() }
+                .buttonStyle(EditorButtonStyle(isActive: showWireLengths))
+                .accessibilityLabel("Show wire segment lengths")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
@@ -630,6 +635,25 @@ struct ContentView: View {
                 .onTapGesture { targetTapped(target) }
                 .onTapGesture(count: 2) {
                     openTargetInfo(target)
+                }
+            }
+
+            if showWireLengths {
+                ForEach(document.segments) { segment in
+                    if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+                        let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                        ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
+                            let first = points[sectionIndex]
+                            let second = points[sectionIndex + 1]
+                            Text("\(Int(hypot(second.x - first.x, second.y - first.y).rounded())) px")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.yellow.opacity(0.9))
+                                .padding(.horizontal, 3)
+                                .background(.black.opacity(0.65), in: Capsule())
+                                .position(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
             }
 
