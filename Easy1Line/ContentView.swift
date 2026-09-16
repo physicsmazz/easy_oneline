@@ -267,24 +267,25 @@ struct ContentView: View {
                         connectionDragStartAngles.removeValue(forKey: connectionDragKey(target.id, slot: slot))
                     }
                 )
-                .overlay(alignment: .topTrailing) {
-                    if selectedTargetIDs.count >= 2, selectedTargetIDs.last == target.id {
-                        Button {
-                            connectSelection()
-                        } label: {
-                            Label("Connect", systemImage: "point.3.connected.trianglepath.dotted")
-                                .font(.system(size: 11, weight: .semibold))
-                                .padding(.horizontal, 9)
-                                .frame(height: 30)
-                        }
-                        .buttonStyle(EditorButtonStyle(isActive: true))
-                        .offset(x: 12, y: -38)
-                        .zIndex(200)
-                    }
-                }
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
                 .onTapGesture { targetTapped(target) }
+            }
+
+            if selectedTargetIDs.count >= 2,
+               let lastSelectedID = selectedTargetIDs.last,
+               let lastSelectedTarget = target(with: lastSelectedID) {
+                Button {
+                    connectSelection()
+                } label: {
+                    Text("Connect")
+                        .font(.system(size: 11, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
+                }
+                .buttonStyle(EditorButtonStyle(isActive: true))
+                .position(x: lastSelectedTarget.position.x + 86, y: lastSelectedTarget.position.y - 52)
+                .zIndex(1000)
             }
         }
         .offset(canvasOffset)
@@ -858,6 +859,11 @@ struct ContentView: View {
         return (offset / gridSize).rounded() * gridSize
     }
 
+    private func snappedCoordinate(_ coordinate: CGFloat) -> CGFloat {
+        let gridSize: CGFloat = 32
+        return (coordinate / gridSize).rounded() * gridSize
+    }
+
     private func orthogonalPath(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
@@ -893,9 +899,19 @@ struct ContentView: View {
         if abs(adjustedPath[1].x - adjustedPath[2].x) < 0.5 {
             adjustedPath[1].x += segment.bendOffset
             adjustedPath[2].x += segment.bendOffset
+            if snapToGrid {
+                let snappedX = snappedCoordinate(adjustedPath[1].x)
+                adjustedPath[1].x = snappedX
+                adjustedPath[2].x = snappedX
+            }
         } else {
             adjustedPath[1].y += segment.bendOffset
             adjustedPath[2].y += segment.bendOffset
+            if snapToGrid {
+                let snappedY = snappedCoordinate(adjustedPath[1].y)
+                adjustedPath[1].y = snappedY
+                adjustedPath[2].y = snappedY
+            }
         }
         var path = Path()
         path.move(to: start)
