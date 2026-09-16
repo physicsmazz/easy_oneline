@@ -501,6 +501,7 @@ struct ContentView: View {
                 dragStartPositions.removeValue(forKey: target.id)
                 targetDragStartRoutes.removeAll()
                 snapTarget(target.id, canvasSize: canvasSize)
+                splitSegmentIfNeeded(for: target.id)
                 draggingTargetID = nil
             }
     }
@@ -1079,19 +1080,17 @@ struct ContentView: View {
             } else {
                 Text("MULTI-SELECT").inspectorLabel()
                 Text("\(selectedTargetIDs.count) targets selected").font(.headline)
-                HStack {
-                    Button("Connect selected") { connectSelectedTargets() }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(selectedTargetIDs.count < 2)
-                    Button("Delete selected", role: .destructive) {
-                        let targetIDs = Set(selectedTargetIDs)
-                        document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
-                        document.targets.removeAll { targetIDs.contains($0.id) }
-                        selectedTargetIDs.removeAll()
-                        selectedConnectionSlots.removeAll()
-                    }
-                    .buttonStyle(.bordered)
+                Button { connectSelectedTargets() } label: {
+                    Label("Connect selected", systemImage: "link")
                 }
+                .disabled(selectedTargetIDs.count < 2)
+                Button(role: .destructive) {
+                    let targetIDs = Set(selectedTargetIDs)
+                    document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
+                    document.targets.removeAll { targetIDs.contains($0.id) }
+                    selectedTargetIDs.removeAll()
+                    selectedConnectionSlots.removeAll()
+                } label: { Label("Delete selected", systemImage: "trash") }
             }
         }
         .padding(16)
@@ -1530,14 +1529,17 @@ struct ContentView: View {
                 : orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
             let candidate = nearestPoint(on: route, to: position)
             guard candidate.distance <= 52 else { continue }
-            guard document.targets[targetIndex].maxConnections >= 2 else { return }
+            let freeSlots = document.targets[targetIndex].maxConnections - occupiedSlots(for: targetID).count
+            guard freeSlots >= 2 else { return }
             let junctionPosition = snapToGrid ? snappedPosition(candidate.point) : candidate.point
             let splitRoutes = splitRoutePoints(route, at: junctionPosition)
             document.segments.remove(at: index)
             let startSlot = segment.startSlot ?? 0
             let endSlot = segment.endSlot ?? 0
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: 1, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
+            let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
+            let secondSlot = closestAvailableSlot(for: targetID, to: segment.endID) ?? (firstSlot == 0 ? 1 : 0)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
             return
         }
     }
