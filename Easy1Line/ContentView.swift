@@ -104,45 +104,35 @@ struct ContentView: View {
                 }
             }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    Button { snapToGrid.toggle() } label: {
-                        Text(snapToGrid ? "Snap: On" : "Snap: Off")
-                    }
-                    .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
+            Spacer()
 
-                    Button { canvasScale = max(0.5, canvasScale - 0.25) } label: { Text("−") }
-                        .buttonStyle(EditorButtonStyle())
-                    Text("\(Int(canvasScale * 100))%")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .frame(width: 46)
-                        .foregroundStyle(.white.opacity(0.75))
-                    Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
-                        .buttonStyle(EditorButtonStyle())
-
-                    Button { showLibrary.toggle() } label: { Text("Drawings") }
-                        .buttonStyle(EditorButtonStyle(isActive: showLibrary))
-                    Button { showLineLibrary.toggle() } label: { Text("Lines") }
-                        .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
-                    Button { showTargetLibrary.toggle() } label: { Text("Targets") }
-                        .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
-                    Button { saveCurrent() } label: { Text("Save") }
-                        .buttonStyle(EditorButtonStyle())
-                    Button { Task { await saveToCloud() } } label: { Text("Cloud save") }
-                        .buttonStyle(EditorButtonStyle())
-                    Button { Task { await loadFromCloud() } } label: { Text("Cloud load") }
-                        .buttonStyle(EditorButtonStyle())
-                    Button { connectSelection() } label: { Text("Connect") }
-                        .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
-                        .disabled(!canConnectSelection)
-                    Button { infoSelectorEnabled.toggle() } label: { Text("Info") }
-                        .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
-                    Button { wireBridgesEnabled.toggle() } label: { Text(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") }
-                        .buttonStyle(EditorButtonStyle(isActive: wireBridgesEnabled))
-                }
-                .padding(.vertical, 2)
+            Menu("View") {
+                Button(snapToGrid ? "Snap to grid: On" : "Snap to grid: Off") { snapToGrid.toggle() }
+                Button("Zoom out") { canvasScale = max(0.5, canvasScale - 0.25) }
+                Button("Zoom in") { canvasScale = min(2.5, canvasScale + 0.25) }
+                Text("Zoom: \(Int(canvasScale * 100))%")
+                Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
+                Button(infoSelectorEnabled ? "Info panel: On" : "Info panel: Off") { infoSelectorEnabled.toggle() }
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(EditorButtonStyle())
+
+            Menu("File") {
+                Button("Drawings") { showLibrary.toggle() }
+                Button("Save locally") { saveCurrent() }
+                Button("Save to cloud") { Task { await saveToCloud() } }
+                Button("Load from cloud") { Task { await loadFromCloud() } }
+            }
+            .buttonStyle(EditorButtonStyle())
+
+            Menu("Libraries") {
+                Button("Lines") { showLineLibrary.toggle() }
+                Button("Targets") { showTargetLibrary.toggle() }
+            }
+            .buttonStyle(EditorButtonStyle())
+
+            Button("Connect") { connectSelection() }
+                .buttonStyle(EditorButtonStyle(isActive: canConnectSelection))
+                .disabled(!canConnectSelection)
         }
 
         .padding(.horizontal, 24)
