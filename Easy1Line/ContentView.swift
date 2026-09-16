@@ -215,7 +215,6 @@ struct ContentView: View {
                         }
                         selectedSegmentID = selectedSegmentIDs.count == 1 ? selectedSegmentIDs.first : nil
                         selectedTargetIDs.removeAll()
-                        showInspector = true
                     }
                 }
             }
@@ -295,7 +294,6 @@ struct ContentView: View {
         } else {
             selectedTargetIDs.append(target.id)
         }
-        showInspector = true
     }
 
     private func selectConnectionPoint(targetID: UUID, slot: Int) {
@@ -305,7 +303,6 @@ struct ContentView: View {
             selectedTargetIDs.append(targetID)
         }
         selectedConnectionSlots[targetID] = slot
-        showInspector = true
     }
 
     private func connectSelectedTargets() {
@@ -332,7 +329,6 @@ struct ContentView: View {
         selectedSegmentIDs.removeAll()
         editingConnectionPoints = false
         selectedSegmentIDs.removeAll()
-        showInspector = true
     }
 
     private func addTarget(from template: TargetDefinition) {
@@ -342,7 +338,6 @@ struct ContentView: View {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         showTargetLibrary = false
-        showInspector = true
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
@@ -499,7 +494,6 @@ struct ContentView: View {
                     selectedTargetIDs = [target.id]
                     selectedSegmentID = nil
                     selectedSegmentIDs.removeAll()
-                    showInspector = true
                     showTargetLibrary = false
                 } label: {
                     HStack(spacing: 8) {
