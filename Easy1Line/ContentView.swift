@@ -5,11 +5,11 @@ import UIKit
 import UniformTypeIdentifiers
 
 private extension UTType {
-    static let eon = UTType(exportedAs: "com.mazzwebdesign.easyoneline", conformingTo: .data)
+    static let line = UTType(exportedAs: "com.mazzwebdesign.easy1line.line", conformingTo: .data)
 }
 
 private struct SchematicFileDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.eon] }
+    static var readableContentTypes: [UTType] { [.line] }
 
     let document: SchematicDocument
 
@@ -183,12 +183,12 @@ struct ContentView: View {
         .fileExporter(
             isPresented: $showFileExporter,
             document: SchematicFileDocument(document: document),
-            contentType: .eon,
+            contentType: .line,
             defaultFilename: document.name
         ) { result in
             if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
         }
-        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.eon]) { result in
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
                 let url = try result.get()
                 document = try SchematicFileDocument.load(from: url).document
@@ -231,8 +231,8 @@ struct ContentView: View {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
-                Button("Export .eon") { showFileExporter = true }
-                Button("Import .eon") { showFileImporter = true }
+                Button("Export .line") { showFileExporter = true }
+                Button("Import .line") { showFileImporter = true }
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadFromCloud() } }
                 Button("View netlist") { showNetlist.toggle() }
