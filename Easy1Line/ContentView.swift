@@ -115,7 +115,7 @@ struct ContentView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("EASY / ONE LINE")
+                Text("Easy1Line")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .tracking(1.5)
                 TextField("Schematic name", text: $document.name)
@@ -177,13 +177,15 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle(isActive: selectedTargetIDs.count >= 2))
             .disabled(selectedTargetIDs.count < 2)
             .help("Connect selected targets")
+            .accessibilityLabel("Connect selected targets")
 
             Button { infoSelectorEnabled.toggle() } label: {
-                Image(systemName: "slider.horizontal.3")
+                Image(systemName: "info.circle")
                     .frame(width: 42, height: 42)
             }
             .buttonStyle(EditorButtonStyle(isActive: infoSelectorEnabled))
-            .accessibilityLabel("Toggle inspector")
+            .help("Toggle item information")
+            .accessibilityLabel("Toggle item information")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
