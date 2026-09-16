@@ -532,6 +532,7 @@ struct ContentView: View {
             Button { canvasScale = max(0.5, canvasScale - 0.25) } label: { Text("−") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Zoom out")
+                .disabled(canvasLocked)
             Text("\(Int(canvasScale * 100))%")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.8))
@@ -539,12 +540,14 @@ struct ContentView: View {
             Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Zoom in")
+                .disabled(canvasLocked)
             Button {
                 canvasScale = 1
                 canvasRotation = .zero
             } label: { Text("Reset") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
+                .disabled(canvasLocked)
             Button { canvasLocked.toggle() } label: {
                 Image(systemName: canvasLocked ? "lock.fill" : "lock.open")
             }
@@ -559,6 +562,7 @@ struct ContentView: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
+                guard !canvasLocked else { return }
                 canvasOffset = CGSize(width: panStart.width + value.translation.width, height: panStart.height + value.translation.height)
             }
             .onEnded { _ in panStart = canvasOffset }
