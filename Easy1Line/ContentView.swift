@@ -1528,9 +1528,15 @@ struct ContentView: View {
                 .help("Connect selected items")
                 .accessibilityLabel("Connect selected items")
             Button(role: .destructive) {
-                let targetIDs = Set(selectedTargetIDs)
-                document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
-                document.targets.removeAll { targetIDs.contains($0.id) }
+                if selectedTargetIDs.count == 1,
+                   let targetID = selectedTargetIDs.first,
+                   let target = target(with: targetID) {
+                    deleteTargetPreservingWire(target)
+                } else {
+                    let targetIDs = Set(selectedTargetIDs)
+                    document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
+                    document.targets.removeAll { targetIDs.contains($0.id) }
+                }
                 selectedTargetIDs.removeAll()
                 selectedConnectionSlots.removeAll()
             } label: { Image(systemName: "trash") }
