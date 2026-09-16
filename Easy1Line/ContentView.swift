@@ -12,6 +12,8 @@ struct ContentView: View {
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var draggingTargetID: UUID?
     @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
+    @State private var selectedSegmentSectionIndex: Int?
+    @State private var segmentDragStartPoints: [UUID: [CGPoint]] = [:]
     @State private var selectedTargetIDs: [UUID] = []
     @AppStorage("targetsPanelExpanded") private var targetsPanelExpanded = true
     @State private var selectedSegmentID: UUID?
@@ -230,18 +232,22 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    SegmentHitArea(path: orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id }), isSelected: selectedSegmentIDs.contains(segment.id), onDrag: { translation in
-                        moveSegment(segment.id, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
-                    }, onEndDrag: {
-                        segmentDragStartOffsets.removeValue(forKey: segment.id)
-                    }) {
-                        if selectedSegmentIDs.contains(segment.id) {
-                            selectedSegmentIDs.remove(segment.id)
-                        } else {
-                            selectedSegmentIDs.insert(segment.id)
+                    let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
+                        SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), onDrag: { translation in
+                            moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                        }, onEndDrag: {
+                            segmentDragStartPoints.removeValue(forKey: segment.id)
+                        }) {
+                            if selectedSegmentID == segment.id {
+                                selectedSegmentSectionIndex = sectionIndex
+                            } else {
+                                selectedSegmentIDs = [segment.id]
+                                selectedSegmentID = segment.id
+                                selectedSegmentSectionIndex = nil
+                            }
+                            selectedTargetIDs.removeAll()
                         }
-                        selectedSegmentID = selectedSegmentIDs.count == 1 ? selectedSegmentIDs.first : nil
-                        if selectedTargetIDs.isEmpty { selectedTargetIDs.removeAll() }
                     }
                 }
             }
@@ -318,6 +324,9 @@ struct ContentView: View {
                 guard let start = dragStartPositions[target.id] else { return }
                 let proposedPosition = CGPoint(x: start.x + value.translation.width / canvasScale, y: start.y + value.translation.height / canvasScale)
                 document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
+                for segmentIndex in document.segments.indices where document.segments[segmentIndex].startID == target.id || document.segments[segmentIndex].endID == target.id {
+                    document.segments[segmentIndex].routePoints.removeAll()
+                }
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
@@ -832,19 +841,27 @@ struct ContentView: View {
         }
     }
 
-    private func moveSegment(_ id: UUID, translation: CGSize) {
-        guard selectedSegmentIDs.contains(id) else { return }
+    private func moveSegmentSection(_ id: UUID, sectionIndex: Int, translation: CGSize) {
+        guard selectedSegmentIDs.contains(id), selectedSegmentID == id, selectedSegmentSectionIndex == sectionIndex else { return }
         guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
-        if segmentDragStartOffsets[id] == nil {
-            segmentDragStartOffsets[id] = document.segments[index].bendOffset
+        if segmentDragStartPoints[id] == nil {
+            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
         }
-        let startOffset = segmentDragStartOffsets[id] ?? 0
-        let delta = abs(end.position.x - start.position.x) >= abs(end.position.y - start.position.y) ? translation.width : translation.height
-        let proposedOffset = startOffset + delta
-        document.segments[index].bendOffset = snapToGrid ? snappedOffset(proposedOffset) : proposedOffset
-        selectedSegmentID = id
-        selectedSegmentIDs = [id]
+        guard var points = segmentDragStartPoints[id], sectionIndex + 1 < points.count else { return }
+        guard sectionIndex > 0, sectionIndex + 1 < points.count - 1 else { return }
+        let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
+        let delta = isVertical ? translation.width : translation.height
+        let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
+        let movedCoordinate = snapToGrid ? snappedCoordinate(base + delta) : base + delta
+        if isVertical {
+            points[sectionIndex].x = movedCoordinate
+            points[sectionIndex + 1].x = movedCoordinate
+        } else {
+            points[sectionIndex].y = movedCoordinate
+            points[sectionIndex + 1].y = movedCoordinate
+        }
+        document.segments[index].routePoints = points
         selectedTargetIDs.removeAll()
     }
 
@@ -865,6 +882,17 @@ struct ContentView: View {
     }
 
     private func orthogonalPath(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
+        let points = orthogonalPoints(for: segment, from: startTarget, to: endTarget, avoiding: obstacles)
+        var path = Path()
+        path.move(to: points[0])
+        for point in points.dropFirst() { path.addLine(to: point) }
+        return path
+    }
+
+    private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
+        if segment.routePoints.count > 1 {
+            return segment.routePoints
+        }
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
@@ -913,10 +941,14 @@ struct ContentView: View {
                 adjustedPath[2].y = snappedY
             }
         }
-        var path = Path()
         let routePoints = simplifyOrthogonalPoints([start, escapeStart] + adjustedPath.dropFirst() + [end])
-        path.move(to: routePoints[0])
-        for point in routePoints.dropFirst() { path.addLine(to: point) }
+        return routePoints
+    }
+
+    private func sectionPath(from start: CGPoint, to end: CGPoint) -> Path {
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
         return path
     }
 
@@ -1232,11 +1264,12 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var displayWidth: Double
     var description: String
     var bendOffset: CGFloat
+    var routePoints: [CGPoint]
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset
+        self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
     }
 
     init(from decoder: Decoder) throws {
@@ -1253,6 +1286,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         bendOffset = try container.decodeIfPresent(CGFloat.self, forKey: .bendOffset) ?? 0
+        routePoints = try container.decodeIfPresent([CGPoint].self, forKey: .routePoints) ?? []
     }
 }
 
