@@ -617,7 +617,7 @@ struct ContentView: View {
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             guard !canvasLocked else { return }
             if gestureStartScale == nil { gestureStartScale = canvasScale }
-            canvasScale = min(2.5, max(0.5, (gestureStartScale ?? 1) * value))
+            canvasScale = min(4, max(0.25, (gestureStartScale ?? 1) * value))
         }.onEnded { _ in
             gestureStartScale = nil
         })
@@ -659,7 +659,7 @@ struct ContentView: View {
 
     private var zoomControls: some View {
         HStack(spacing: 6) {
-            Button { canvasScale = max(0.5, canvasScale - 0.25) } label: { Text("−") }
+                Button { canvasScale = max(0.25, canvasScale - 0.25) } label: { Text("−") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Zoom out")
                 .disabled(canvasLocked)
@@ -667,7 +667,7 @@ struct ContentView: View {
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.8))
                 .frame(minWidth: 44)
-            Button { canvasScale = min(2.5, canvasScale + 0.25) } label: { Text("+") }
+                Button { canvasScale = min(4, canvasScale + 0.25) } label: { Text("+") }
                 .buttonStyle(EditorButtonStyle())
                 .help("Zoom in")
                 .disabled(canvasLocked)
@@ -699,7 +699,7 @@ struct ContentView: View {
     }
 
     private func targetDragGesture(for target: SchematicTarget, canvasSize: CGSize) -> some Gesture {
-        DragGesture()
+        DragGesture(coordinateSpace: .global)
             .onChanged { value in
                 guard !editingConnectionPoints, !target.locked else { return }
                 draggingTargetID = target.id
@@ -709,7 +709,8 @@ struct ContentView: View {
                     captureAttachedRoutes(for: target.id)
                 }
                 guard let start = dragStartPositions[target.id] else { return }
-                let proposedPosition = CGPoint(x: start.x + value.translation.width / canvasScale, y: start.y + value.translation.height / canvasScale)
+                let delta = canvasDelta(for: value.translation)
+                let proposedPosition = CGPoint(x: start.x + delta.width, y: start.y + delta.height)
                 document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
                 updateAttachedRoutes(for: target.id, translation: CGSize(width: document.targets[index].position.x - start.x, height: document.targets[index].position.y - start.y))
                 selectedTargetIDs = [target.id]
@@ -744,6 +745,15 @@ struct ContentView: View {
         canvasOffset.width += offsetDelta.width
         canvasOffset.height += offsetDelta.height
         panStart = canvasOffset
+    }
+
+    private func canvasDelta(for translation: CGSize) -> CGSize {
+        let angle = -canvasRotation.radians
+        let rotated = CGSize(
+            width: translation.width * CGFloat(cos(angle)) - translation.height * CGFloat(sin(angle)),
+            height: translation.width * CGFloat(sin(angle)) + translation.height * CGFloat(cos(angle))
+        )
+        return CGSize(width: rotated.width / canvasScale, height: rotated.height / canvasScale)
     }
 
     private func targetTapped(_ target: SchematicTarget) {
