@@ -1534,7 +1534,7 @@ struct ContentView: View {
     private var selectionBoxSize: CGSize {
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? 4 : 3
+            actionCount = selectedTargetIDs.count == 1 ? 6 : 3
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 2 : 1
         }
@@ -1595,6 +1595,14 @@ struct ContentView: View {
                     .accessibilityLabel(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
+                Button { rotateTarget(target, by: -90) } label: { Image(systemName: "rotate.left") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Rotate selected item counter-clockwise")
+                    .accessibilityLabel("Rotate selected item counter-clockwise")
+                Button { rotateTarget(target, by: 90) } label: { Image(systemName: "rotate.right") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Rotate selected item clockwise")
+                    .accessibilityLabel("Rotate selected item clockwise")
                 Button { duplicateTarget(target) } label: { Image(systemName: "plus.square.on.square") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Duplicate selected item")
