@@ -1538,6 +1538,9 @@ struct ContentView: View {
                 ($0 + degrees).truncatingRemainder(dividingBy: 360)
             }
         }
+        for segmentIndex in document.segments.indices where document.segments[segmentIndex].startID == target.id || document.segments[segmentIndex].endID == target.id {
+            document.segments[segmentIndex].routePoints.removeAll()
+        }
     }
 
     private func saveTargetName(_ target: SchematicTarget) {
