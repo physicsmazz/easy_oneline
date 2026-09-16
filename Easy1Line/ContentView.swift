@@ -1158,6 +1158,7 @@ private struct TargetView: View {
                     Circle().stroke(.cyan, lineWidth: 3).frame(width: 30, height: 30).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else {
                     RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 66, height: 56).shadow(color: .cyan.opacity(0.8), radius: 8)
+                        .offset(y: -14)
                 }
             }
         }
