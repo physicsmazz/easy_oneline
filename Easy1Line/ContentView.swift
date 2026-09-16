@@ -41,7 +41,8 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
-    @State private var isCanvasDropTargeted = false
+    @State private var editorSize = CGSize.zero
+    @State private var dockDragKind: TargetKind?
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
 
@@ -227,7 +228,14 @@ struct ContentView: View {
                                     .foregroundStyle(.white.opacity(0.45))
                                     .frame(width: 36, height: 36)
                                     .contentShape(Rectangle())
-                                    .onDrag { NSItemProvider(object: kind.rawValue as NSString) }
+                                    .gesture(
+                                        DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                                            .onChanged { _ in dockDragKind = kind }
+                                            .onEnded { value in
+                                                dockDragKind = nil
+                                                placeDockItem(kind, at: value.location)
+                                            }
+                                    )
                                     .accessibilityLabel("Drag \(kind.title) to canvas")
                             }
                     }
@@ -383,24 +391,6 @@ struct ContentView: View {
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
-        .onDrop(of: [UTType.text], isTargeted: $isCanvasDropTargeted) { providers, location in
-            guard let provider = providers.first else { return false }
-            provider.loadDataRepresentation(forTypeIdentifier: UTType.text.identifier) { data, _ in
-                guard let data, let rawKind = String(data: data, encoding: .utf8), let kind = TargetKind(rawValue: rawKind) else { return }
-                Task { @MainActor in
-                    let point = canvasDropPoint(location, canvasSize: size)
-                    addTarget(kind, at: point)
-                    if let id = document.targets.last?.id {
-                        document.targets[document.targets.count - 1].position = point
-                        splitSegmentIfNeeded(for: id)
-                        if snapToGrid, let index = document.targets.firstIndex(where: { $0.id == id }) {
-                            document.targets[index].position = snappedPosition(document.targets[index].position)
-                        }
-                    }
-                }
-            }
-            return true
-        }
         .overlay(alignment: .center) {
             if targetsPanelExpanded {
                 Text("Drop to place")
@@ -410,6 +400,7 @@ struct ContentView: View {
             }
         }
         .ignoresSafeArea(edges: .bottom)
+        .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             if gestureStartScale == nil { gestureStartScale = canvasScale }
             canvasScale = min(2.5, max(0.5, (gestureStartScale ?? 1) * value))
@@ -427,6 +418,16 @@ struct ContentView: View {
                 .padding(.top, 88)
                 .padding(.trailing, 24)
         }
+    }
+
+    private func placeDockItem(_ kind: TargetKind, at screenLocation: CGPoint) {
+        guard editorSize != .zero else { return }
+        let point = canvasDropPoint(screenLocation, canvasSize: editorSize)
+        addTarget(kind, at: point)
+        guard let id = document.targets.last?.id,
+              let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
+        document.targets[index].position = snapToGrid ? snappedPosition(point) : point
+        splitSegmentIfNeeded(for: id)
     }
 
     private func canvasDropPoint(_ location: CGPoint, canvasSize: CGSize) -> CGPoint {
