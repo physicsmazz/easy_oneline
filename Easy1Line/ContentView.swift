@@ -859,8 +859,8 @@ struct ContentView: View {
         let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
-        let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start))
-        let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end))
+        let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
+        let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
         let routeObstacles = (draggingTargetID == nil ? obstacles : []) + [startTarget, endTarget]
         let padding = CGFloat(linePadding)
         let rectangles = routeObstacles.map { obstacleRect(for: $0).insetBy(dx: -padding, dy: -padding) }
@@ -910,9 +910,11 @@ struct ContentView: View {
         return CGPoint(x: point.x - dy / length * offset, y: point.y + dx / length * offset)
     }
 
-    private func escapePoint(for target: SchematicTarget, slot: Int) -> CGPoint {
+    private func escapePoint(for target: SchematicTarget, slot: Int, toward other: SchematicTarget) -> CGPoint {
         let point = connectionPoint(for: target, slot: slot)
-        let angle = connectionAngle(for: target, slot: slot) * Double.pi / 180
+        let angle = target.kind == .junction
+            ? atan2(other.position.y - target.position.y, other.position.x - target.position.x)
+            : connectionAngle(for: target, slot: slot) * Double.pi / 180
         let distance: CGFloat = target.kind == .junction ? 24 : max((target.isCompact ? 24 : 36) * target.scale, CGFloat(linePadding) + 12)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
