@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showTargetLibrary = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var cloudStatus = ""
 
     var body: some View {
@@ -225,7 +226,13 @@ struct ContentView: View {
                     isConnectionStart: selectedTargetIDs.contains(target.id),
                     connectedColor: connectedColor(for: target.id),
                     connectedColors: connectedColors(for: target.id),
-                    occupiedSlots: occupiedSlots(for: target.id)
+                    occupiedSlots: occupiedSlots(for: target.id),
+                    onMoveConnectionPoint: { slot, translation in
+                        moveConnectionPoint(targetID: target.id, slot: slot, translation: translation)
+                    },
+                    onEndConnectionPointMove: { slot in
+                        connectionDragStartAngles.removeValue(forKey: connectionDragKey(target.id, slot: slot))
+                    }
                 )
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
@@ -306,7 +313,7 @@ struct ContentView: View {
 
     private func addTarget(from template: TargetDefinition) {
         let position = CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
-        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData))
+        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, scale: template.scale))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -315,7 +322,7 @@ struct ContentView: View {
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
-        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData))
+        document.targetDefinitions.append(TargetDefinition(kind: target.kind, name: target.name, maxConnections: target.maxConnections, colorHex: target.colorHex, symbol: target.symbol, imageData: target.imageData, scale: target.scale))
     }
 
     private func duplicateTarget(_ target: SchematicTarget) {
@@ -570,6 +577,7 @@ struct ContentView: View {
                     Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
                 }
                 if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
+                Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
                 Button { duplicateTarget(target) } label: {
                     Label("Duplicate target", systemImage: "plus.square.on.square")
                 }
@@ -627,9 +635,32 @@ struct ContentView: View {
 
     private func connectionPoint(for target: SchematicTarget, slot: Int?) -> CGPoint {
         let slotIndex = slot ?? 0
-        let angle = (2 * Double.pi * Double(slotIndex) / Double(max(target.maxConnections, 1))) - Double.pi / 2 + target.connectionAngle * Double.pi / 180
-        let radius: CGFloat = target.kind == .junction ? 0 : 42
+        let angle = connectionAngle(for: target, slot: slotIndex) * Double.pi / 180
+        let radius: CGFloat = target.kind == .junction ? 0 : 42 * target.scale
         return CGPoint(x: target.position.x + radius * CGFloat(cos(angle)), y: target.position.y + radius * CGFloat(sin(angle)))
+    }
+
+    private func connectionAngle(for target: SchematicTarget, slot: Int) -> Double {
+        if target.connectionAngles.indices.contains(slot) { return target.connectionAngles[slot] }
+        return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func connectionDragKey(_ targetID: UUID, slot: Int) -> String { "\(targetID.uuidString)-\(slot)" }
+
+    private func moveConnectionPoint(targetID: UUID, slot: Int, translation: CGSize) {
+        guard let index = document.targets.firstIndex(where: { $0.id == targetID }), document.targets[index].kind != .junction else { return }
+        let target = document.targets[index]
+        let key = connectionDragKey(targetID, slot: slot)
+        if connectionDragStartAngles[key] == nil { connectionDragStartAngles[key] = connectionAngle(for: target, slot: slot) }
+        let startAngle = (connectionDragStartAngles[key] ?? 0) * Double.pi / 180
+        let radius: CGFloat = 42 * target.scale
+        let startPoint = CGPoint(x: radius * CGFloat(cos(startAngle)), y: radius * CGFloat(sin(startAngle)))
+        let point = CGPoint(x: startPoint.x + translation.width, y: startPoint.y + translation.height)
+        let angle = atan2(point.y, point.x) * 180 / Double.pi
+        if document.targets[index].connectionAngles.count < document.targets[index].maxConnections {
+            document.targets[index].connectionAngles = (0..<document.targets[index].maxConnections).map { connectionAngle(for: target, slot: $0) }
+        }
+        document.targets[index].connectionAngles[slot] = angle
     }
 
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
@@ -691,14 +722,15 @@ struct ContentView: View {
         )
     }
 
-    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>) {
+    private func targetBinding(_ target: SchematicTarget) -> (name: Binding<String>, symbol: Binding<String>, maxConnections: Binding<Int>, connectionAngle: Binding<Double>, color: Binding<Color>, scale: Binding<Double>) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { fatalError("Target disappeared") }
         return (
             Binding(get: { document.targets[index].name }, set: { document.targets[index].name = $0 }),
             Binding(get: { document.targets[index].symbol }, set: { document.targets[index].symbol = $0 }),
             Binding(get: { document.targets[index].maxConnections }, set: { document.targets[index].maxConnections = $0 }),
             Binding(get: { document.targets[index].connectionAngle }, set: { document.targets[index].connectionAngle = $0 }),
-            Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString })
+            Binding(get: { Color(hex: document.targets[index].colorHex) }, set: { document.targets[index].colorHex = $0.hexString }),
+            Binding(get: { document.targets[index].scale }, set: { document.targets[index].scale = $0 })
         )
     }
 
@@ -775,8 +807,10 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var symbol: String
     var imageData: Data?
     var connectionAngle: Double
+    var connectionAngles: [Double]
+    var scale: Double
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0) {
+    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], scale: Double = 1) {
         self.id = id
         self.kind = kind
         self.name = name
@@ -786,6 +820,8 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.symbol = symbol ?? kind.symbol
         self.imageData = imageData
         self.connectionAngle = connectionAngle
+        self.connectionAngles = connectionAngles
+        self.scale = scale
     }
 
     init(from decoder: Decoder) throws {
@@ -799,6 +835,8 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol) ?? kind.symbol
         imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
         connectionAngle = try container.decodeIfPresent(Double.self, forKey: .connectionAngle) ?? 0
+        connectionAngles = try container.decodeIfPresent([Double].self, forKey: .connectionAngles) ?? []
+        scale = try container.decodeIfPresent(Double.self, forKey: .scale) ?? 1
     }
 }
 
@@ -810,6 +848,7 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
     var colorHex: String
     var symbol: String
     var imageData: Data?
+    var scale: Double
 }
 
 private struct SchematicSegment: Identifiable, Codable, Equatable {
@@ -884,6 +923,8 @@ private struct TargetView: View {
     let connectedColor: Color
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
+    let onMoveConnectionPoint: (Int, CGSize) -> Void
+    let onEndConnectionPointMove: (Int) -> Void
 
     var body: some View {
         Group {
@@ -924,9 +965,15 @@ private struct TargetView: View {
                         .frame(width: 9, height: 9)
                         .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
                         .offset(connectionPointOffset(for: slot))
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in onMoveConnectionPoint(slot, value.translation) }
+                                .onEnded { _ in onEndConnectionPointMove(slot) }
+                        )
                 }
             }
         }
+        .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
                 Text("\(selectionOrder)")
@@ -942,8 +989,8 @@ private struct TargetView: View {
     }
 
     private func connectionPointOffset(for slot: Int) -> CGSize {
-        let angle = (2 * Double.pi * Double(slot) / Double(max(target.maxConnections, 1))) - Double.pi / 2 + target.connectionAngle * Double.pi / 180
-        let radius: CGFloat = target.kind == .junction ? 0 : 42
+        let angle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
+        let radius: CGFloat = target.kind == .junction ? 0 : 42 * target.scale
         return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
     }
 
