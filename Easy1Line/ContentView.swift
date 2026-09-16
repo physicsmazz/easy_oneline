@@ -236,7 +236,7 @@ struct ContentView: View {
                         guard let secondStart = target(with: document.segments[secondIndex].startID), let secondEnd = target(with: document.segments[secondIndex].endID) else { continue }
                         let secondPoints = orthogonalPoints(for: document.segments[secondIndex], from: secondStart, to: secondEnd, avoiding: document.targets.filter { $0.id != secondStart.id && $0.id != secondEnd.id })
                         for crossing in crossings(between: firstPoints, and: secondPoints) {
-                            let bridge = bridgePath(at: crossing.point, overHorizontal: crossing.firstIsHorizontal)
+                            let bridge = bridgePath(at: crossing.point, overHorizontal: !crossing.firstIsHorizontal)
                             let bridgeColor = document.segments[secondIndex].color
                             context.stroke(bridge, with: .color(Color(red: 0.07, green: 0.09, blue: 0.105)), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth + 7, lineCap: .round, lineJoin: .round))
                             context.stroke(bridge, with: .color(bridgeColor), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth, lineCap: .round, lineJoin: .round))
