@@ -2747,7 +2747,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(Rectangle().inset(by: -18))
+        .contentShape(targetHitShape)
         .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -2816,6 +2816,10 @@ private struct TargetView: View {
         return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
     }
 
+    private var targetHitShape: AnyShape {
+        AnyShape(TargetBodyHitShape(kind: target.kind, isCompact: target.isCompact))
+    }
+
     private var lockedBorderStyle: AnyShapeStyle {
         AnyShapeStyle(
             LinearGradient(
@@ -2824,6 +2828,21 @@ private struct TargetView: View {
                 endPoint: .bottomTrailing
             )
         )
+    }
+}
+
+private struct TargetBodyHitShape: Shape {
+    let kind: TargetKind
+    let isCompact: Bool
+
+    func path(in rect: CGRect) -> Path {
+        if kind == .junction {
+            return Circle().path(in: CGRect(x: rect.midX - 9, y: rect.midY - 9, width: 18, height: 18))
+        }
+        if isCompact {
+            return Circle().path(in: CGRect(x: rect.midX - 20, y: rect.midY - 20, width: 40, height: 40))
+        }
+        return RoundedRectangle(cornerRadius: 10).path(in: CGRect(x: rect.midX - 29, y: rect.midY - 33, width: 58, height: 48))
     }
 }
 
