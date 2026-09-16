@@ -86,11 +86,17 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent)) || selectedTargetIDs.count > 1 || selectedSegmentIDs.count > 1 {
+            if (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1 {
                 inspector
                     .padding(.trailing, 20)
                     .padding(.top, 84)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+
+            if let lastID = selectedTargetIDs.last, let lastTarget = target(with: lastID), editorSize != .zero {
+                selectionBox
+                    .position(selectionBoxPosition(near: lastTarget.position))
+                    .zIndex(900)
             }
 
             if showLibrary {
@@ -375,7 +381,10 @@ struct ContentView: View {
                                 openWireInfo(segment, sectionIndex: sectionIndex)
                             })
                         } else {
-                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}, onTap: {
+                            // Stub sections: keep the hit area clear of the pin so pin taps aren't swallowed by the wire.
+                            let pinEnd = sectionIndex == 0 ? points[sectionIndex] : points[sectionIndex + 1]
+                            let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
+                            SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 22), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { _ in }, onEndDrag: {}, onTap: {
                                 selectedSegmentIDs = [segment.id]
                                 selectedSegmentID = segment.id
                                 selectedSegmentSectionIndex = nil
@@ -605,6 +614,14 @@ struct ContentView: View {
     }
 
     private func selectConnectionPoint(targetID: UUID, slot: Int) {
+        // Wire-first: with a wire selected, tapping a free pin on one of its end targets moves that end.
+        if let wire = selectedSegment, wire.startID == targetID || wire.endID == targetID,
+           let index = document.segments.firstIndex(where: { $0.id == wire.id }),
+           !occupiedSlots(for: targetID).contains(slot) {
+            if wire.startID == targetID { document.segments[index].startSlot = slot } else { document.segments[index].endSlot = slot }
+            document.segments[index].routePoints.removeAll()
+            return
+        }
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         if !selectedTargetIDs.contains(targetID) {
@@ -1135,25 +1152,62 @@ struct ContentView: View {
                     document.targets.removeAll { $0.id == target.id }
                     selectedTargetIDs.removeAll()
                 } label: { Label("Delete target", systemImage: "trash") }
-            } else {
-                Text("MULTI-SELECT").inspectorLabel()
-                Text("\(selectedTargetIDs.count) targets selected").font(.headline)
-                Button { connectSelectedTargets() } label: {
-                    Label("Connect selected", systemImage: "link")
-                }
-                .disabled(selectedTargetIDs.count < 2)
+            }
+        }
+        .padding(16)
+        .frame(width: 260)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private let selectionBoxSize = CGSize(width: 232, height: 92)
+
+    private var selectionBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(selectedTargetIDs.count) selected")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+            HStack(spacing: 8) {
+                Button { connectSelectedTargets() } label: { Label("Connect", systemImage: "link") }
+                    .buttonStyle(EditorButtonStyle())
+                    .disabled(selectedTargetIDs.count < 2)
+                    .opacity(selectedTargetIDs.count < 2 ? 0.4 : 1)
                 Button(role: .destructive) {
                     let targetIDs = Set(selectedTargetIDs)
                     document.segments.removeAll { targetIDs.contains($0.startID) || targetIDs.contains($0.endID) }
                     document.targets.removeAll { targetIDs.contains($0.id) }
                     selectedTargetIDs.removeAll()
                     selectedConnectionSlots.removeAll()
-                } label: { Label("Delete selected", systemImage: "trash") }
+                } label: { Label("Delete", systemImage: "trash") }
+                    .buttonStyle(EditorButtonStyle())
             }
         }
-        .padding(16)
-        .frame(width: 260)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(12)
+        .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1) }
+    }
+
+    // Screen-space inverse of canvasDropPoint.
+    private func screenPoint(forCanvas point: CGPoint) -> CGPoint {
+        let center = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
+        let scaled = CGPoint(x: (point.x - center.x) * canvasScale, y: (point.y - center.y) * canvasScale)
+        let angle = canvasRotation.radians
+        let rotated = CGPoint(
+            x: scaled.x * CGFloat(cos(angle)) - scaled.y * CGFloat(sin(angle)),
+            y: scaled.x * CGFloat(sin(angle)) + scaled.y * CGFloat(cos(angle))
+        )
+        return CGPoint(x: rotated.x + center.x + canvasOffset.width, y: rotated.y + center.y + canvasOffset.height)
+    }
+
+    private func selectionBoxPosition(near canvasPoint: CGPoint) -> CGPoint {
+        let anchor = screenPoint(forCanvas: canvasPoint)
+        let halfWidth = selectionBoxSize.width / 2, halfHeight = selectionBoxSize.height / 2
+        let proposed = CGPoint(x: anchor.x + 70 * canvasScale + halfWidth, y: anchor.y + 60 * canvasScale + halfHeight)
+        let minY = 84 + halfHeight + 8
+        return CGPoint(
+            x: min(max(proposed.x, halfWidth + 8), max(halfWidth + 8, editorSize.width - halfWidth - 8)),
+            y: min(max(proposed.y, minY), max(minY, editorSize.height - halfHeight - 8))
+        )
     }
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
@@ -1305,7 +1359,13 @@ struct ContentView: View {
         targetDragStartRoutes.removeAll()
         for segment in document.segments where segment.startID == targetID || segment.endID == targetID {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            var points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            if points.count == 2 {
+                // Straight wires collapse their stubs; restore them so both ends keep leaving their pins outward while dragging.
+                let startSlot = segment.startSlot ?? nearestConnectionSlot(for: start, to: points[0])
+                let endSlot = segment.endSlot ?? nearestConnectionSlot(for: end, to: points[1])
+                points = [points[0], escapePoint(for: start, slot: startSlot, toward: end), escapePoint(for: end, slot: endSlot, toward: start), points[1]]
+            }
             targetDragStartRoutes[segment.id] = points
         }
     }
@@ -1319,17 +1379,39 @@ struct ContentView: View {
                 let movedIndex = segment.startID == targetID ? 0 : 1
                 points[movedIndex].x += translation.width
                 points[movedIndex].y += translation.height
-            } else if segment.startID == targetID {
-                points[0].x += translation.width
-                points[0].y += translation.height
-                points[1].x += translation.width
-                points[1].y += translation.height
             } else {
-                let last = points.count - 1
-                points[last].x += translation.width
-                points[last].y += translation.height
-                points[last - 1].x += translation.width
-                points[last - 1].y += translation.height
+                let pinIndex = segment.startID == targetID ? 0 : points.count - 1
+                let stubIndex = segment.startID == targetID ? 1 : points.count - 2
+                let pin = points[pinIndex], stub = points[stubIndex]
+                let stubIsVertical = abs(pin.x - stub.x) < 0.5
+                points[pinIndex].x += translation.width
+                points[pinIndex].y += translation.height
+                // Stub end follows only across the stub axis so the next leg keeps its line;
+                // along the stub axis it stays put unless the pin passes it.
+                let minimumStub: CGFloat = 8
+                if stubIsVertical {
+                    points[stubIndex].x += translation.width
+                    let direction: CGFloat = stub.y >= pin.y ? 1 : -1
+                    if (points[stubIndex].y - points[pinIndex].y) * direction < minimumStub {
+                        points[stubIndex].y = points[pinIndex].y + direction * minimumStub
+                    }
+                } else {
+                    points[stubIndex].y += translation.height
+                    let direction: CGFloat = stub.x >= pin.x ? 1 : -1
+                    if (points[stubIndex].x - points[pinIndex].x) * direction < minimumStub {
+                        points[stubIndex].x = points[pinIndex].x + direction * minimumStub
+                    }
+                }
+                // If the leg after the stub went diagonal, jog at the stub end so that leg keeps its original line.
+                let nextIndex = segment.startID == targetID ? stubIndex + 1 : stubIndex - 1
+                if points.indices.contains(nextIndex) {
+                    let moved = points[stubIndex], next = points[nextIndex]
+                    if abs(moved.x - next.x) > 0.5 && abs(moved.y - next.y) > 0.5 {
+                        let legWasHorizontal = abs(stub.y - next.y) < 0.5
+                        let corner = legWasHorizontal ? CGPoint(x: moved.x, y: next.y) : CGPoint(x: next.x, y: moved.y)
+                        points.insert(corner, at: max(stubIndex, nextIndex))
+                    }
+                }
             }
             document.segments[index].routePoints = points
         }
@@ -1442,6 +1524,12 @@ struct ContentView: View {
         path.move(to: start)
         path.addLine(to: end)
         return path
+    }
+
+    private func trimmed(_ point: CGPoint, toward other: CGPoint, by distance: CGFloat) -> CGPoint {
+        let length = hypot(other.x - point.x, other.y - point.y)
+        guard length > distance else { return other }
+        return CGPoint(x: point.x + (other.x - point.x) / length * distance, y: point.y + (other.y - point.y) / length * distance)
     }
 
     private func crossings(between first: [CGPoint], and second: [CGPoint]) -> [(point: CGPoint, firstIsHorizontal: Bool)] {
@@ -1610,9 +1698,28 @@ struct ContentView: View {
         let startSlot = segment.startSlot ?? 0
         let endSlot = segment.endSlot ?? 0
         let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
+        // Rotate so the first pin faces back along the wire: sides for a horizontal wire, top/bottom for vertical.
+        if document.targets[targetIndex].kind != .junction, let section = nearestSection(of: hit.route, to: hit.point) {
+            let wireIsHorizontal = abs(section.start.y - section.end.y) < 0.5
+            let desired: Double = wireIsHorizontal ? (section.start.x < section.end.x ? 180 : 0) : (section.start.y < section.end.y ? 270 : 90)
+            let current = connectionAngle(for: document.targets[targetIndex], slot: firstSlot).truncatingRemainder(dividingBy: 360)
+            let delta = (desired - current).truncatingRemainder(dividingBy: 360)
+            if abs(delta) > 0.5 { rotateTarget(document.targets[targetIndex], by: delta) }
+        }
         document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.first.dropLast()), target: document.targets[targetIndex], slot: firstSlot, toward: segment.startID, fallback: junctionPosition)), at: hit.index)
         let secondSlot = closestAvailableSlot(for: targetID, to: segment.endID) ?? (firstSlot == 0 ? 1 : 0)
         document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.second.dropFirst()).reversed(), target: document.targets[targetIndex], slot: secondSlot, toward: segment.endID, fallback: junctionPosition).reversed()), at: hit.index + 1)
+    }
+
+    private func nearestSection(of points: [CGPoint], to point: CGPoint) -> (start: CGPoint, end: CGPoint)? {
+        guard points.count > 1 else { return nil }
+        var best: (start: CGPoint, end: CGPoint)?
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for index in 0..<(points.count - 1) {
+            let distance = nearestPoint(on: [points[index], points[index + 1]], to: point).distance
+            if distance < bestDistance { bestDistance = distance; best = (points[index], points[index + 1]) }
+        }
+        return best
     }
 
     // Ends `points` at the pin by way of its escape stub so the wire leaves the pin outward.
@@ -2098,6 +2205,8 @@ private struct TargetView: View {
                 }
             }
         }
+        // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
+        .contentShape(Rectangle().inset(by: -18))
         .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -2110,7 +2219,6 @@ private struct TargetView: View {
                     .offset(x: 4, y: -4)
             }
         }
-        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -2170,6 +2278,7 @@ private struct TargetView: View {
 
 private struct SegmentHitArea: View {
     let path: Path
+    var hitPath: Path? = nil
     let isSelected: Bool
     let isSectionSelected: Bool
     let onDrag: (CGSize) -> Void
@@ -2178,7 +2287,7 @@ private struct SegmentHitArea: View {
     let onDoubleTap: () -> Void
     var body: some View {
         path.stroke(isSectionSelected ? Color.yellow.opacity(0.85) : isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: isSectionSelected ? 12 : 24, lineCap: .round, lineJoin: .round))
-            .contentShape(path.strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
+            .contentShape((hitPath ?? path).strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
             .onTapGesture(count: 2, perform: onDoubleTap)
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
