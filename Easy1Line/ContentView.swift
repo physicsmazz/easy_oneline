@@ -996,6 +996,42 @@ struct ContentView: View {
         document.targets[index].locked.toggle()
     }
 
+    private func deleteTargetPreservingWire(_ target: SchematicTarget) {
+        let attached = document.segments.filter { $0.startID == target.id || $0.endID == target.id }
+        if attached.count == 2 {
+            let first = attached[0]
+            let second = attached[1]
+            let firstOtherID = first.startID == target.id ? first.endID : first.startID
+            let secondOtherID = second.startID == target.id ? second.endID : second.startID
+            if firstOtherID != secondOtherID {
+                let replacement = SchematicSegment(
+                    startID: firstOtherID,
+                    endID: secondOtherID,
+                    startSlot: first.startID == target.id ? first.endSlot : first.startSlot,
+                    endSlot: second.startID == target.id ? second.endSlot : second.startSlot,
+                    name: first.name,
+                    colorHex: first.colorHex,
+                    wireSize: first.wireSize,
+                    material: first.material,
+                    covering: first.covering,
+                    netName: first.netName,
+                    displayWidth: first.displayWidth,
+                    description: first.description
+                )
+                document.segments.removeAll { $0.id == first.id || $0.id == second.id }
+                document.segments.append(replacement)
+                document.targets.removeAll { $0.id == target.id }
+                selectedTargetIDs.removeAll()
+                selectedConnectionSlots.removeAll()
+                return
+            }
+        }
+        document.segments.removeAll { $0.startID == target.id || $0.endID == target.id }
+        document.targets.removeAll { $0.id == target.id }
+        selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+    }
+
     private var selectedTargetsAreLocked: Bool {
         !selectedTargetIDs.isEmpty && selectedTargetIDs.allSatisfy { target(with: $0)?.locked == true }
     }
@@ -1460,9 +1496,7 @@ struct ContentView: View {
                     Label("Save as target type", systemImage: "square.and.arrow.down")
                 }
                 Button(role: .destructive) {
-                    document.segments.removeAll { $0.startID == target.id || $0.endID == target.id }
-                    document.targets.removeAll { $0.id == target.id }
-                    selectedTargetIDs.removeAll()
+                    deleteTargetPreservingWire(target)
                 } label: { Label("Delete target", systemImage: "trash") }
             }
         }
