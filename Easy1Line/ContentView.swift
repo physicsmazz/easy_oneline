@@ -192,24 +192,25 @@ struct ContentView: View {
     private var palette: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
+                withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
             } label: {
-                HStack(spacing: 8) {
-                    if targetsPanelExpanded {
+                if targetsPanelExpanded {
+                    HStack(spacing: 8) {
                         Text("TARGETS")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(1.4)
                             .foregroundStyle(.white.opacity(0.45))
-                    } else {
-                        Image(systemName: "square.grid.2x2")
-                            .foregroundStyle(.cyan)
+                        Spacer()
+                        Image(systemName: "chevron.left")
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(.white.opacity(0.7))
                     }
-                    Spacer()
-                    Image(systemName: targetsPanelExpanded ? "chevron.left" : "chevron.right")
-                        .frame(width: 24, height: 24)
-                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    Image(systemName: "square.grid.2x2")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.cyan)
+                        .frame(width: 28, height: 28)
                 }
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(targetsPanelExpanded ? "Collapse targets" : "Expand targets")
@@ -249,8 +250,8 @@ struct ContentView: View {
 
             }
         }
-        .padding(14)
-        .frame(width: targetsPanelExpanded ? 170 : 52)
+        .padding(targetsPanelExpanded ? 14 : 5)
+        .frame(width: targetsPanelExpanded ? 170 : 38)
         .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
     }
