@@ -77,6 +77,8 @@ struct ContentView: View {
             guard let item, let targetID = selectedTargetIDs.first else { return }
             Task { await loadTargetImage(item, targetID: targetID) }
         }
+        .onAppear { if snapToGrid { snapAllTargets() } }
+        .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
     }
 
     private var header: some View {
@@ -100,38 +102,37 @@ struct ContentView: View {
             Spacer()
 
             Button { showLibrary.toggle() } label: {
-                Image(systemName: "folder")
+                Label("Drawings", systemImage: "folder")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLibrary))
             .help("Drawings")
 
             Button { showLineLibrary.toggle() } label: {
-                Image(systemName: "line.3.horizontal")
+                Label("Lines", systemImage: "line.3.horizontal")
             }
             .buttonStyle(EditorButtonStyle(isActive: showLineLibrary))
             .help("Line library")
 
             Button { showTargetLibrary.toggle() } label: {
-                Image(systemName: "square.grid.2x2")
+                Label("Targets", systemImage: "square.grid.2x2")
             }
             .buttonStyle(EditorButtonStyle(isActive: showTargetLibrary))
             .help("Target library")
 
             Button { saveCurrent() } label: {
-                Image(systemName: "square.and.arrow.down")
+                Label("Save", systemImage: "square.and.arrow.down")
             }
             .buttonStyle(EditorButtonStyle())
             .help("Save drawing locally")
 
             Button { Task { await saveToCloud() } } label: {
-                Image(systemName: "icloud.and.arrow.up")
+                Label("Cloud save", systemImage: "icloud.and.arrow.up")
             }
             .buttonStyle(EditorButtonStyle())
             .help("Save to cloud")
 
             Button { Task { await loadFromCloud() } } label: {
-                Image(systemName: "icloud.and.arrow.down")
-                    .frame(width: 42, height: 42)
+                Label("Cloud load", systemImage: "icloud.and.arrow.down")
             }
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("Load from cloud")
@@ -154,20 +155,11 @@ struct ContentView: View {
             .help("Toggle item information")
             .accessibilityLabel("Toggle item information")
 
-            Button { snapToGrid.toggle() } label: {
-                Image(systemName: "magnet")
-                    .frame(width: 42, height: 42)
-            }
-            .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
-            .help("Snap items to grid")
-            .accessibilityLabel("Snap items to grid")
-
             Menu {
                 Text("Line spacing: \(linePadding, specifier: "%.0f") pt")
                 Slider(value: $linePadding, in: 4...48, step: 4)
             } label: {
-                Image(systemName: "ruler")
-                    .frame(width: 42, height: 42)
+                Label("Spacing", systemImage: "ruler")
             }
             .buttonStyle(EditorButtonStyle(isActive: linePadding > 0))
             .help("Adjust line spacing")
@@ -229,6 +221,10 @@ struct ContentView: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.white.opacity(0.35))
                     .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Snap targets to grid", isOn: $snapToGrid)
+                    .font(.system(size: 11, weight: .medium))
+                    .tint(.cyan)
             }
         }
         .padding(14)
@@ -789,9 +785,25 @@ struct ContentView: View {
 
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
         guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
+        guard snapToGrid else {
+            document.targets[index].position.x = min(max(document.targets[index].position.x, 180), max(180, canvasSize.width - 80))
+            document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
+            return
+        }
         document.targets[index].position = snappedPosition(document.targets[index].position)
-        document.targets[index].position.x = min(max(document.targets[index].position.x, 180), max(180, canvasSize.width - 80))
-        document.targets[index].position.y = min(max(document.targets[index].position.y, 120), max(120, canvasSize.height - 80))
+        let gridSize: CGFloat = 32
+        let minimumX = ceil(180 / gridSize) * gridSize
+        let minimumY = ceil(120 / gridSize) * gridSize
+        let maximumX = floor(max(180, canvasSize.width - 80) / gridSize) * gridSize
+        let maximumY = floor(max(120, canvasSize.height - 80) / gridSize) * gridSize
+        document.targets[index].position.x = min(max(document.targets[index].position.x, minimumX), max(minimumX, maximumX))
+        document.targets[index].position.y = min(max(document.targets[index].position.y, minimumY), max(minimumY, maximumY))
+    }
+
+    private func snapAllTargets() {
+        for index in document.targets.indices {
+            document.targets[index].position = snappedPosition(document.targets[index].position)
+        }
     }
 
     private func moveSegment(_ id: UUID, translation: CGSize) {
@@ -816,7 +828,7 @@ struct ContentView: View {
     }
 
     private func orthogonalPath(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> Path {
-        let laneOffset = parallelLaneOffset(for: segment)
+        let laneOffset: CGFloat = 0
         let start = offsetConnectionPoint(for: startTarget, slot: segment.startSlot, toward: endTarget, by: laneOffset)
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start))
@@ -860,15 +872,6 @@ struct ContentView: View {
         for point in adjustedPath.dropFirst() { path.addLine(to: point) }
         path.addLine(to: end)
         return path
-    }
-
-    private func parallelLaneOffset(for segment: SchematicSegment) -> CGFloat {
-        let parallel = document.segments.filter {
-            ($0.startID == segment.startID && $0.endID == segment.endID) ||
-            ($0.startID == segment.endID && $0.endID == segment.startID)
-        }.sorted { $0.id.uuidString < $1.id.uuidString }
-        guard parallel.count > 1, let index = parallel.firstIndex(where: { $0.id == segment.id }) else { return 0 }
-        return (CGFloat(index) - CGFloat(parallel.count - 1) / 2) * CGFloat(linePadding)
     }
 
     private func offsetConnectionPoint(for target: SchematicTarget, slot: Int?, toward other: SchematicTarget, by offset: CGFloat) -> CGPoint {
