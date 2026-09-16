@@ -2141,7 +2141,7 @@ struct ContentView: View {
         } else {
             halfExtent = abs(cos(angle)) > abs(sin(angle)) ? 54 : 38
         }
-        let distance = min(25, max(10, halfExtent * target.scale + 4))
+        let distance = max(10, halfExtent * target.scale + 4)
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
