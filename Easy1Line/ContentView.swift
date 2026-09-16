@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var canvasScale: CGFloat = 1
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
+    @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
     @State private var draggingTargetID: UUID?
     @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
     @State private var selectedSegmentSectionIndex: Int?
@@ -320,19 +321,21 @@ struct ContentView: View {
                 guard !editingConnectionPoints else { return }
                 draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
-                if dragStartPositions[target.id] == nil { dragStartPositions[target.id] = document.targets[index].position }
+                if dragStartPositions[target.id] == nil {
+                    dragStartPositions[target.id] = document.targets[index].position
+                    captureAttachedRoutes(for: target.id)
+                }
                 guard let start = dragStartPositions[target.id] else { return }
                 let proposedPosition = CGPoint(x: start.x + value.translation.width / canvasScale, y: start.y + value.translation.height / canvasScale)
                 document.targets[index].position = snapToGrid ? snappedPosition(proposedPosition) : proposedPosition
-                for segmentIndex in document.segments.indices where document.segments[segmentIndex].startID == target.id || document.segments[segmentIndex].endID == target.id {
-                    document.segments[segmentIndex].routePoints.removeAll()
-                }
+                updateAttachedRoutes(for: target.id, translation: CGSize(width: document.targets[index].position.x - start.x, height: document.targets[index].position.y - start.y))
                 selectedTargetIDs = [target.id]
                 selectedSegmentID = nil
                 selectedSegmentIDs.removeAll()
             }
             .onEnded { _ in
                 dragStartPositions.removeValue(forKey: target.id)
+                targetDragStartRoutes.removeAll()
                 snapTarget(target.id, canvasSize: canvasSize)
                 draggingTargetID = nil
             }
@@ -837,6 +840,35 @@ struct ContentView: View {
     private func snapAllTargets() {
         for index in document.targets.indices {
             document.targets[index].position = snappedPosition(document.targets[index].position)
+        }
+    }
+
+    private func captureAttachedRoutes(for targetID: UUID) {
+        targetDragStartRoutes.removeAll()
+        for segment in document.segments where segment.startID == targetID || segment.endID == targetID {
+            guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
+            let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            targetDragStartRoutes[segment.id] = points
+        }
+    }
+
+    private func updateAttachedRoutes(for targetID: UUID, translation: CGSize) {
+        for index in document.segments.indices where document.segments[index].startID == targetID || document.segments[index].endID == targetID {
+            let segment = document.segments[index]
+            guard var points = targetDragStartRoutes[segment.id], points.count > 2 else { continue }
+            if segment.startID == targetID {
+                points[0].x += translation.width
+                points[0].y += translation.height
+                points[1].x += translation.width
+                points[1].y += translation.height
+            } else {
+                let last = points.count - 1
+                points[last].x += translation.width
+                points[last].y += translation.height
+                points[last - 1].x += translation.width
+                points[last - 1].y += translation.height
+            }
+            document.segments[index].routePoints = points
         }
     }
 
