@@ -128,6 +128,38 @@ create index if not exists drawing_targets_drawing_idx on public.drawing_targets
 create index if not exists drawing_targets_location_idx on public.drawing_targets using gist(location);
 create index if not exists drawing_segments_drawing_idx on public.drawing_segments(drawing_id);
 
+-- One-call normalized save used by the app. The JSON payload remains the portable snapshot.
+create or replace function public.save_drawing(p_id uuid, p_name text, p_data jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+    insert into public.drawings (id, name, data, updated_at)
+    values (p_id, p_name, p_data, now())
+    on conflict (id) do update set name = excluded.name, data = excluded.data, updated_at = now();
+
+    delete from public.drawing_segments where drawing_id = p_id;
+    delete from public.drawing_targets where drawing_id = p_id;
+    delete from public.drawing_line_definitions where drawing_id = p_id;
+
+    insert into public.drawing_line_definitions (id, drawing_id, name, color_hex, wire_size, material, display_width, description)
+    select (line->>'id')::uuid, p_id, line->>'name', coalesce(line->>'colorHex', '31D7E8'), coalesce(line->>'wireSize', '14 AWG'), coalesce(line->>'material', 'Copper'), coalesce((line->>'displayWidth')::double precision, 3), coalesce(line->>'description', '')
+    from jsonb_array_elements(coalesce(p_data->'lineDefinitions', '[]'::jsonb)) as line;
+
+    insert into public.drawing_targets (id, drawing_id, kind, name, canvas_x, canvas_y, symbol, image_path, color_hex, max_connections, scale, connection_angle, connection_angles, is_compact)
+    select (target->>'id')::uuid, p_id, target->>'kind', target->>'name', (target->'position'->>'x')::double precision, (target->'position'->>'y')::double precision, target->>'symbol', null, coalesce(target->>'colorHex', '31D7E8'), (target->>'maxConnections')::integer, coalesce((target->>'scale')::double precision, 1), coalesce((target->>'connectionAngle')::double precision, 0), coalesce(target->'connectionAngles', '[]'::jsonb), coalesce((target->>'isCompact')::boolean, false)
+    from jsonb_array_elements(coalesce(p_data->'targets', '[]'::jsonb)) as target;
+
+    insert into public.drawing_segments (id, drawing_id, start_target_id, end_target_id, start_slot, end_slot, name, color_hex, wire_size, material, display_width, description)
+    select (segment->>'id')::uuid, p_id, (segment->>'startID')::uuid, (segment->>'endID')::uuid, (segment->>'startSlot')::integer, (segment->>'endSlot')::integer, segment->>'name', coalesce(segment->>'colorHex', '31D7E8'), coalesce(segment->>'wireSize', '14 AWG'), coalesce(segment->>'material', 'Copper'), coalesce((segment->>'displayWidth')::double precision, 3), coalesce(segment->>'description', '')
+    from jsonb_array_elements(coalesce(p_data->'segments', '[]'::jsonb)) as segment;
+end;
+$$;
+
+grant execute on function public.save_drawing(uuid, text, jsonb) to anon, authenticated;
+
 -- Anonymous prototype policies. Replace with owner checks when auth is enabled.
 alter table public.target_types enable row level security;
 alter table public.drawing_line_definitions enable row level security;

@@ -30,17 +30,16 @@ struct SupabaseDrawingStore {
     }
 
     func saveDrawing(id: UUID, name: String, data: Data) async throws {
-        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/drawings"))
+        var request = URLRequest(url: configuration.url.appending(path: "/rest/v1/rpc/save_drawing"))
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "id": id.uuidString,
-            "name": name,
-            "data": try JSONSerialization.jsonObject(with: data)
+            "p_id": id.uuidString,
+            "p_name": name,
+            "p_data": try JSONSerialization.jsonObject(with: data)
         ])
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
         try await perform(request)
     }
 
