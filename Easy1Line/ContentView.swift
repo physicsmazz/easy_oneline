@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var selectedTargetIDs: [UUID] = []
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
+    @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @State private var showInspector = false
     @State private var showLibrary = false
     @State private var showLineLibrary = false
@@ -228,6 +229,10 @@ struct ContentView: View {
                     connectedColor: connectedColor(for: target.id),
                     connectedColors: connectedColors(for: target.id),
                     occupiedSlots: occupiedSlots(for: target.id),
+                    selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
+                    onSelectConnectionPoint: { slot in
+                        selectConnectionPoint(targetID: target.id, slot: slot)
+                    },
                     editingConnectionPoints: editingConnectionPoints && selectedTargetIDs.contains(target.id),
                     onMoveConnectionPoint: { slot, translation in
                         moveConnectionPoint(targetID: target.id, slot: slot, translation: translation)
@@ -282,6 +287,8 @@ struct ContentView: View {
     private func targetTapped(_ target: SchematicTarget) {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        selectedConnectionSlots.removeValue(forKey: target.id)
         editingConnectionPoints = false
         if let selectedIndex = selectedTargetIDs.firstIndex(of: target.id) {
             selectedTargetIDs.remove(at: selectedIndex)
@@ -291,18 +298,30 @@ struct ContentView: View {
         showInspector = true
     }
 
+    private func selectConnectionPoint(targetID: UUID, slot: Int) {
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        if !selectedTargetIDs.contains(targetID) {
+            selectedTargetIDs.append(targetID)
+        }
+        selectedConnectionSlots[targetID] = slot
+        showInspector = true
+    }
+
     private func connectSelectedTargets() {
         let ids = Array(selectedTargetIDs)
         guard ids.count >= 2 else { return }
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            guard let startSlot = firstEmptySlot(for: startID), let endSlot = firstEmptySlot(for: endID) else { continue }
+            guard let startSlot = selectedConnectionSlots[startID] ?? firstEmptySlot(for: startID), let endSlot = selectedConnectionSlots[endID] ?? firstEmptySlot(for: endID) else { continue }
+            guard !occupiedSlots(for: startID).contains(startSlot), !occupiedSlots(for: endID).contains(endSlot) else { continue }
             guard !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { continue }
             let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
             document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: startSlot, endSlot: endSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, displayWidth: line.displayWidth, description: line.description))
         }
         selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
     }
 
     private func addTarget(_ kind: TargetKind, at point: CGPoint? = nil) {
@@ -959,6 +978,8 @@ private struct TargetView: View {
     let connectedColor: Color
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
+    let selectedSlots: Set<Int>
+    let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
     let onEndConnectionPointMove: (Int) -> Void
@@ -998,10 +1019,12 @@ private struct TargetView: View {
             } else {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
                     Circle()
-                        .fill(occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+                        .fill(selectedSlots.contains(slot) ? Color.white : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
                         .frame(width: editingConnectionPoints ? 18 : 9, height: editingConnectionPoints ? 18 : 9)
                         .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
                         .offset(connectionPointOffset(for: slot))
+                        .contentShape(Circle().scale(2.5))
+                        .onTapGesture { onSelectConnectionPoint(slot) }
                         .gesture(
                             DragGesture()
                                 .onChanged { value in onMoveConnectionPoint(slot, value.translation) }
