@@ -1009,7 +1009,23 @@ struct ContentView: View {
                 let secondOuterSlot = second.startID == target.id ? second.endSlot : second.startSlot
                 let startPoint = connectionPoint(for: firstOther, slot: firstOuterSlot)
                 let endPoint = connectionPoint(for: secondOther, slot: secondOuterSlot)
-                let corner = CGPoint(x: endPoint.x, y: startPoint.y)
+                let startEscape = escapePoint(for: firstOther, slot: firstOuterSlot ?? 0, toward: secondOther)
+                let endEscape = escapePoint(for: secondOther, slot: secondOuterSlot ?? 0, toward: firstOther)
+                let obstacles = document.targets.filter { $0.id != target.id && $0.id != firstOtherID && $0.id != secondOtherID }.map(obstacleRect(for:))
+                let midX = (startEscape.x + endEscape.x) / 2
+                let midY = (startEscape.y + endEscape.y) / 2
+                let candidates = [
+                    [startEscape, CGPoint(x: endEscape.x, y: startEscape.y), endEscape],
+                    [startEscape, CGPoint(x: startEscape.x, y: endEscape.y), endEscape],
+                    [startEscape, CGPoint(x: midX, y: startEscape.y), CGPoint(x: midX, y: endEscape.y), endEscape],
+                    [startEscape, CGPoint(x: startEscape.x, y: midY), CGPoint(x: endEscape.x, y: midY), endEscape]
+                ].map(orthogonalizedPoints(_:)).filter { pointsAreClear($0, from: obstacles) }
+                let routePoints: [CGPoint]
+                if let middleRoute = candidates.min(by: { pathLength($0) < pathLength($1) }) {
+                    routePoints = orthogonalizedPoints([startPoint, startEscape] + middleRoute.dropFirst().dropLast() + [endEscape, endPoint])
+                } else {
+                    routePoints = []
+                }
                 let replacement = SchematicSegment(
                     startID: firstOtherID,
                     endID: secondOtherID,
@@ -1023,7 +1039,7 @@ struct ContentView: View {
                     netName: first.netName,
                     displayWidth: first.displayWidth,
                     description: first.description,
-                    routePoints: orthogonalizedPoints([startPoint, corner, endPoint])
+                    routePoints: routePoints
                 )
                 document.segments.removeAll { $0.id == first.id || $0.id == second.id }
                 document.segments.append(replacement)
