@@ -2321,10 +2321,10 @@ private struct TargetView: View {
     var body: some View {
         Group {
             if target.kind == .junction {
-                Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+                Circle().fill(targetFill).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
             } else if target.isCompact {
                 ZStack {
-                    Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
+                    Circle().fill(targetFill)
                     Circle().stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                     if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(Circle())
@@ -2336,7 +2336,7 @@ private struct TargetView: View {
             } else {
                 VStack(spacing: 5) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
+                        RoundedRectangle(cornerRadius: 10).fill(targetFill)
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 2 : 1)
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
@@ -2377,19 +2377,6 @@ private struct TargetView: View {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
                     connectionPoint(slot: slot)
                 }
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            if target.locked {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.yellow)
-                    .padding(5)
-                    .background(.black.opacity(0.82), in: Circle())
-                    .overlay { Circle().stroke(.yellow.opacity(0.75), lineWidth: 1) }
-                    .offset(x: -6, y: -6)
-                    .allowsHitTesting(false)
-                    .accessibilityLabel("Locked")
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
@@ -2453,6 +2440,15 @@ private struct TargetView: View {
     }
 
     private var borderStyle: AnyShapeStyle {
+        if target.locked {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [Color.red, Color(red: 0.55, green: 0.02, blue: 0.08)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
         if isSelected || isConnectionStart {
             return AnyShapeStyle(Color(hex: target.colorHex))
         }
@@ -2460,6 +2456,19 @@ private struct TargetView: View {
             return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
         }
         return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
+    }
+
+    private var targetFill: AnyShapeStyle {
+        if target.locked {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: [Color(red: 0.32, green: 0.04, blue: 0.07), Color(red: 0.12, green: 0.03, blue: 0.04)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+        }
+        return AnyShapeStyle(Color(red: 0.10, green: 0.14, blue: 0.16))
     }
 }
 
