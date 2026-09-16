@@ -199,6 +199,9 @@ struct ContentView: View {
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(from: connectionPoint(for: start, slot: segment.startSlot), to: connectionPoint(for: end, slot: segment.endSlot))
+                    if selectedSegmentIDs.contains(segment.id) {
+                        context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
+                    }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
@@ -1005,6 +1008,15 @@ private struct TargetView: View {
             }
         }
         .overlay {
+            if isSelected || isConnectionStart {
+                if target.kind == .junction {
+                    Circle().stroke(.cyan, lineWidth: 3).frame(width: 30, height: 30).shadow(color: .cyan.opacity(0.8), radius: 8)
+                } else {
+                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 66, height: 56).shadow(color: .cyan.opacity(0.8), radius: 8)
+                }
+            }
+        }
+        .overlay {
             if target.kind == .junction {
                 Circle()
                     .fill(connectedColor)
@@ -1044,7 +1056,7 @@ private struct TargetView: View {
 
     private func connectionPointOffset(for slot: Int) -> CGSize {
         let angle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
-        let radius: CGFloat = target.kind == .junction ? 0 : 42 * target.scale
+        let radius: CGFloat = target.kind == .junction ? 0 : 42
         return CGSize(width: radius * CGFloat(cos(angle)), height: radius * CGFloat(sin(angle)))
     }
 
