@@ -1916,8 +1916,6 @@ struct ContentView: View {
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
-        guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
-        document.segments[index].routePoints = orthogonalizedPoints(document.segments[index].routePoints, alignmentTolerance: 4)
         wireAlignmentPreviewSegmentID = nil
     }
 
