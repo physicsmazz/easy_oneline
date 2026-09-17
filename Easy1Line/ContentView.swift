@@ -82,6 +82,7 @@ struct ContentView: View {
     @AppStorage("showWireMaterials") private var showWireMaterials = false
     @AppStorage("showWireCoverings") private var showWireCoverings = false
     @AppStorage("showWireNetNames") private var showWireNetNames = false
+    @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
@@ -158,7 +159,7 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Color(red: 0.055, green: 0.075, blue: 0.09)
+            Color(hex: canvasBackgroundColorHex)
                 .ignoresSafeArea()
 
             GeometryReader { geometry in
@@ -477,6 +478,10 @@ struct ContentView: View {
 
             Menu("Settings") {
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
+                ColorPicker("Background color", selection: Binding(
+                    get: { Color(hex: canvasBackgroundColorHex) },
+                    set: { canvasBackgroundColorHex = $0.hexString }
+                ))
             }
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("App settings")
@@ -699,7 +704,7 @@ struct ContentView: View {
 
     private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
         ZStack {
-            GridBackground()
+            GridBackground(color: Color(hex: canvasBackgroundColorHex))
             ZStack {
                 Canvas { context, _ in
                     for segment in document.segments {
@@ -739,7 +744,7 @@ struct ContentView: View {
 
     private func schematicCanvas(in size: CGSize) -> some View {
         ZStack {
-            GridBackground()
+            GridBackground(color: Color(hex: canvasBackgroundColorHex))
                 .contentShape(Rectangle())
                 .simultaneousGesture(panGesture)
                 .onTapGesture {
@@ -888,9 +893,9 @@ struct ContentView: View {
 
             }
         }
-        .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
+        .offset(canvasOffset)
         .ignoresSafeArea(edges: .bottom)
         .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
@@ -4323,10 +4328,11 @@ private struct SegmentHitArea: View {
 }
 
 private struct GridBackground: View {
+    let color: Color
     var body: some View {
         // Grid lines temporarily removed: couldn't cover the full pannable canvas without
         // exceeding Metal's max texture size (see repo memory), leaving a partial/lopsided grid.
-        Color(red: 0.07, green: 0.09, blue: 0.105)
+        color
     }
 }
 
