@@ -2166,7 +2166,7 @@ struct ContentView: View {
     }
 
     private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint, target: SchematicTarget) -> CGPoint {
-        let turnDistance: CGFloat = target.kind == .junction ? 15 : target.isCompact ? 26 : 44
+        let turnDistance: CGFloat = target.kind == .junction ? 25 : target.isCompact ? 36 : 54
         let stubIsVertical = abs(escape.x - pin.x) < abs(escape.y - pin.y)
         if stubIsVertical {
             let direction: CGFloat = other.x >= escape.x ? 1 : -1
