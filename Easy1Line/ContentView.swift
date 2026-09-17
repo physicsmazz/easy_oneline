@@ -2896,7 +2896,7 @@ private struct TargetView: View {
                 }
                 .frame(width: 40, height: 40)
             } else {
-                VStack(spacing: 5) {
+                VStack(spacing: 2) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
@@ -2911,7 +2911,13 @@ private struct TargetView: View {
                                 .foregroundStyle(Color(hex: target.colorHex))
                         }
                     }.frame(width: 58, height: 48)
-                    Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
+                    Text(target.name)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .frame(width: 80, height: 24)
+                        .offset(y: -4)
                 }
                 .frame(width: 88, height: 76)
                 .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
