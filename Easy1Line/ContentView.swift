@@ -2495,7 +2495,7 @@ struct ContentView: View {
     private var selectionBoxSize: CGSize {
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) } == true ? 7 : 6) : 3
+            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 3
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 4 : 1
         }
@@ -2540,7 +2540,7 @@ struct ContentView: View {
                     .accessibilityLabel(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
-                if canRemoveTargetFromWire(target) {
+                if canRemoveTargetFromWire(target) && target.kind != .junction {
                     Button { removeTargetFromWire(target) } label: { Image(systemName: "link.badge.minus") }
                         .buttonStyle(EditorButtonStyle())
                         .help("Disconnect item from wire and join the wire")
