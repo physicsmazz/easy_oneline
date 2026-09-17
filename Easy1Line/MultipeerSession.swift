@@ -13,6 +13,10 @@ final class MultipeerSession: NSObject, ObservableObject {
     @Published var pendingInvite: (peerID: MCPeerID, handler: (Bool, MCSession?) -> Void)?
 
     var onReceiveData: ((Data) -> Void)?
+    /// Fired when a peer connects that WE invited did not initiate — i.e. we accepted their invite, so we push our current document to them.
+    var onAcceptedPeerConnected: ((MCPeerID) -> Void)?
+
+    private var invitedPeerIDs: Set<MCPeerID> = []
 
     private let myPeerID = MCPeerID(displayName: UIDevice.current.name)
     private lazy var session: MCSession = {
@@ -54,6 +58,7 @@ final class MultipeerSession: NSObject, ObservableObject {
     }
 
     func invite(_ peerID: MCPeerID) {
+        invitedPeerIDs.insert(peerID)
         browser?.invitePeer(peerID, to: session, withContext: nil, timeout: 15)
     }
 
@@ -62,9 +67,10 @@ final class MultipeerSession: NSObject, ObservableObject {
         pendingInvite = nil
     }
 
-    func send(_ data: Data) {
-        guard !session.connectedPeers.isEmpty else { return }
-        try? session.send(data, toPeers: session.connectedPeers, with: .reliable)
+    func send(_ data: Data, to peerID: MCPeerID? = nil) {
+        let targets = peerID.map { [$0] } ?? session.connectedPeers
+        guard !targets.isEmpty else { return }
+        try? session.send(data, toPeers: targets, with: .reliable)
     }
 }
 
@@ -72,6 +78,9 @@ extension MultipeerSession: MCSessionDelegate {
     nonisolated func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         Task { @MainActor in
             self.connectedPeers = session.connectedPeers
+            if state == .connected, !self.invitedPeerIDs.contains(peerID) {
+                self.onAcceptedPeerConnected?(peerID)
+            }
         }
     }
 

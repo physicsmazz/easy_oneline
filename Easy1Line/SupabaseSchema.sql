@@ -56,7 +56,7 @@ from (values
     ('utilitySource', 'Utility source', 'powerplug.fill', 'FF9F43', 2),
     ('transformer', 'Transformer', 'arrow.left.arrow.right', 'F59E0B', 2),
     ('breaker', 'Breaker', 'bolt.shield.fill', 'F87171', 2),
-    ('fuse', 'Fuse', 'fuse', 'F87171', 2),
+    ('fuse', 'Fuse', 'circle.slash.fill', 'F87171', 2),
     ('disconnect', 'Disconnect', 'poweroff', 'F87171', 2),
     ('panel', 'Panel', 'rectangle.split.3x1', '60A5FA', 8),
     ('bus', 'Bus', 'line.3.horizontal', '60A5FA', 8),

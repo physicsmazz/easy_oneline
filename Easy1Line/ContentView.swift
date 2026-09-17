@@ -46,7 +46,7 @@ struct ContentView: View {
     @State private var redoStack: [SchematicDocument] = []
     @StateObject private var multipeerSession = MultipeerSession()
     @State private var showMultiuserSheet = false
-    @State private var lastRemoteDocumentData: Data?
+    @State private var isApplyingRemoteDocument = false
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -261,11 +261,18 @@ struct ContentView: View {
         .onChange(of: document) { _, newValue in
             SchematicDocument.saveLast(document)
             restoreBackgroundImage()
-            broadcastDocumentIfNeeded(newValue)
+            if !isApplyingRemoteDocument {
+                broadcastDocumentIfNeeded(newValue)
+            }
         }
         .onAppear {
             multipeerSession.onReceiveData = { data in
                 applyRemoteDocument(data)
+            }
+            multipeerSession.onAcceptedPeerConnected = { peerID in
+                if let encoded = try? JSONEncoder().encode(document) {
+                    multipeerSession.send(encoded, to: peerID)
+                }
             }
         }
         .sheet(isPresented: $showMultiuserSheet) {
@@ -1496,14 +1503,17 @@ struct ContentView: View {
     }
 
     private func broadcastDocumentIfNeeded(_ newValue: SchematicDocument) {
-        guard let encoded = try? JSONEncoder().encode(newValue), encoded != lastRemoteDocumentData else { return }
+        guard let encoded = try? JSONEncoder().encode(newValue) else { return }
         multipeerSession.send(encoded)
     }
 
     private func applyRemoteDocument(_ data: Data) {
         guard let decoded = try? JSONDecoder().decode(SchematicDocument.self, from: data) else { return }
-        lastRemoteDocumentData = data
+        isApplyingRemoteDocument = true
         document = decoded
+        DispatchQueue.main.async {
+            self.isApplyingRemoteDocument = false
+        }
     }
 
     private func saveToCloud() async {
