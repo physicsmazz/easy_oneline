@@ -176,9 +176,8 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         .frame(width: 72, height: 62)
-                    Image(systemName: dockDragKind.symbol)
-                        .font(.system(size: 30, weight: .medium))
-                        .foregroundStyle(Color(hex: dockDragKind.defaultColorHex))
+                    SchematicSymbolView(kind: dockDragKind, color: Color(hex: dockDragKind.defaultColorHex))
+                        .frame(width: 34, height: 34)
                 }
                 .shadow(color: .black.opacity(0.35), radius: 12)
                 .allowsHitTesting(false)
@@ -2019,7 +2018,7 @@ struct ContentView: View {
                     showTargetLibrary = false
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: target.symbol).foregroundStyle(Color(hex: target.colorHex))
+                        SchematicSymbolView(kind: target.kind, color: Color(hex: target.colorHex)).frame(width: 16, height: 16)
                         Text(target.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                         Spacer()
                         Text("\(connectionCount(for: target.id)) / \(target.kind == .junction ? "∞" : "\(target.maxConnections)")")
@@ -3872,7 +3871,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
 
     static func loadLast() -> SchematicDocument {
         guard let data = UserDefaults.standard.data(forKey: "lastSchematic"), let saved = try? JSONDecoder().decode(SchematicDocument.self, from: data) else {
-            return SchematicDocument(name: "Untitled schematic", targets: [SchematicTarget(kind: .source, name: "Power source", position: CGPoint(x: 330, y: 270), maxConnections: 2, colorHex: "FF9F43"), SchematicTarget(kind: .load, name: "Load", position: CGPoint(x: 650, y: 430), maxConnections: 2, colorHex: "FFD166")])
+            return SchematicDocument(name: "Untitled schematic", targets: [SchematicTarget(kind: .source, name: "Power source", position: CGPoint(x: 330, y: 270), maxConnections: 2, colorHex: "FF9F43"), SchematicTarget(kind: .ground, name: "Ground", position: CGPoint(x: 650, y: 430), maxConnections: 2, colorHex: "94A3B8")])
         }
         return saved
     }
@@ -3918,7 +3917,8 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        kind = try container.decode(TargetKind.self, forKey: .kind)
+        let rawKind = try container.decodeIfPresent(String.self, forKey: .kind) ?? TargetKind.source.rawValue
+        kind = TargetKind(rawValue: rawKind) ?? .source
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
         position = try container.decode(CGPoint.self, forKey: .position)
         maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
@@ -3947,7 +3947,7 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
     var isCompact: Bool
 
     static let defaults: [TargetDefinition] = TargetKind.palette.map {
-        TargetDefinition(kind: $0, name: $0.title, maxConnections: $0 == .panel || $0 == .bus ? 8 : 2, colorHex: $0.defaultColorHex, symbol: $0.symbol, imageData: nil, connectionAngles: [], scale: 1)
+        TargetDefinition(kind: $0, name: $0.title, maxConnections: 2, colorHex: $0.defaultColorHex, symbol: $0.symbol, imageData: nil, connectionAngles: [], scale: 1)
     }
 
     init(id: UUID = UUID(), kind: TargetKind, name: String, maxConnections: Int, colorHex: String, symbol: String, imageData: Data?, connectionAngles: [Double], scale: Double, isCompact: Bool = false) {
@@ -3966,7 +3966,8 @@ private struct TargetDefinition: Identifiable, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        kind = try container.decode(TargetKind.self, forKey: .kind)
+        let rawKind = try container.decodeIfPresent(String.self, forKey: .kind) ?? TargetKind.source.rawValue
+        kind = TargetKind(rawValue: rawKind) ?? .source
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
         maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
@@ -4079,22 +4080,22 @@ private enum ConductorMaterial: String, CaseIterable, Codable, Identifiable {
 }
 
 private enum TargetKind: String, CaseIterable, Identifiable, Codable {
-    case source, utilitySource, transformer, breaker, fuse, disconnect, switchTarget, panel, bus, meter, generator, motor, receptacle, ground, capacitor, load, junction
-    static let palette: [TargetKind] = [.source, .utilitySource, .transformer, .breaker, .fuse, .disconnect, .switchTarget, .panel, .bus, .meter, .generator, .motor, .receptacle, .ground, .capacitor, .load, .junction]
+    case source, transformer, switchTarget, fuse, recloser, pt, ct, capacitor, ground, threePhaseTransformer, junction
+    static let palette: [TargetKind] = [.source, .transformer, .switchTarget, .fuse, .recloser, .pt, .ct, .capacitor, .ground, .threePhaseTransformer, .junction]
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .source: return "Source"; case .utilitySource: return "Utility source"; case .transformer: return "Transformer"; case .breaker: return "Breaker"; case .fuse: return "Fuse"; case .disconnect: return "Disconnect"; case .switchTarget: return "Switch"; case .panel: return "Panel"; case .bus: return "Bus"; case .meter: return "Meter"; case .generator: return "Generator"; case .motor: return "Motor"; case .receptacle: return "Receptacle"; case .ground: return "Ground"; case .capacitor: return "Capacitor"; case .load: return "Load"; case .junction: return "Junction"
+        case .source: return "Source"; case .transformer: return "Transformer"; case .switchTarget: return "Switch"; case .fuse: return "Fuse"; case .recloser: return "Recloser"; case .pt: return "PT"; case .ct: return "CT"; case .capacitor: return "Capacitor"; case .ground: return "Ground"; case .threePhaseTransformer: return "3-Phase Transformer"; case .junction: return "Junction"
         }
     }
     var symbol: String {
         switch self {
-        case .source: return "bolt.fill"; case .utilitySource: return "powerplug.fill"; case .transformer: return "arrow.left.arrow.right"; case .breaker: return "bolt.shield.fill"; case .fuse: return "circle.slash.fill"; case .disconnect: return "poweroff"; case .switchTarget: return "switch.2"; case .panel: return "rectangle.split.3x1"; case .bus: return "line.3.horizontal"; case .meter: return "gauge.with.dots.needle.bottom.50percent"; case .generator: return "engine.combustion.fill"; case .motor: return "fanblades.fill"; case .receptacle: return "rectangle.grid.2x2"; case .ground: return "arrow.down.to.line"; case .capacitor: return "minus.plus.batteryblock"; case .load: return "lightbulb.fill"; case .junction: return "circle.fill"
+        case .source: return "bolt.fill"; case .transformer: return "arrow.left.arrow.right"; case .switchTarget: return "switch.2"; case .fuse: return "circle.slash.fill"; case .recloser: return "arrow.triangle.2.circlepath"; case .pt: return "bolt.circle"; case .ct: return "smallcircle.filled.circle"; case .capacitor: return "minus.plus.batteryblock"; case .ground: return "arrow.down.to.line"; case .threePhaseTransformer: return "arrow.left.arrow.right"; case .junction: return "circle.fill"
         }
     }
     var defaultColorHex: String {
         switch self {
-        case .source, .utilitySource: return "FF9F43"; case .transformer: return "F59E0B"; case .breaker, .fuse, .disconnect: return "F87171"; case .switchTarget: return "6EE7B7"; case .panel, .bus: return "60A5FA"; case .meter: return "A78BFA"; case .generator: return "FB923C"; case .motor: return "34D399"; case .receptacle, .load: return "FFD166"; case .ground: return "94A3B8"; case .capacitor: return "F472B6"; case .junction: return "31D7E8"
+        case .source: return "FF9F43"; case .transformer: return "F59E0B"; case .switchTarget: return "6EE7B7"; case .fuse: return "F87171"; case .recloser: return "FCA5A5"; case .pt: return "A78BFA"; case .ct: return "818CF8"; case .capacitor: return "F472B6"; case .ground: return "94A3B8"; case .threePhaseTransformer: return "FBBF24"; case .junction: return "31D7E8"
         }
     }
 }
@@ -4154,7 +4155,7 @@ private struct PaletteItem: View {
     let kind: TargetKind
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: kind.symbol).font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: kind.defaultColorHex)).frame(width: 24)
+            SchematicSymbolView(kind: kind, color: Color(hex: kind.defaultColorHex)).frame(width: 18, height: 18)
             Text(kind.title).font(.system(size: 13, weight: .semibold)); Spacer(); Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(.white.opacity(0.25))
         }
         .padding(.horizontal, 9).frame(height: 38).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
@@ -4191,7 +4192,7 @@ private struct TargetView: View {
                     if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                         Image(uiImage: uiImage).resizable().scaledToFit().frame(width: 24, height: 24).clipShape(Circle())
                     } else {
-                        Image(systemName: target.symbol).font(.system(size: 20, weight: .medium)).foregroundStyle(Color(hex: target.colorHex))
+                        SchematicSymbolView(kind: target.kind, color: Color(hex: target.colorHex)).frame(width: 22, height: 22)
                     }
                 }
                 .frame(width: 40, height: 40)
@@ -4206,9 +4207,7 @@ private struct TargetView: View {
                                 .frame(width: 30, height: 30)
                                 .clipShape(RoundedRectangle(cornerRadius: 5))
                         } else {
-                            Image(systemName: target.symbol)
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundStyle(Color(hex: target.colorHex))
+                            SchematicSymbolView(kind: target.kind, color: Color(hex: target.colorHex)).frame(width: 28, height: 28)
                         }
                     }.frame(width: 58, height: 48)
                     Text(target.name)
@@ -4389,6 +4388,101 @@ private struct GridBackground: View {
         // Grid lines temporarily removed: couldn't cover the full pannable canvas without
         // exceeding Metal's max texture size (see repo memory), leaving a partial/lopsided grid.
         color
+    }
+}
+
+/// Custom vector-drawn ANSI/IEEE-style electrical schematic symbols, replacing generic SF Symbol icons.
+private struct SchematicSymbolView: View {
+    let kind: TargetKind
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            ZStack {
+                Canvas { context, _ in
+                    let lineWidth = max(1.5, min(size.width, size.height) * 0.09)
+                    context.stroke(strokePath(in: size), with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                    if let fill = fillPath(in: size) {
+                        context.fill(fill, with: .color(color))
+                    }
+                }
+                if let letter = letterLabel {
+                    Text(letter)
+                        .font(.system(size: min(size.width, size.height) * (letter.count > 1 ? 0.3 : 0.42), weight: .bold, design: .rounded))
+                        .foregroundStyle(color)
+                }
+            }
+        }
+    }
+
+    private var letterLabel: String? {
+        switch kind {
+        case .pt: return "PT"
+        case .ct: return "CT"
+        default: return nil
+        }
+    }
+
+    private func fillPath(in size: CGSize) -> Path? {
+        guard kind == .junction else { return nil }
+        var path = Path()
+        path.addEllipse(in: CGRect(x: 0.3 * size.width, y: 0.3 * size.height, width: 0.4 * size.width, height: 0.4 * size.height))
+        return path
+    }
+
+    private func strokePath(in size: CGSize) -> Path {
+        let w = size.width, h = size.height
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * w, y: y * h) }
+        var path = Path()
+        switch kind {
+        case .source:
+            path.addEllipse(in: CGRect(x: 0.08 * w, y: 0.08 * h, width: 0.84 * w, height: 0.84 * h))
+            path.move(to: pt(0.28, 0.55))
+            path.addCurve(to: pt(0.5, 0.4), control1: pt(0.35, 0.35), control2: pt(0.42, 0.6))
+            path.addCurve(to: pt(0.72, 0.55), control1: pt(0.58, 0.2), control2: pt(0.65, 0.75))
+        case .transformer:
+            path.addEllipse(in: CGRect(x: 0.12 * w, y: 0.2 * h, width: 0.4 * w, height: 0.6 * h))
+            path.addEllipse(in: CGRect(x: 0.48 * w, y: 0.2 * h, width: 0.4 * w, height: 0.6 * h))
+            path.move(to: pt(0.5, 0.12)); path.addLine(to: pt(0.5, 0.88))
+        case .threePhaseTransformer:
+            path.addEllipse(in: CGRect(x: 0.04 * w, y: 0.28 * h, width: 0.34 * w, height: 0.44 * h))
+            path.addEllipse(in: CGRect(x: 0.33 * w, y: 0.28 * h, width: 0.34 * w, height: 0.44 * h))
+            path.addEllipse(in: CGRect(x: 0.62 * w, y: 0.28 * h, width: 0.34 * w, height: 0.44 * h))
+            path.move(to: pt(0.21, 0.1)); path.addLine(to: pt(0.21, 0.9))
+            path.move(to: pt(0.5, 0.1)); path.addLine(to: pt(0.5, 0.9))
+            path.move(to: pt(0.79, 0.1)); path.addLine(to: pt(0.79, 0.9))
+        case .switchTarget:
+            path.move(to: pt(0.5, 0.08)); path.addLine(to: pt(0.5, 0.42))
+            path.move(to: pt(0.5, 0.58)); path.addLine(to: pt(0.5, 0.92))
+            path.move(to: pt(0.5, 0.42)); path.addLine(to: pt(0.66, 0.24))
+        case .fuse:
+            path.addRoundedRect(in: CGRect(x: 0.2 * w, y: 0.32 * h, width: 0.6 * w, height: 0.36 * h), cornerSize: CGSize(width: 0.14 * w, height: 0.18 * h))
+            path.move(to: pt(0.06, 0.5)); path.addLine(to: pt(0.94, 0.5))
+        case .recloser:
+            path.addEllipse(in: CGRect(x: 0.06 * w, y: 0.06 * h, width: 0.88 * w, height: 0.88 * h))
+            path.move(to: pt(0.5, 0.3)); path.addLine(to: pt(0.68, 0.5)); path.addLine(to: pt(0.5, 0.7)); path.addLine(to: pt(0.32, 0.5)); path.closeSubpath()
+        case .pt:
+            path.addEllipse(in: CGRect(x: 0.18 * w, y: 0.18 * h, width: 0.64 * w, height: 0.64 * h))
+            path.move(to: pt(0.5, 0.04)); path.addLine(to: pt(0.5, 0.18))
+            path.move(to: pt(0.5, 0.82)); path.addLine(to: pt(0.5, 0.96))
+        case .ct:
+            path.addEllipse(in: CGRect(x: 0.18 * w, y: 0.18 * h, width: 0.64 * w, height: 0.64 * h))
+            path.move(to: pt(0.04, 0.5)); path.addLine(to: pt(0.96, 0.5))
+        case .ground:
+            path.move(to: pt(0.5, 0.08)); path.addLine(to: pt(0.5, 0.5))
+            path.move(to: pt(0.22, 0.5)); path.addLine(to: pt(0.78, 0.5))
+            path.move(to: pt(0.32, 0.65)); path.addLine(to: pt(0.68, 0.65))
+            path.move(to: pt(0.42, 0.8)); path.addLine(to: pt(0.58, 0.8))
+        case .capacitor:
+            path.move(to: pt(0.08, 0.5)); path.addLine(to: pt(0.42, 0.5))
+            path.move(to: pt(0.58, 0.5)); path.addLine(to: pt(0.92, 0.5))
+            path.move(to: pt(0.42, 0.22)); path.addLine(to: pt(0.42, 0.78))
+            path.move(to: pt(0.58, 0.22)); path.addLine(to: pt(0.58, 0.78))
+        case .junction:
+            path.addEllipse(in: CGRect(x: 0.3 * w, y: 0.3 * h, width: 0.4 * w, height: 0.4 * h))
+        }
+        return path
     }
 }
 
