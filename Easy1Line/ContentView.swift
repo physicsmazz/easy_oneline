@@ -313,7 +313,6 @@ struct ContentView: View {
             Task { await loadBackgroundImage(item) }
         }
         .onAppear {
-            if snapToGrid { snapAllTargets() }
             restoreBackgroundImage()
             recomputeWireGeometry()
             sanitizeTargetDefinitionSymbols()
@@ -321,7 +320,6 @@ struct ContentView: View {
         .task {
             await loadWireLibrary()
         }
-        .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
@@ -456,12 +454,10 @@ struct ContentView: View {
             .accessibilityLabel("Schematic tools")
 
             Menu("Visualizations") {
-                Toggle("Snap to grid", isOn: $snapToGrid)
                 Toggle("Wire bridges", isOn: $wireBridgesEnabled)
                 Toggle("Connection names", isOn: $showConnectionNames)
                 Divider()
                 Button("Clear all") {
-                    snapToGrid = false
                     wireBridgesEnabled = false
                     showConnectionNames = false
                 }
@@ -490,6 +486,7 @@ struct ContentView: View {
             .accessibilityLabel("Configure wire labels")
 
             Menu("Settings") {
+                Toggle("Snap to grid", isOn: $snapToGrid)
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 Button("Background color") { showBackgroundColorPicker = true }
@@ -2950,12 +2947,6 @@ struct ContentView: View {
                 document.segments[segmentIndex].routePoints[last - 1].x += delta.width
                 document.segments[segmentIndex].routePoints[last - 1].y += delta.height
             }
-        }
-    }
-
-    private func snapAllTargets() {
-        for index in document.targets.indices {
-            document.targets[index].position = snappedPosition(document.targets[index].position)
         }
     }
 
