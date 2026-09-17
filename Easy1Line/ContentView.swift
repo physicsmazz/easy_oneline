@@ -110,11 +110,30 @@ struct ContentView: View {
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
+    @State private var deleteWarningSourceFrame: CGRect = .zero
     @State private var wirePlacementMode: WirePlacementMode?
     @State private var wireLabelDragStartPoints: [UUID: CGPoint] = [:]
     @State private var wireLabelRouteAnchorPoints: [UUID: CGPoint] = [:]
     @State private var showNewDrawingWarning = false
     @State private var pendingNewDrawingAfterSave = false
+    @State private var editingWireID: UUID?
+    @State private var editingWireDraft: SchematicSegment?
+    @State private var wireLibraryEntries: [SupabaseWireLibraryRecord] = []
+    @State private var showWireLibraryPanel = false
+    @State private var newWireLibrarySize = ""
+    @State private var newWireLibraryType = ""
+    @State private var newWireLibraryMisc = ""
+    @State private var newWireLibraryDescription = ""
+    @State private var newWireLibrarySizeID: Int?
+    @State private var newWireLibraryTypeID: Int?
+    @State private var newWireLibraryMiscID: Int?
+    @State private var newWireLibraryDisplaySize: Double = 2.0
+    @State private var newWireLibraryColorHex: String = "31D7E8"
+    @State private var selectedWireLibraryID: Int?
+    @State private var wireLibraryAction: String? // "change", "changeAll", or nil for discard
+    @State private var wireSizeOptions: [SupabaseWireSizeRecord] = []
+    @State private var wireTypeOptions: [SupabaseWireTypeRecord] = []
+    @State private var wireMiscOptions: [SupabaseWireMiscRecord] = []
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -203,6 +222,13 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
+            if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
+                wireBottomPanel(segment)
+                    .padding(.bottom, 20)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+
             if connectionMode {
                 Rectangle()
                     .stroke(.yellow, lineWidth: 4)
@@ -220,15 +246,43 @@ struct ContentView: View {
             Task { await loadTargetImage(item, targetID: targetID) }
         }
         .onAppear { if snapToGrid { snapAllTargets() } }
+        .task {
+            await loadWireLibrary()
+        }
         .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog(deleteWarningTitle, isPresented: $showDeleteWarning, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { deleteSelectedContent() }
-            Button("Cancel", role: .cancel) {}
+        .popover(isPresented: $showDeleteWarning, attachmentAnchor: .point(.center), arrowEdge: .bottom) {
+            VStack(spacing: 12) {
+                Text(deleteWarningTitle)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                
+                HStack(spacing: 8) {
+                    Button(role: .cancel) {
+                        showDeleteWarning = false
+                    } label: {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(role: .destructive) {
+                        deleteSelectedContent()
+                        showDeleteWarning = false
+                    } label: {
+                        Text("Delete")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+            .padding(16)
+            .frame(width: 220)
         }
         .confirmationDialog("New drawing will clear everything currently on screen.", isPresented: $showNewDrawingWarning, titleVisibility: .visible) {
             Button("Save First") {
@@ -257,6 +311,9 @@ struct ContentView: View {
             } catch {
                 cloudStatus = "Import failed: \(error.localizedDescription)"
             }
+        }
+        .sheet(isPresented: $showWireLibraryPanel) {
+            wireLibraryCreationSheet
         }
         .onChange(of: selectedTargetIDs) { _, ids in
             guard let id = ids.last, let target = target(with: id) else {
@@ -305,6 +362,7 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
+                Button("Create Wire Library") { showWireLibraryPanel.toggle() }
                 Button("Sync libraries") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
@@ -719,9 +777,9 @@ struct ContentView: View {
         let fields: [String] = [
             showWireNames ? segment.name : nil,
             showWireLengths ? "\(Int(pathLength(points).rounded())) px" : nil,
-            showWireSizes ? segment.wireSize : nil,
-            showWireMaterials ? segment.material : nil,
-            showWireCoverings ? segment.covering : nil,
+            showWireSizes ? segment.size : nil,
+            showWireMaterials ? segment.type : nil,
+            showWireCoverings ? segment.misc : nil,
             showWireNetNames ? segment.netName : nil
         ].compactMap { $0 }
         return Text(fields.joined(separator: "\n"))
@@ -1113,7 +1171,7 @@ struct ContentView: View {
               !occupiedSlots(for: endID).contains(resolvedEndSlot),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
+        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
         return true
     }
 
@@ -1146,10 +1204,10 @@ struct ContentView: View {
         let junction = SchematicTarget(kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
         let targetSlot = selectedConnectionSlots[targetID] ?? closestAvailableSlot(for: targetID, to: junction.id) ?? 0
-        document.segments.append(SchematicSegment(startID: targetID, endID: junction.id, startSlot: targetSlot, endSlot: 2, name: "Connection", colorHex: "31D7E8", wireSize: "14 AWG", material: "Copper", displayWidth: 3, description: "Target connection"))
+        document.segments.append(SchematicSegment(startID: targetID, endID: junction.id, startSlot: targetSlot, endSlot: 2, name: "Connection", colorHex: "31D7E8", size: "14 AWG", type: "Copper", misc: "BARE", displayWidth: 3, description: "Target connection"))
         selectedTargetIDs.removeAll()
         selectedSegmentIDs.removeAll()
         selectedSegmentID = nil
@@ -1232,9 +1290,9 @@ struct ContentView: View {
                     endSlot: secondOuterSlot,
                     name: first.name,
                     colorHex: first.colorHex,
-                    wireSize: first.wireSize,
-                    material: first.material,
-                    covering: first.covering,
+                    size: first.size,
+                    type: first.type,
+                    misc: first.misc,
                     netName: first.netName,
                     displayWidth: first.displayWidth,
                     description: first.description,
@@ -1367,6 +1425,46 @@ struct ContentView: View {
             cloudStatus = "Libraries synced"
         } catch {
             cloudStatus = "Library sync failed: \(cloudErrorText(error))"
+        }
+    }
+
+    private func loadWireLibrary() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        do {
+            wireLibraryEntries = try await store.loadWireLibrary()
+            wireSizeOptions = try await store.loadWireSizes()
+            wireTypeOptions = try await store.loadWireTypes()
+            wireMiscOptions = try await store.loadWireMiscOptions()
+        } catch {
+            print("Failed to load wire library: \(error)")
+        }
+    }
+
+    private func createWireLibraryEntry() async {
+        guard let store = SupabaseDrawingStore(),
+              let sizeID = newWireLibrarySizeID,
+              let typeID = newWireLibraryTypeID,
+              let miscID = newWireLibraryMiscID else { return }
+        do {
+            let newEntry = try await store.createWireLibraryEntry(
+                sizeID: sizeID,
+                typeID: typeID,
+                miscID: miscID,
+                description: newWireLibraryDescription,
+                displaySize: newWireLibraryDisplaySize,
+                colorHex: newWireLibraryColorHex
+            )
+            wireLibraryEntries.append(newEntry)
+            newWireLibrarySizeID = nil
+            newWireLibraryTypeID = nil
+            newWireLibraryMiscID = nil
+            newWireLibraryDescription = ""
+            newWireLibraryDisplaySize = 2.0
+            newWireLibraryColorHex = "31D7E8"
+            showWireLibraryPanel = false
+            cloudStatus = "Wire library entry created"
+        } catch {
+            cloudStatus = "Failed to create wire library entry: \(error.localizedDescription)"
         }
     }
 
@@ -1643,6 +1741,114 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var wireLibraryCreationSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Create Wire Library Entry").font(.headline)
+                
+                // Size Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Size").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibrarySizeID) {
+                        Text("Select size").tag(nil as Int?)
+                        ForEach(wireSizeOptions) { size in
+                            Text(size.sizeValue).tag(size.id as Int?)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Type Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Type").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibraryTypeID) {
+                        Text("Select type").tag(nil as Int?)
+                        ForEach(wireTypeOptions) { type in
+                            Text(type.typeName).tag(type.id as Int?)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Misc Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Misc").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibraryMiscID) {
+                        Text("Select misc").tag(nil as Int?)
+                        ForEach(wireMiscOptions) { misc in
+                            Text(misc.miscValue).tag(misc.id as Int?)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Display Size Slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Display Size").font(.caption.weight(.semibold))
+                        Spacer()
+                        Text(String(format: "%.1f", newWireLibraryDisplaySize)).font(.caption).foregroundColor(.secondary)
+                    }
+                    Slider(value: $newWireLibraryDisplaySize, in: 0.5...10.0, step: 0.5)
+                }
+                
+                // Color Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Color").font(.caption.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Color(hex: newWireLibraryColorHex) ?? .cyan)
+                            .frame(width: 32, height: 32)
+                        
+                        TextField("Hex color (e.g., 31D7E8)", text: $newWireLibraryColorHex)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.caption, design: .monospaced))
+                            .autocapitalization(.allCharacters)
+                    }
+                }
+                
+                // Description TextField
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Description").font(.caption.weight(.semibold))
+                    TextField("Optional description", text: $newWireLibraryDescription)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                Spacer()
+                
+                // Create Button
+                HStack(spacing: 12) {
+                    Button(action: {
+                        newWireLibrarySizeID = nil
+                        newWireLibraryTypeID = nil
+                        newWireLibraryMiscID = nil
+                        newWireLibraryDescription = ""
+                        newWireLibraryDisplaySize = 2.0
+                        newWireLibraryColorHex = "31D7E8"
+                        showWireLibraryPanel = false
+                    }) {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        Task {
+                            await createWireLibraryEntry()
+                        }
+                    }) {
+                        Text("Create")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.green)
+                    .disabled(newWireLibrarySizeID == nil || newWireLibraryTypeID == nil || newWireLibraryMiscID == nil)
+                }
+            }
+            .padding()
+        }
+    }
+
     private var inspector: some View {
         VStack(alignment: .leading, spacing: 12) {
             if selectedSegmentIDs.count > 1 {
@@ -1808,12 +2014,6 @@ struct ContentView: View {
                     .help("Remove straight bend points")
                     .accessibilityLabel("Remove straight bend points")
             }
-            Button(role: .destructive) {
-                showDeleteWarning = true
-            } label: { Image(systemName: "trash") }
-                .buttonStyle(EditorButtonStyle())
-                .help("Delete selected items")
-                .accessibilityLabel("Delete selected items")
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
                     Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
@@ -1842,6 +2042,12 @@ struct ContentView: View {
                     .help(target.locked ? "Unlock selected item" : "Lock selected item")
                     .accessibilityLabel(target.locked ? "Unlock selected item" : "Lock selected item")
             }
+            Button(role: .destructive) {
+                showDeleteWarning = true
+            } label: { Image(systemName: "trash") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Delete selected items")
+                .accessibilityLabel("Delete selected items")
         }
         .padding(12)
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
@@ -1894,7 +2100,8 @@ struct ContentView: View {
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var inspectorVisible: Bool {
-        (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1
+        if selectedSegmentIDs.count >= 1 && !connectionMode { return false } // Bottom panel handles all wires
+        return hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1
     }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
@@ -1926,20 +2133,300 @@ struct ContentView: View {
             }
             TextField("Wire name", text: binding.name).textFieldStyle(.roundedBorder)
             HStack {
-                TextField("Size", text: binding.wireSize).textFieldStyle(.roundedBorder)
-                Picker("Material", selection: binding.material) {
-                    ForEach(ConductorMaterial.allCases) { material in
-                        Text(material.title).tag(material)
-                    }
-                }
+                TextField("Size", text: binding.size).textFieldStyle(.roundedBorder)
+                TextField("Type", text: binding.type).textFieldStyle(.roundedBorder)
             }
-            TextField("Covering", text: binding.covering).textFieldStyle(.roundedBorder)
+            TextField("Misc", text: binding.misc).textFieldStyle(.roundedBorder)
             TextField("Net name", text: binding.netName).textFieldStyle(.roundedBorder)
             Stepper("Display size: \(wire.displayWidth, specifier: "%.1f") pt", value: binding.displayWidth, in: 1...20, step: 0.5)
         }
         .padding(10)
         .background(.white.opacity(compact ? 0.05 : 0.03), in: RoundedRectangle(cornerRadius: 8))
     }
+
+    private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
+        let draft = editingWireDraft ?? wire
+        let hasChanges = editingWireDraft != nil && editingWireDraft != wire
+        
+        // Create bindings that update editingWireDraft by replacing the whole struct
+        let nameBinding = Binding(
+            get: { editingWireDraft?.name ?? wire.name },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.name = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.name = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let sizeBinding = Binding(
+            get: { editingWireDraft?.size ?? wire.size },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.size = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.size = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let typeBinding = Binding(
+            get: { editingWireDraft?.type ?? wire.type },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.type = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.type = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let miscBinding = Binding(
+            get: { editingWireDraft?.misc ?? wire.misc },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.misc = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.misc = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let netNameBinding = Binding(
+            get: { editingWireDraft?.netName ?? wire.netName },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.netName = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.netName = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let displayWidthBinding = Binding(
+            get: { editingWireDraft?.displayWidth ?? wire.displayWidth },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.displayWidth = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.displayWidth = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let colorBinding = Binding(
+            get: { Color(hex: editingWireDraft?.colorHex ?? wire.colorHex) ?? .cyan },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.colorHex = $0.hexString
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.colorHex = $0.hexString
+                    editingWireDraft = draft
+                }
+            }
+        )
+        
+        return VStack(spacing: 12) {
+            // Wire Library section
+            if !wireLibraryEntries.isEmpty {
+                HStack(spacing: 12) {
+                    Text("LIBRARY").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.5))
+                    
+                    Picker("", selection: $selectedWireLibraryID) {
+                        Text("Select...").tag(nil as Int?)
+                        ForEach(wireLibraryEntries) { entry in
+                            Text("\(entry.size) / \(entry.type) / \(entry.misc)").tag(entry.id as Int?)
+                        }
+                    }
+                    .frame(maxWidth: 250)
+                    
+                    // When a library entry is selected, show action buttons
+                    if let selectedID = selectedWireLibraryID, let selectedEntry = wireLibraryEntries.first(where: { $0.id == selectedID }) {
+                        Button("Apply") {
+                            editingWireDraft = draft
+                            editingWireDraft?.size = selectedEntry.size
+                            editingWireDraft?.type = selectedEntry.type
+                            editingWireDraft?.misc = selectedEntry.misc
+                            selectedWireLibraryID = nil
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.blue)
+                        .font(.caption)
+                        
+                        Button("Apply to All") {
+                            let simialar = document.segments.filter { seg in
+                                seg.size == wire.size && seg.type == wire.type && seg.misc == wire.misc
+                            }
+                            for i in document.segments.indices {
+                                if simialar.contains(where: { $0.id == document.segments[i].id }) {
+                                    document.segments[i].size = selectedEntry.size
+                                    document.segments[i].type = selectedEntry.type
+                                    document.segments[i].misc = selectedEntry.misc
+                                }
+                            }
+                            selectedWireLibraryID = nil
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                        .font(.caption)
+                        
+                        Button("Cancel") {
+                            selectedWireLibraryID = nil
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.gray)
+                        .font(.caption)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+            }
+            
+            HStack(spacing: 16) {
+                // Wire visual preview (color bar with thickness) - above size
+                VStack(alignment: .center, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(draft.color)
+                        .frame(height: max(2, CGFloat(draft.displayWidth)))
+                        .frame(width: 60)
+                }
+                
+                // Name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Wire name", text: nameBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 120)
+                
+                // Size
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Size", text: sizeBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 80)
+                
+                // Misc
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("MISC").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Misc", text: miscBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 90)
+                
+                // Net name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Net name", text: netNameBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 100)
+                
+                // Display size with color picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    Stepper("", value: displayWidthBinding, in: 1...20, step: 0.5)
+                        .labelsHidden()
+                }
+                
+                // Color picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COLOR").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    ColorPicker("", selection: colorBinding)
+                        .labelsHidden()
+                }
+                
+                if hasChanges || selectedSegmentIDs.count > 1 {
+                    Button(action: {
+                        if editingWireDraft == nil {
+                            editingWireDraft = wire
+                        }
+                        saveWireChanges()
+                    }) {
+                        Text(selectedSegmentIDs.count > 1 ? "Apply to All" : "Apply")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .font(.caption.weight(.semibold))
+                }
+            }
+            .onAppear {
+                if editingWireID != wire.id {
+                    editingWireID = wire.id
+                    editingWireDraft = wire
+                }
+            }
+            .onChange(of: wire.id) { _ in
+                editingWireID = nil
+                editingWireDraft = nil
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+    
+    private func saveWireChanges() {
+        guard let draft = editingWireDraft else { return }
+        // Apply to all selected wires
+        for id in selectedSegmentIDs {
+            if let index = document.segments.firstIndex(where: { $0.id == id }) {
+                document.segments[index].name = draft.name
+                document.segments[index].size = draft.size
+                document.segments[index].type = draft.type
+                document.segments[index].misc = draft.misc
+                document.segments[index].netName = draft.netName
+                document.segments[index].displayWidth = draft.displayWidth
+                document.segments[index].colorHex = draft.colorHex
+            }
+        }
+        editingWireDraft = nil
+    }
+    
+    private func applyWireChangesToAll() {
+        guard let draft = editingWireDraft else { return }
+        // Apply draft properties to all selected wires
+        for id in selectedSegmentIDs {
+            if let index = document.segments.firstIndex(where: { $0.id == id }) {
+                document.segments[index].name = draft.name
+                document.segments[index].size = draft.size
+                document.segments[index].type = draft.type
+                document.segments[index].misc = draft.misc
+                document.segments[index].netName = draft.netName
+                document.segments[index].displayWidth = draft.displayWidth
+                document.segments[index].colorHex = draft.colorHex
+            }
+        }
+        editingWireDraft = nil
+    }
+    
+    private func smartWireID(_ wire: SchematicSegment) -> String {
+        return "\(wire.size)_\(wire.type)_\(wire.misc)"
+    }
+
+
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
@@ -2560,8 +3047,8 @@ struct ContentView: View {
         let firstSlot = closestAvailableSlot(for: targetID, to: segment.startID) ?? 0
         if isJunction {
             let secondSlot = firstSlot + 1
-            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: hit.index)
-            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: hit.index + 1)
+            document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: hit.index)
+            document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: hit.index + 1)
             return
         }
         // Rotate so the first pin faces back along the wire: sides for a horizontal wire, top/bottom for vertical.
@@ -2572,9 +3059,9 @@ struct ContentView: View {
             let delta = (desired - current).truncatingRemainder(dividingBy: 360)
             if abs(delta) > 0.5 { rotateTarget(document.targets[targetIndex], by: delta) }
         }
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.first.dropLast()), target: document.targets[targetIndex], slot: firstSlot, toward: segment.startID, fallback: junctionPosition)), at: hit.index)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: targetID, startSlot: startSlot, endSlot: firstSlot, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.first.dropLast()), target: document.targets[targetIndex], slot: firstSlot, toward: segment.startID, fallback: junctionPosition)), at: hit.index)
         let secondSlot = closestAvailableSlot(for: targetID, to: segment.endID) ?? (firstSlot == 0 ? 1 : 0)
-        document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.second.dropFirst()).reversed(), target: document.targets[targetIndex], slot: secondSlot, toward: segment.endID, fallback: junctionPosition).reversed()), at: hit.index + 1)
+        document.segments.insert(SchematicSegment(startID: targetID, endID: segment.endID, startSlot: secondSlot, endSlot: endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: routeIntoPin(Array(splitRoutes.second.dropFirst()).reversed(), target: document.targets[targetIndex], slot: secondSlot, toward: segment.endID, fallback: junctionPosition).reversed()), at: hit.index + 1)
     }
 
     private func nearestSection(of points: [CGPoint], to point: CGPoint) -> (start: CGPoint, end: CGPoint)? {
@@ -2609,8 +3096,8 @@ struct ContentView: View {
         let junction = SchematicTarget(kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: index)
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
-        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
         selectedSegmentIDs.remove(segment.id)
         selectedSegmentID = nil
     }
@@ -2666,7 +3153,7 @@ struct ContentView: View {
         return document.lineDefinitions.first { $0.id == selectedLineDefinitionID }
     }
 
-    private func segmentBinding(_ segment: SchematicSegment, applyToAll: Bool = false) -> (name: Binding<String>, color: Binding<Color>, wireSize: Binding<String>, material: Binding<ConductorMaterial>, displayWidth: Binding<Double>, description: Binding<String>, covering: Binding<String>, netName: Binding<String>) {
+    private func segmentBinding(_ segment: SchematicSegment, applyToAll: Bool = false) -> (name: Binding<String>, color: Binding<Color>, size: Binding<String>, type: Binding<String>, displayWidth: Binding<Double>, description: Binding<String>, misc: Binding<String>, netName: Binding<String>) {
         let id = segment.id
         func current() -> SchematicSegment { document.segments.first { $0.id == id } ?? segment }
         func update(_ change: (inout SchematicSegment) -> Void) {
@@ -2678,11 +3165,11 @@ struct ContentView: View {
         return (
             Binding(get: { current().name }, set: { value in update { $0.name = value } }),
             Binding(get: { Color(hex: current().colorHex) }, set: { value in update { $0.colorHex = value.hexString } }),
-            Binding(get: { current().wireSize }, set: { value in update { $0.wireSize = value } }),
-            Binding(get: { ConductorMaterial(rawValue: current().material) ?? .copper }, set: { value in update { $0.material = value.rawValue } }),
+            Binding(get: { current().size }, set: { value in update { $0.size = value } }),
+            Binding(get: { current().type }, set: { value in update { $0.type = value } }),
             Binding(get: { current().displayWidth }, set: { value in update { $0.displayWidth = value } }),
             Binding(get: { current().description }, set: { value in update { $0.description = value } }),
-            Binding(get: { current().covering }, set: { value in update { $0.covering = value } }),
+            Binding(get: { current().misc }, set: { value in update { $0.misc = value } }),
             Binding(get: { current().netName }, set: { value in update { $0.netName = value } })
         )
     }
@@ -2748,8 +3235,8 @@ struct ContentView: View {
         guard let index = document.segments.firstIndex(where: { $0.id == segmentID }) else { return }
         document.segments[index].name = line.name
         document.segments[index].colorHex = line.colorHex
-        document.segments[index].wireSize = line.wireSize
-        document.segments[index].material = line.material.rawValue
+        document.segments[index].size = line.wireSize
+        document.segments[index].type = line.material.rawValue.capitalized
         document.segments[index].displayWidth = line.displayWidth
         document.segments[index].description = line.description
     }
@@ -2933,9 +3420,9 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var endSlot: Int?
     var name: String
     var colorHex: String
-    var wireSize: String
-    var material: String
-    var covering: String
+    var size: String // e.g., "14 AWG", "1/0", "2/0"
+    var type: String // e.g., "Copper", "Aluminum", "ACSR"
+    var misc: String // e.g., "BARE", "INSULATED", "POLYETHYLENE"
     var netName: String
     var displayWidth: Double
     var description: String
@@ -2946,9 +3433,9 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var labelSectionPosition: Double
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, size: String = "14 AWG", type: String = "Copper", misc: String = "BARE", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.covering = covering; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
+        self.size = size; self.type = type; self.misc = misc; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
     }
 
     init(from decoder: Decoder) throws {
@@ -2960,9 +3447,12 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         endSlot = try container.decodeIfPresent(Int.self, forKey: .endSlot)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Connection"
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
-        wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
-        material = try container.decodeIfPresent(String.self, forKey: .material) ?? "Copper"
-        covering = try container.decodeIfPresent(String.self, forKey: .covering) ?? "None"
+        // Handle both old (wireSize) and new (size) field names
+        size = try container.decodeIfPresent(String.self, forKey: .size) ?? "14 AWG"
+        // Handle both old (material) and new (type) field names
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? "Copper"
+        // Handle both old (covering) and new (misc) field names
+        misc = try container.decodeIfPresent(String.self, forKey: .misc) ?? "BARE"
         netName = try container.decodeIfPresent(String.self, forKey: .netName) ?? "N001"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
@@ -3308,6 +3798,12 @@ private extension View {
 
 private extension Color {
     init(hex: String) {
+        let value = UInt64(hex, radix: 16) ?? 0
+        self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
+    }
+    
+    init?(hex: String?) {
+        guard let hex = hex, !hex.isEmpty else { return nil }
         let value = UInt64(hex, radix: 16) ?? 0
         self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
     }
