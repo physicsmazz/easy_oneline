@@ -1219,7 +1219,7 @@ struct ContentView: View {
     private func targetDragGesture(for target: SchematicTarget, canvasSize: CGSize) -> some Gesture {
         DragGesture(coordinateSpace: .global)
             .onChanged { value in
-                guard !connectionMode, !editingConnectionPoints, !target.locked else { return }
+                guard !connectionMode, !wireConnectionMoveMode, !editingConnectionPoints, !target.locked else { return }
                 draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil {
