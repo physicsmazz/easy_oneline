@@ -99,7 +99,7 @@ struct ContentView: View {
     @State private var targetsPanelResizeStart: Double?
     @State private var targetsPanelWidthResizeStart: Double?
     @State private var splitCandidateSegmentID: UUID?
-    @State private var wireAlignmentPreviewSegmentID: UUID?
+    @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
     @State private var selectionBoxOffset = CGSize.zero
@@ -533,7 +533,7 @@ struct ContentView: View {
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
-                    if wireAlignmentPreviewSegmentID == segment.id {
+                    if wireAlignmentPreviewSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.orange.opacity(0.8)), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 5]))
                     }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
@@ -1931,21 +1931,52 @@ struct ContentView: View {
         let delta = isVertical ? translation.width : translation.height
         let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
         let movedCoordinate = snapToGrid ? snappedCoordinate(base + delta) : base + delta
+        let alignment = nearbyParallelAlignment(segmentID: id, sectionStart: points[sectionIndex], sectionEnd: points[sectionIndex + 1], coordinate: movedCoordinate)
+        let alignedCoordinate = alignment?.coordinate ?? movedCoordinate
         if isVertical {
-            points[sectionIndex].x = movedCoordinate
-            points[sectionIndex + 1].x = movedCoordinate
+            points[sectionIndex].x = alignedCoordinate
+            points[sectionIndex + 1].x = alignedCoordinate
         } else {
-            points[sectionIndex].y = movedCoordinate
-            points[sectionIndex + 1].y = movedCoordinate
+            points[sectionIndex].y = alignedCoordinate
+            points[sectionIndex + 1].y = alignedCoordinate
         }
         let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0)
-        wireAlignmentPreviewSegmentID = hasNearAlignment(in: dragRoute) ? id : nil
+        wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         selectedTargetIDs.removeAll()
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
-        wireAlignmentPreviewSegmentID = nil
+        wireAlignmentPreviewSegmentIDs.removeAll()
+    }
+
+    private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
+        let tolerance = CGFloat(wireAlignmentTolerance)
+        let horizontal = abs(sectionStart.y - sectionEnd.y) < 0.5
+        var best: (segmentID: UUID, coordinate: CGFloat, distance: CGFloat)?
+        for other in document.segments where other.id != segmentID {
+            guard let start = target(with: other.startID), let end = target(with: other.endID) else { continue }
+            let points = orthogonalPoints(for: other, from: start, to: end, avoiding: [])
+            for index in 0..<(points.count - 1) {
+                let otherStart = points[index], otherEnd = points[index + 1]
+                guard (abs(otherStart.y - otherEnd.y) < 0.5) == horizontal else { continue }
+                let overlap: CGFloat
+                let otherCoordinate: CGFloat
+                if horizontal {
+                    overlap = min(max(sectionStart.x, sectionEnd.x), max(otherStart.x, otherEnd.x)) - max(min(sectionStart.x, sectionEnd.x), min(otherStart.x, otherEnd.x))
+                    otherCoordinate = otherStart.y
+                } else {
+                    overlap = min(max(sectionStart.y, sectionEnd.y), max(otherStart.y, otherEnd.y)) - max(min(sectionStart.y, sectionEnd.y), min(otherStart.y, otherEnd.y))
+                    otherCoordinate = otherStart.x
+                }
+                let distance = abs(coordinate - otherCoordinate)
+                guard overlap > 0, distance <= tolerance else { continue }
+                if best == nil || distance < best!.distance {
+                    best = (other.id, otherCoordinate, distance)
+                }
+            }
+        }
+        return best.map { ($0.segmentID, $0.coordinate) }
     }
 
     private func hasNearAlignment(in points: [CGPoint]) -> Bool {
