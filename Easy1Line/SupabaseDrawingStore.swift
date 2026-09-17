@@ -200,20 +200,20 @@ struct SupabaseConductorRecord: Codable {
     enum CodingKeys: String, CodingKey { case material, wireSize = "wire_size" }
 }
 
-struct SupabaseWireSizeRecord: Codable {
+struct SupabaseWireSizeRecord: Codable, Identifiable {
     let id: Int
     let sizeValue: String
     enum CodingKeys: String, CodingKey { case id, sizeValue = "size_value" }
 }
 
-struct SupabaseWireTypeRecord: Codable {
+struct SupabaseWireTypeRecord: Codable, Identifiable {
     let id: Int
     let typeName: String
     let colorHex: String
     enum CodingKeys: String, CodingKey { case id, typeName = "type_name", colorHex = "color_hex" }
 }
 
-struct SupabaseWireMiscRecord: Codable {
+struct SupabaseWireMiscRecord: Codable, Identifiable {
     let id: Int
     let miscValue: String
     enum CodingKeys: String, CodingKey { case id, miscValue = "misc_value" }

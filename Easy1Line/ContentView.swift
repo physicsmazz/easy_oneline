@@ -110,6 +110,7 @@ struct ContentView: View {
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
+    @State private var deleteWarningSourceFrame: CGRect = .zero
     @State private var wirePlacementMode: WirePlacementMode?
     @State private var wireLabelDragStartPoints: [UUID: CGPoint] = [:]
     @State private var wireLabelRouteAnchorPoints: [UUID: CGPoint] = [:]
@@ -125,6 +126,9 @@ struct ContentView: View {
     @State private var newWireLibraryDescription = ""
     @State private var selectedWireLibraryID: Int?
     @State private var wireLibraryAction: String? // "change", "changeAll", or nil for discard
+    @State private var wireSizeOptions: [SupabaseWireSizeRecord] = []
+    @State private var wireTypeOptions: [SupabaseWireTypeRecord] = []
+    @State private var wireMiscOptions: [SupabaseWireMiscRecord] = []
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -250,6 +254,35 @@ struct ContentView: View {
             Button("Delete", role: .destructive) { deleteSelectedContent() }
             Button("Cancel", role: .cancel) {}
         }
+        .popover(isPresented: $showDeleteWarning, attachmentAnchor: .point(.center), arrowEdge: .bottom) {
+            VStack(spacing: 12) {
+                Text(deleteWarningTitle)
+                    .font(.headline)
+                    .multilineTextAlignment(.center)
+                
+                HStack(spacing: 8) {
+                    Button(role: .cancel) {
+                        showDeleteWarning = false
+                    } label: {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(role: .destructive) {
+                        deleteSelectedContent()
+                        showDeleteWarning = false
+                    } label: {
+                        Text("Delete")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+            .padding(16)
+            .frame(width: 220)
+        }
         .confirmationDialog("New drawing will clear everything currently on screen.", isPresented: $showNewDrawingWarning, titleVisibility: .visible) {
             Button("Save First") {
                 pendingNewDrawingAfterSave = true
@@ -277,6 +310,9 @@ struct ContentView: View {
             } catch {
                 cloudStatus = "Import failed: \(error.localizedDescription)"
             }
+        }
+        .sheet(isPresented: $showWireLibraryPanel) {
+            wireLibraryCreationSheet
         }
         .onChange(of: selectedTargetIDs) { _, ids in
             guard let id = ids.last, let target = target(with: id) else {
@@ -325,6 +361,7 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
+                Button("Create Wire Library") { showWireLibraryPanel.toggle() }
                 Button("Sync libraries") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
@@ -1394,8 +1431,32 @@ struct ContentView: View {
         guard let store = SupabaseDrawingStore() else { return }
         do {
             wireLibraryEntries = try await store.loadWireLibrary()
+            wireSizeOptions = try await store.loadWireSizes()
+            wireTypeOptions = try await store.loadWireTypes()
+            wireMiscOptions = try await store.loadWireMiscOptions()
         } catch {
             print("Failed to load wire library: \(error)")
+        }
+    }
+
+    private func createWireLibraryEntry() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        do {
+            let newEntry = try await store.createWireLibraryEntry(
+                size: newWireLibrarySize,
+                type: newWireLibraryType,
+                misc: newWireLibraryMisc,
+                description: newWireLibraryDescription
+            )
+            wireLibraryEntries.append(newEntry)
+            newWireLibrarySize = ""
+            newWireLibraryType = ""
+            newWireLibraryMisc = ""
+            newWireLibraryDescription = ""
+            showWireLibraryPanel = false
+            cloudStatus = "Wire library entry created"
+        } catch {
+            cloudStatus = "Failed to create wire library entry: \(error.localizedDescription)"
         }
     }
 
@@ -1670,6 +1731,87 @@ struct ContentView: View {
         .padding(14)
         .frame(width: 290)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var wireLibraryCreationSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Create Wire Library Entry").font(.headline)
+                
+                // Size Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Size").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibrarySize) {
+                        Text("Select size").tag("")
+                        ForEach(wireSizeOptions) { size in
+                            Text(size.sizeValue).tag(size.sizeValue)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Type Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Type").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibraryType) {
+                        Text("Select type").tag("")
+                        ForEach(wireTypeOptions) { type in
+                            Text(type.typeName).tag(type.typeName)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Misc Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Misc").font(.caption.weight(.semibold))
+                    Picker("", selection: $newWireLibraryMisc) {
+                        Text("Select misc").tag("")
+                        ForEach(wireMiscOptions) { misc in
+                            Text(misc.miscValue).tag(misc.miscValue)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                
+                // Description TextField
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Description").font(.caption.weight(.semibold))
+                    TextField("Optional description", text: $newWireLibraryDescription)
+                        .textFieldStyle(.roundedBorder)
+                }
+                
+                Spacer()
+                
+                // Create Button
+                HStack(spacing: 12) {
+                    Button(action: {
+                        newWireLibrarySize = ""
+                        newWireLibraryType = ""
+                        newWireLibraryMisc = ""
+                        newWireLibraryDescription = ""
+                        showWireLibraryPanel = false
+                    }) {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    
+                    Button(action: {
+                        Task {
+                            await createWireLibraryEntry()
+                        }
+                    }) {
+                        Text("Create")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.green)
+                    .disabled(newWireLibrarySize.isEmpty || newWireLibraryType.isEmpty || newWireLibraryMisc.isEmpty)
+                }
+            }
+            .padding()
+        }
     }
 
     private var inspector: some View {
