@@ -533,6 +533,9 @@ struct ContentView: View {
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
+                    if wireAlignmentPreviewSegmentID == segment.id {
+                        context.stroke(path, with: .color(.orange.opacity(0.8)), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 5]))
+                    }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
@@ -1935,7 +1938,7 @@ struct ContentView: View {
             points[sectionIndex].y = movedCoordinate
             points[sectionIndex + 1].y = movedCoordinate
         }
-        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0.5)
+        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0)
         wireAlignmentPreviewSegmentID = hasNearAlignment(in: dragRoute) ? id : nil
         document.segments[index].routePoints = dragRoute
         selectedTargetIDs.removeAll()
@@ -1952,8 +1955,8 @@ struct ContentView: View {
             let current = points[index]
             let after = points[index + 1]
             let tolerance = CGFloat(wireAlignmentTolerance)
-            let vertical = abs(before.x - current.x) < tolerance && abs(current.x - after.x) < tolerance
-            let horizontal = abs(before.y - current.y) < tolerance && abs(current.y - after.y) < tolerance
+            let vertical = abs(before.x - current.x) <= tolerance && abs(current.x - after.x) <= tolerance
+            let horizontal = abs(before.y - current.y) <= tolerance && abs(current.y - after.y) <= tolerance
             if vertical || horizontal { return true }
         }
         return false
@@ -1984,7 +1987,7 @@ struct ContentView: View {
     }
 
     private func routeWithCurrentEndpoints(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
-        var points = orthogonalizedPoints(routePoints, alignmentTolerance: 0.5)
+        var points = orthogonalizedPoints(routePoints, alignmentTolerance: 0)
         guard points.count > 1 else { return points }
         let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
@@ -1993,13 +1996,13 @@ struct ContentView: View {
         let startEscape = preservedStub(from: points[0], to: points[1], minimumLength: 15, fallback: escapePoint(for: startTarget, slot: startSlot, toward: endTarget))
         let endEscape = preservedStub(from: points[points.count - 1], to: points[points.count - 2], minimumLength: 15, fallback: escapePoint(for: endTarget, slot: endSlot, toward: startTarget))
         if points.count == 2 {
-            return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0.5)
+            return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0)
         }
         points[0] = startPin
         points[1] = startEscape
         points[points.count - 1] = endPin
         points[points.count - 2] = endEscape
-        return orthogonalizedPoints(points, alignmentTolerance: 0.5)
+        return orthogonalizedPoints(points, alignmentTolerance: 0)
     }
 
     private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint) -> CGPoint {
