@@ -109,9 +109,6 @@ struct ContentView: View {
     @State private var showFileExporter = false
     @State private var pdfShareItem: PDFShareItem?
     @State private var showFileImporter = false
-    @State private var showInfoPanel = false
-    @State private var doubleTapInfoTargetIDs: [UUID] = []
-    @State private var doubleTapInfoSegmentIDs: Set<UUID> = []
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
     @State private var dockDragLocation = CGPoint.zero
@@ -189,14 +186,14 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if inspectorVisible {
-                inspector
-                    .padding(.trailing, 20)
-                    .padding(.top, 84)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!) {
+                targetBottomPanel(target)
+                    .padding(.bottom, 6)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
 
-            if !inspectorVisible, let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
+            if let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
                 selectionBox
                     .position(selectionBoxPosition(near: selectionAnchor))
                     .offset(selectionBoxOffset)
@@ -253,7 +250,7 @@ struct ContentView: View {
 
             if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
                 wireBottomPanel(segment)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 6)
                     .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
@@ -494,9 +491,6 @@ struct ContentView: View {
                 .frame(width: 260)
             }
 
-            Button("Info") { showInfoPanel.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
-                .accessibilityLabel("Show item information")
                 }
                 .fixedSize(horizontal: true, vertical: false)
             }
@@ -1277,8 +1271,6 @@ struct ContentView: View {
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         selectedConnectionSlots.removeAll()
-        doubleTapInfoTargetIDs = selectedTargetIDs
-        doubleTapInfoSegmentIDs = []
     }
 
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
@@ -1286,15 +1278,6 @@ struct ContentView: View {
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
         selectedSegmentSectionIndex = sectionIndex
-        doubleTapInfoTargetIDs = []
-        doubleTapInfoSegmentIDs = [wire.id]
-    }
-
-    // Inspector opened by double-tap stays only while that same selection is current.
-    private var doubleTapInfoIsCurrent: Bool {
-        (!doubleTapInfoTargetIDs.isEmpty || !doubleTapInfoSegmentIDs.isEmpty)
-            && doubleTapInfoTargetIDs == selectedTargetIDs
-            && doubleTapInfoSegmentIDs == selectedSegmentIDs
     }
 
     private func toggleConnectionMode() {
@@ -2260,74 +2243,25 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var inspector: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if selectedSegmentIDs.count > 1 {
-                Text("WIRES").inspectorLabel()
-                Text("\(selectedSegmentIDs.count) wires selected").font(.headline)
-                if let primary = selectedSegment ?? selectedSegmentIDs.compactMap({ segment(with: $0) }).first {
-                    wireEditor(primary, compact: true, applyToAll: true)
-                }
-                Button {
-                    showLineLibrary = true
-                } label: {
-                    Label("Choose wire type", systemImage: "list.bullet.rectangle")
-                }
-                Button(role: .destructive) {
-                    showDeleteWarning = true
-                } label: {
-                    Label("Delete wires", systemImage: "trash")
-                }
-            } else if let segment = selectedSegment {
-                Text("WIRE").inspectorLabel()
-                wireEditor(segment)
-                Button {
-                    splitWire(segment)
-                } label: {
-                    Label("Split wire", systemImage: "scissors")
-                }
-                Button(role: .destructive) {
-                    showDeleteWarning = true
-                } label: {
-                    Label("Delete wire", systemImage: "trash")
-                }
-                /*
-                TextField("Wire name", text: segmentBinding(segment).name)
-                    .textFieldStyle(.roundedBorder)
-                ColorPicker("Line color", selection: segmentBinding(segment).color)
-                TextField("Wire size", text: segmentBinding(segment).wireSize).textFieldStyle(.roundedBorder)
-                Picker("Material", selection: segmentBinding(segment).material) {
-                    ForEach(ConductorMaterial.allCases) { material in
-                        Text(material.title).tag(material)
-                    }
-                }
-                TextField("Description", text: segmentBinding(segment).description).textFieldStyle(.roundedBorder)
-                Stepper("Display width: \(segment.displayWidth, specifier: "%.1f")", value: segmentBinding(segment).displayWidth, in: 1...20, step: 0.5)
-                Button {
-                    showLineLibrary = true
-                } label: {
-                    Label("Choose wire type", systemImage: "list.bullet.rectangle")
-                }
-                Button {
-                    document.lineDefinitions.append(LineDefinition(name: segment.name, colorHex: segment.colorHex, wireSize: segment.wireSize, material: ConductorMaterial(rawValue: segment.material) ?? .copper, displayWidth: segment.displayWidth, description: segment.description))
-                } label: {
-                    Label("Add to wire library", systemImage: "plus.circle")
-                }
-                Button(role: .destructive) {
-                    document.segments.removeAll { $0.id == segment.id }
-                    selectedSegmentIDs.removeAll()
-                    selectedSegmentID = nil
-                } label: { Label("Delete wire", systemImage: "trash") }
-                */
-            } else if selectedTargetIDs.count == 1, let target = target(with: selectedTargetIDs.first!) {
+    private func targetBottomPanel(_ target: SchematicTarget) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
                 Text("TARGET").inspectorLabel()
-                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder)
-                HStack {
-                    Button("Save") { saveTargetName(target) }
-                        .buttonStyle(.borderedProminent)
-                    Button("Cancel") { cancelTargetName(target) }
-                        .buttonStyle(.bordered)
+                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
+                Button("Save") { saveTargetName(target) }
+                    .buttonStyle(.borderedProminent)
+                Button("Cancel") { cancelTargetName(target) }
+                    .buttonStyle(.bordered)
+                Spacer()
+                if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color).labelsHidden() }
+                Button(role: .destructive) {
+                    showDeleteWarning = true
+                } label: {
+                    Label("Delete target", systemImage: "trash")
                 }
+            }
+
+            HStack(spacing: 16) {
                 Button {
                     captureForUndo()
                     rotateTarget(target, by: 90)
@@ -2339,14 +2273,6 @@ struct ContentView: View {
                 } label: {
                     Label(editingConnectionPoints ? "Done editing points" : "Edit connection points", systemImage: "point.3.connected.trianglepath.dotted")
                 }
-                Text("PIN NAMES").inspectorLabel()
-                ForEach(0..<target.maxConnections, id: \.self) { slot in
-                    HStack {
-                        Text("Pin \(slot + 1)").font(.caption)
-                        TextField("A, B, GND...", text: connectionNameBinding(target, slot: slot))
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
                     Label(target.imageData == nil ? "Upload image icon" : "Replace image icon", systemImage: "photo.badge.plus")
                 }
@@ -2356,30 +2282,44 @@ struct ContentView: View {
                     Label("Use SF Symbol instead", systemImage: "sf.square")
                 }
                 .disabled(target.imageData == nil)
-                if target.kind == .junction {
-                    Text("Connections: Unlimited")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
-                } else {
-                    Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
-                    Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
-                }
-                if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color) }
-                Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
-                Toggle("Compact target", isOn: targetBinding(target).isCompact)
                 Button { duplicateTarget(target) } label: {
                     Label("Duplicate target", systemImage: "plus.square.on.square")
                 }
                 Button { saveTargetTemplate(target) } label: {
                     Label("Save as target type", systemImage: "square.and.arrow.down")
                 }
-                Button(role: .destructive) {
-                    showDeleteWarning = true
-                } label: { Label("Delete target", systemImage: "trash") }
+            }
+
+            if target.kind == .junction {
+                Text("Connections: Unlimited")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.55))
+            } else {
+                HStack(spacing: 20) {
+                    Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
+                    Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
+                    Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
+                    Toggle("Compact target", isOn: targetBinding(target).isCompact)
+                }
+            }
+
+            if target.maxConnections > 0 {
+                Text("PIN NAMES").inspectorLabel()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(0..<target.maxConnections, id: \.self) { slot in
+                            HStack(spacing: 4) {
+                                Text("Pin \(slot + 1)").font(.caption)
+                                TextField("A, B, GND...", text: connectionNameBinding(target, slot: slot))
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            }
+                        }
+                    }
+                }
             }
         }
-        .padding(16)
-        .frame(width: 260)
+        .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
@@ -2511,11 +2451,6 @@ struct ContentView: View {
         )
     }
 
-    private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
-    private var inspectorVisible: Bool {
-        if selectedSegmentIDs.count >= 1 && !connectionMode { return false } // Bottom panel handles all wires
-        return hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1
-    }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
     private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
