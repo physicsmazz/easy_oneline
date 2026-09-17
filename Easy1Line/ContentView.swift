@@ -1750,11 +1750,11 @@ struct ContentView: View {
                     .accessibilityLabel("Connect selected items")
             }
             if selectedTargetIDs.isEmpty, selectedSegmentIDs.count == 1, let segment = selectedSegment {
-                Button { wirePlacementMode = .connection } label: { Image(systemName: "point.topleft.down.curvedto.point.bottomright.up") }
+                Button { wirePlacementMode = .connection } label: { Image(systemName: "circle.fill") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Add connection at clicked point")
                     .accessibilityLabel("Add connection at clicked point")
-                Button { wirePlacementMode = .bend } label: { Image(systemName: "angle") }
+                Button { wirePlacementMode = .bend } label: { Image(systemName: "point.topleft.down.curvedto.point.bottomright.up") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
