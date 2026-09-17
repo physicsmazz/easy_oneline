@@ -665,6 +665,20 @@ struct ContentView: View {
         return bounds.insetBy(dx: -40, dy: -40)
     }
 
+    /// Zooms/pans so all targets and wires (not the background image) fit in view - reuses the same bounds as PDF export.
+    private func zoomToExtents() {
+        guard editorSize != .zero else { return }
+        let bounds = pdfContentBounds()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let scaleX = editorSize.width / bounds.width
+        let scaleY = editorSize.height / bounds.height
+        let newScale = min(max(min(scaleX, scaleY) * 0.85, 0.25), 4)
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        canvasRotation = .zero
+        canvasScale = newScale
+        canvasOffset = CGSize(width: (5000 - center.x) * newScale, height: (5000 - center.y) * newScale)
+    }
+
     private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
         ZStack {
             GridBackground()
@@ -1020,6 +1034,12 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
                 .disabled(canvasLocked)
+            Button { zoomToExtents() } label: {
+                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+            }
+            .buttonStyle(EditorButtonStyle())
+            .help("Zoom to fit items and wires (ignores background image)")
+            .disabled(canvasLocked)
             Button { canvasLocked.toggle() } label: {
                 Image(systemName: canvasLocked ? "lock.fill" : "lock.open")
             }
