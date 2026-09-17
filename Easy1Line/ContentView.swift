@@ -326,6 +326,8 @@ struct ContentView: View {
                 Toggle("Materials", isOn: $showWireMaterials)
                 Toggle("Coverings", isOn: $showWireCoverings)
                 Toggle("Net names", isOn: $showWireNetNames)
+                Divider()
+                Stepper("Alignment: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
             }
             .buttonStyle(EditorButtonStyle(isActive: showWireLabels))
             .accessibilityLabel("Configure wire labels")
@@ -2147,7 +2149,7 @@ struct ContentView: View {
     private func removeStraightBends(from segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
-        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: 0.5)
+        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
