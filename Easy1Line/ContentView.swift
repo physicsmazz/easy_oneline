@@ -1004,6 +1004,7 @@ struct ContentView: View {
                 draggingTargetID = target.id
                 guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
                 if dragStartPositions[target.id] == nil {
+                    captureForUndo()
                     activeTargetDragIDs = selectedTargetIDs.contains(target.id) ? selectedTargetIDs : [target.id]
                     targetDragStartCanvasOffset = canvasOffset
                     if !selectedTargetIDs.contains(target.id) {
@@ -2115,6 +2116,7 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                 }
                 Button {
+                    captureForUndo()
                     rotateTarget(target, by: 90)
                 } label: {
                     Label("Rotate 90°", systemImage: "rotate.right")
@@ -2220,11 +2222,11 @@ struct ContentView: View {
                     .accessibilityLabel(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
-                Button { rotateTarget(target, by: -90) } label: { Image(systemName: "rotate.left") }
+                Button { captureForUndo(); rotateTarget(target, by: -90) } label: { Image(systemName: "rotate.left") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Rotate selected item counter-clockwise")
                     .accessibilityLabel("Rotate selected item counter-clockwise")
-                Button { rotateTarget(target, by: 90) } label: { Image(systemName: "rotate.right") }
+                Button { captureForUndo(); rotateTarget(target, by: 90) } label: { Image(systemName: "rotate.right") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Rotate selected item clockwise")
                     .accessibilityLabel("Rotate selected item clockwise")
@@ -2816,6 +2818,7 @@ struct ContentView: View {
         guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
+            captureForUndo()
             segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
