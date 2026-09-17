@@ -55,6 +55,9 @@ struct ContentView: View {
     @State private var isPinchingOrRotating = false
     @State private var cachedWirePoints: [UUID: [CGPoint]] = [:]
     @State private var cachedBridgeStrokes: [(path: Path, color: Color, width: CGFloat)] = []
+    @State private var cachedConnectedColor: [UUID: Color] = [:]
+    @State private var cachedConnectedColors: [UUID: [Color]] = [:]
+    @State private var cachedOccupiedSlots: [UUID: Set<Int>] = [:]
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
@@ -815,9 +818,9 @@ struct ContentView: View {
                     isSelected: selectedTargetIDs.contains(target.id),
                     selectionOrder: selectedTargetIDs.count > 2 ? selectedTargetIDs.firstIndex(of: target.id).map { $0 + 1 } : nil,
                     isConnectionStart: selectedTargetIDs.contains(target.id),
-                    connectedColor: connectedColor(for: target.id),
-                    connectedColors: connectedColors(for: target.id),
-                    occupiedSlots: occupiedSlots(for: target.id),
+                    connectedColor: cachedConnectedColor[target.id] ?? .cyan,
+                    connectedColors: cachedConnectedColors[target.id] ?? [],
+                    occupiedSlots: cachedOccupiedSlots[target.id] ?? [],
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
@@ -1134,6 +1137,29 @@ struct ContentView: View {
             points[segment.id] = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
         }
         cachedWirePoints = points
+
+        var connColor: [UUID: Color] = [:]
+        var connColors: [UUID: [Color]] = [:]
+        var occSlots: [UUID: Set<Int>] = [:]
+        for docTarget in document.targets {
+            connColor[docTarget.id] = document.segments.first(where: { $0.startID == docTarget.id || $0.endID == docTarget.id }).map { $0.color } ?? .cyan
+            var colorsList: [Color] = []
+            var slots = Set<Int>()
+            for segment in document.segments {
+                if segment.startID == docTarget.id || segment.endID == docTarget.id {
+                    if !colorsList.contains(where: { $0.hexString == segment.color.hexString }) {
+                        colorsList.append(segment.color)
+                    }
+                }
+                if segment.startID == docTarget.id { slots.insert(segment.startSlot ?? 0) }
+                if segment.endID == docTarget.id { slots.insert(segment.endSlot ?? 0) }
+            }
+            connColors[docTarget.id] = colorsList
+            occSlots[docTarget.id] = slots
+        }
+        cachedConnectedColor = connColor
+        cachedConnectedColors = connColors
+        cachedOccupiedSlots = occSlots
 
         guard wireBridgesEnabled else {
             cachedBridgeStrokes = []
@@ -4185,12 +4211,9 @@ private struct SegmentHitArea: View {
 
 private struct GridBackground: View {
     var body: some View {
-        Canvas { context, size in
-            let spacing: CGFloat = 32; var path = Path()
-            stride(from: 0, through: size.width, by: spacing).forEach { x in path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height)) }
-            stride(from: 0, through: size.height, by: spacing).forEach { y in path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y)) }
-            context.stroke(path, with: .color(.white.opacity(0.035)), lineWidth: 1)
-        }.background(Color(red: 0.07, green: 0.09, blue: 0.105))
+        // Grid lines temporarily removed: couldn't cover the full pannable canvas without
+        // exceeding Metal's max texture size (see repo memory), leaving a partial/lopsided grid.
+        Color(red: 0.07, green: 0.09, blue: 0.105)
     }
 }
 
