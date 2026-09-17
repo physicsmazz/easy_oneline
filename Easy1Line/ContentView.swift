@@ -2145,7 +2145,7 @@ struct ContentView: View {
         points[1] = startEscape
         points[points.count - 1] = endPin
         points[points.count - 2] = endEscape
-        return orthogonalizedPoints(points, alignmentTolerance: 0)
+        return points
     }
 
     private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint) -> CGPoint {
@@ -2341,7 +2341,7 @@ struct ContentView: View {
     }
 
     private func obstacleRect(for target: SchematicTarget) -> CGRect {
-        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : target.isCompact ? CGSize(width: 40, height: 40) : CGSize(width: 88, height: 76)
+        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : target.isCompact ? CGSize(width: 40, height: 40) : CGSize(width: 76, height: 68)
         return CGRect(x: target.position.x - size.width * target.scale / 2, y: target.position.y - size.height * target.scale / 2, width: size.width * target.scale, height: size.height * target.scale)
     }
 
@@ -2919,7 +2919,7 @@ private struct TargetView: View {
                         .frame(width: 80, height: 24)
                         .offset(y: -4)
                 }
-                .frame(width: 88, height: 76)
+                .frame(width: 76, height: 68)
                 .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
                 .overlay { RoundedRectangle(cornerRadius: 12).stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2) }
             }
@@ -2933,7 +2933,7 @@ private struct TargetView: View {
                 } else {
                     RoundedRectangle(cornerRadius: 13)
                         .stroke(lockedBorderStyle, lineWidth: 1.5)
-                        .frame(width: 88, height: 76)
+                        .frame(width: 76, height: 68)
                 }
             }
         }
@@ -2944,7 +2944,7 @@ private struct TargetView: View {
                 } else if target.isCompact {
                     Circle().stroke(.cyan, lineWidth: 3).frame(width: 44, height: 44).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else {
-                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 88, height: 76).shadow(color: .cyan.opacity(0.8), radius: 8)
+                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 76, height: 68).shadow(color: .cyan.opacity(0.8), radius: 8)
                 }
             }
         }
@@ -3056,7 +3056,7 @@ private struct TargetBodyHitShape: Shape {
         if isCompact {
             return Circle().path(in: CGRect(x: rect.midX - 20, y: rect.midY - 20, width: 40, height: 40))
         }
-        return RoundedRectangle(cornerRadius: 10).path(in: CGRect(x: rect.midX - 44, y: rect.midY - 38, width: 88, height: 76))
+        return RoundedRectangle(cornerRadius: 10).path(in: CGRect(x: rect.midX - 38, y: rect.midY - 34, width: 76, height: 68))
     }
 }
 
