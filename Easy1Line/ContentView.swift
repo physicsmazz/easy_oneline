@@ -210,7 +210,7 @@ struct ContentView: View {
                 .zIndex(1000)
 
             if wireConnectionMoveMode {
-                Text(wirePinMoveTargetID == nil ? "Select wire connection" : "Select target connection")
+                Text(wirePinMoveTargetID == nil ? "Select endpoint to move" : "Select new connection")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 14)
