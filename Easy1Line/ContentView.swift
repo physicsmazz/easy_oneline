@@ -390,14 +390,6 @@ struct ContentView: View {
             }
             .buttonStyle(EditorButtonStyle())
 
-            Button("Undo", action: undo)
-                .buttonStyle(EditorButtonStyle())
-                .disabled(undoStack.isEmpty)
-
-            Button("Redo", action: redo)
-                .buttonStyle(EditorButtonStyle())
-                .disabled(redoStack.isEmpty)
-
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
@@ -432,14 +424,39 @@ struct ContentView: View {
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
                 .accessibilityLabel("Show item information")
-
-            Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
-                .buttonStyle(EditorButtonStyle(isActive: connectionMode))
                 }
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(maxWidth: .infinity, alignment: .trailing)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                Button(action: undo) {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(undoStack.isEmpty)
+                .opacity(undoStack.isEmpty ? 0.4 : 1.0)
+                .accessibilityLabel("Undo")
+
+                Button(action: redo) {
+                    Image(systemName: "arrow.uturn.forward")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(redoStack.isEmpty)
+                .opacity(redoStack.isEmpty ? 0.4 : 1.0)
+                .accessibilityLabel("Redo")
+
+                Button(action: toggleConnectionMode) {
+                    Image(systemName: connectionMode ? "xmark.circle.fill" : "link.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle(isActive: connectionMode))
+                .accessibilityLabel(connectionMode ? "Exit Connect mode" : "Enter Connect mode")
+            }
         }
 
         .padding(.horizontal, 24)
