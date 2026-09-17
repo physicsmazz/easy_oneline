@@ -901,7 +901,15 @@ struct ContentView: View {
             guard !canvasLocked else { return }
             isPinchingOrRotating = true
             if gestureStartScale == nil { gestureStartScale = canvasScale }
-            canvasScale = min(4, max(0.25, (gestureStartScale ?? 1) * value))
+            let oldScale = canvasScale
+            let newScale = min(4, max(0.25, (gestureStartScale ?? 1) * value))
+            // Keep whatever's currently centered in the viewport centered as the scale changes,
+            // instead of always snapping back toward the canvas's abstract center point.
+            if oldScale > 0 {
+                let factor = newScale / oldScale
+                canvasOffset = CGSize(width: canvasOffset.width * factor, height: canvasOffset.height * factor)
+            }
+            canvasScale = newScale
         }.onEnded { _ in
             gestureStartScale = nil
             isPinchingOrRotating = false
@@ -910,7 +918,14 @@ struct ContentView: View {
             guard !canvasLocked else { return }
             isPinchingOrRotating = true
             if gestureStartRotation == nil { gestureStartRotation = canvasRotation }
-            canvasRotation = (gestureStartRotation ?? .zero) + value
+            let newAngle = (gestureStartRotation ?? .zero) + value
+            let delta = newAngle.radians - canvasRotation.radians
+            // Rotate the existing pan offset by the same increment so whatever's centered stays centered.
+            canvasOffset = CGSize(
+                width: canvasOffset.width * CGFloat(cos(delta)) - canvasOffset.height * CGFloat(sin(delta)),
+                height: canvasOffset.width * CGFloat(sin(delta)) + canvasOffset.height * CGFloat(cos(delta))
+            )
+            canvasRotation = newAngle
         }.onEnded { _ in
             gestureStartRotation = nil
             isPinchingOrRotating = false
