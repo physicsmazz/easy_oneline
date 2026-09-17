@@ -1361,7 +1361,7 @@ struct ContentView: View {
     }
 
     private func handleConnectionModeConnectionPoint(targetID: UUID, slot: Int) {
-        guard !occupiedSlots(for: targetID).contains(slot) || target(with: targetID)?.kind == .junction else { return }
+        guard let target = target(with: targetID), slot >= 0, slot < target.maxConnections else { return }
         
         // Toggle: clicking selected pin deselects it
         if selectedConnectionSlots[targetID] == slot {
@@ -1404,8 +1404,6 @@ struct ContentView: View {
     private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
         guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
               let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
-              (target(with: startID)?.kind == .junction || !occupiedSlots(for: startID).contains(resolvedStartSlot)),
-              (target(with: endID)?.kind == .junction || !occupiedSlots(for: endID).contains(resolvedEndSlot)),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
