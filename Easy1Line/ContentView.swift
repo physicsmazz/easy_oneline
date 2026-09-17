@@ -326,9 +326,6 @@ struct ContentView: View {
             recomputeWireGeometry()
             sanitizeTargetDefinitionSymbols()
         }
-        .task {
-            await loadWireLibrary()
-        }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
@@ -397,9 +394,6 @@ struct ContentView: View {
                 cloudStatus = failMsg
             }
         }
-        .sheet(isPresented: $showWireLibraryPanel) {
-            wireLibraryCreationSheet
-        }
         .sheet(isPresented: $showLineDefinitionEditor) {
             lineDefinitionEditor
         }
@@ -451,8 +445,7 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
-                Button("Create Wire Library") { showWireLibraryPanel.toggle() }
-                Button("Sync libraries") { Task { await syncLibraries() } }
+                Button("Sync target library") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -1863,19 +1856,13 @@ struct ContentView: View {
         }
         do {
             let targetTypes = try await store.loadTargetTypes()
-            let conductors = try await store.loadConductorCatalog()
             let syncedTargets = targetTypes.compactMap { record -> TargetDefinition? in
                 guard let kind = TargetKind(rawValue: record.kind) else { return nil }
                 let validSymbol = record.symbol.flatMap { UIImage(systemName: $0) != nil ? $0 : nil } ?? kind.symbol
                 return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: validSymbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
             }
             if !syncedTargets.isEmpty { document.targetDefinitions = syncedTargets }
-            let syncedLines = conductors.compactMap { record -> LineDefinition? in
-                guard let material = ConductorMaterial(rawValue: record.material) else { return nil }
-                return LineDefinition(name: "\(material.rawValue) \(record.wireSize)", wireSize: record.wireSize, wireType: material.rawValue, material: material, description: "Synced conductor")
-            }
-            if !syncedLines.isEmpty { document.lineDefinitions = syncedLines }
-            cloudStatus = "Libraries synced"
+            cloudStatus = "Target library synced"
         } catch {
             cloudStatus = "Library sync failed: \(cloudErrorText(error))"
         }
@@ -2028,19 +2015,9 @@ struct ContentView: View {
 
             ScrollView {
                 LazyVStack(spacing: 6) {
-                    ForEach(ConductorMaterial.allCases) { material in
-                        let materialLines = document.lineDefinitions.filter {
-                            $0.material == material && (lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch))
-                        }
-                        if !materialLines.isEmpty {
-                            Text(material.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .bold))
-                                .tracking(1.1)
-                                .foregroundStyle(.white.opacity(0.4))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 5)
-
-                            ForEach(materialLines) { line in
+                    ForEach(document.lineDefinitions.filter {
+                        lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireType.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.voltage.localizedCaseInsensitiveContains(lineLibrarySearch)
+                    }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { line in
                                 HStack(spacing: 8) {
                                     Button {
                                         selectedLineDefinitionID = line.id
@@ -2065,8 +2042,6 @@ struct ContentView: View {
                                 .padding(.horizontal, 8)
                                 .frame(minHeight: 42)
                                 .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
-                            }
-                        }
                     }
                 }
             }
@@ -2737,310 +2712,38 @@ struct ContentView: View {
     }
 
     private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
-        let draft = editingWireDraft ?? wire
-        let hasChanges = editingWireDraft != nil && editingWireDraft != wire
-        
-        // Create bindings that update editingWireDraft by replacing the whole struct
-        let nameBinding = Binding(
-            get: { editingWireDraft?.name ?? wire.name },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.name = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.name = $0
-                    editingWireDraft = draft
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("WIRE").font(.caption.weight(.bold)).foregroundStyle(.cyan)
+                Spacer()
+                Button("Choose wire from library") {
+                    showLineLibrary = true
                 }
+                .buttonStyle(.borderedProminent)
             }
-        )
-        let sizeBinding = Binding(
-            get: { editingWireDraft?.size ?? wire.size },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.size = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.size = $0
-                    editingWireDraft = draft
-                }
+            Text(wire.name).font(.headline)
+            HStack(spacing: 18) {
+                readOnlyWireField("SIZE", wire.size)
+                readOnlyWireField("TYPE", wire.type)
+                readOnlyWireField("VOLTAGE", wire.voltage.isEmpty ? "Not specified" : wire.voltage)
+                readOnlyWireField("MISC", wire.misc)
+                readOnlyWireField("NET", netName(for: wire))
             }
-        )
-        let typeBinding = Binding(
-            get: { editingWireDraft?.type ?? wire.type },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.type = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.type = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let miscBinding = Binding(
-            get: { editingWireDraft?.misc ?? wire.misc },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.misc = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.misc = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let voltageBinding = Binding(
-            get: { editingWireDraft?.voltage ?? wire.voltage },
-            set: {
-                if var draft = editingWireDraft { draft.voltage = $0; editingWireDraft = draft }
-                else { var draft = wire; draft.voltage = $0; editingWireDraft = draft }
-            }
-        )
-        let netNameBinding = Binding(
-            get: { editingWireDraft?.netName ?? wire.netName },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.netName = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.netName = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let displayWidthBinding = Binding(
-            get: { editingWireDraft?.displayWidth ?? wire.displayWidth },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.displayWidth = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.displayWidth = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let colorBinding = Binding(
-            get: { Color(hex: editingWireDraft?.colorHex ?? wire.colorHex) ?? .cyan },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.colorHex = $0.hexString
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.colorHex = $0.hexString
-                    editingWireDraft = draft
-                }
-            }
-        )
-        
-        return VStack(spacing: 12) {
-            // Wire Library section
-            if !wireLibraryEntries.isEmpty {
-                HStack(spacing: 12) {
-                    Text("LIBRARY").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.5))
-                    
-                    Picker("", selection: $selectedWireLibraryID) {
-                        Text("Select...").tag(nil as Int?)
-                        ForEach(wireLibraryEntries) { entry in
-                            Text("\(entry.size) / \(entry.type) / \(entry.misc)").tag(entry.id as Int?)
-                        }
-                    }
-                    .frame(maxWidth: 250)
-                    
-                    // When a library entry is selected, show action buttons
-                    if let selectedID = selectedWireLibraryID, let selectedEntry = wireLibraryEntries.first(where: { $0.id == selectedID }) {
-                        Button("Apply") {
-                            editingWireDraft = draft
-                            editingWireDraft?.size = selectedEntry.size
-                            editingWireDraft?.type = selectedEntry.type
-                            editingWireDraft?.misc = selectedEntry.misc
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.blue)
-                        .font(.caption)
-                        
-                        Button("Apply to All") {
-                            let simialar = document.segments.filter { seg in
-                                seg.size == wire.size && seg.type == wire.type && seg.misc == wire.misc
-                            }
-                            for i in document.segments.indices {
-                                if simialar.contains(where: { $0.id == document.segments[i].id }) {
-                                    document.segments[i].size = selectedEntry.size
-                                    document.segments[i].type = selectedEntry.type
-                                    document.segments[i].misc = selectedEntry.misc
-                                }
-                            }
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.orange)
-                        .font(.caption)
-                        
-                        Button("Cancel") {
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.gray)
-                        .font(.caption)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-            }
-            
-            HStack(spacing: 16) {
-                // Wire visual preview (color bar with thickness) - above size
-                VStack(alignment: .center, spacing: 4) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(draft.color)
-                        .frame(height: max(2, CGFloat(draft.displayWidth)))
-                        .frame(width: 60)
-                }
-                
-                // Name
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Wire name", text: nameBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 120)
-                
-                // Size
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Picker("", selection: sizeBinding) {
-                        ForEach(Array(Set(document.lineDefinitions.map(\.wireSize) + [draft.size])).sorted(), id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 90)
-                }
-                .frame(maxWidth: 80)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TYPE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Picker("", selection: typeBinding) {
-                        ForEach(Array(Set(document.lineDefinitions.map(\.wireType) + [draft.type])).sorted(), id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 100)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("VOLTAGE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Picker("", selection: voltageBinding) {
-                        ForEach(Array(Set(document.lineDefinitions.map(\.voltage) + [draft.voltage]).filter { !$0.isEmpty }).sorted(), id: \.self) { Text($0).tag($0) }
-                    }
-                    .labelsHidden()
-                    .frame(width: 90)
-                }
-                
-                // Misc
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("MISC").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Misc", text: miscBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 90)
-                
-                // Net name
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Net name", text: netNameBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 100)
-                
-                // Display size with color picker
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Stepper("", value: displayWidthBinding, in: 1...20, step: 0.5)
-                        .labelsHidden()
-                }
-                
-                // Color picker
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("COLOR").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    ColorPicker("", selection: colorBinding)
-                        .labelsHidden()
-                }
-                
-                if hasChanges || selectedSegmentIDs.count > 1 {
-                    Button(action: {
-                        if editingWireDraft == nil {
-                            editingWireDraft = wire
-                        }
-                        saveWireChanges()
-                    }) {
-                        Text(selectedSegmentIDs.count > 1 ? "Apply to All" : "Apply")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .font(.caption.weight(.semibold))
-                }
-            }
-            .onAppear {
-                if editingWireID != wire.id {
-                    editingWireID = wire.id
-                    editingWireDraft = wire
-                }
-            }
-            .onChange(of: wire.id) { _ in
-                editingWireID = nil
-                editingWireDraft = nil
+            HStack(spacing: 12) {
+                Text("Drawing").font(.caption).foregroundStyle(.white.opacity(0.5))
+                RoundedRectangle(cornerRadius: 3).fill(wire.color).frame(width: 56, height: max(2, CGFloat(wire.displayWidth)))
+                Text("Color and thickness are drawing properties").font(.caption2).foregroundStyle(.white.opacity(0.45))
             }
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
-    
-    private func saveWireChanges() {
-        guard let draft = editingWireDraft else { return }
-        // Apply to all selected wires
-        for id in selectedSegmentIDs {
-            if let index = document.segments.firstIndex(where: { $0.id == id }) {
-                document.segments[index].name = draft.name
-                document.segments[index].size = draft.size
-                document.segments[index].type = draft.type
-                document.segments[index].misc = draft.misc
-                document.segments[index].voltage = draft.voltage
-                document.segments[index].netName = draft.netName
-                document.segments[index].displayWidth = draft.displayWidth
-                document.segments[index].colorHex = draft.colorHex
-            }
+
+    private func readOnlyWireField(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.caption2).foregroundStyle(.white.opacity(0.5))
+            Text(value.isEmpty ? "-" : value).font(.caption.weight(.semibold))
         }
-        editingWireDraft = nil
-    }
-    
-    private func applyWireChangesToAll() {
-        guard let draft = editingWireDraft else { return }
-        // Apply draft properties to all selected wires
-        for id in selectedSegmentIDs {
-            if let index = document.segments.firstIndex(where: { $0.id == id }) {
-                document.segments[index].name = draft.name
-                document.segments[index].size = draft.size
-                document.segments[index].type = draft.type
-                document.segments[index].misc = draft.misc
-                document.segments[index].voltage = draft.voltage
-                document.segments[index].netName = draft.netName
-                document.segments[index].displayWidth = draft.displayWidth
-                document.segments[index].colorHex = draft.colorHex
-            }
-        }
-        editingWireDraft = nil
     }
     
     private func smartWireID(_ wire: SchematicSegment) -> String {
@@ -4135,7 +3838,8 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         assignMissingTargetIdentifiers()
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
         let savedLineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? []
-        lineDefinitions = savedLineDefinitions.isEmpty ? LineDefinition.defaults : savedLineDefinitions
+        let isLegacyBulkCatalog = savedLineDefinitions.count > 20 && savedLineDefinitions.allSatisfy { $0.description.contains("Common") || $0.name.contains(" ") }
+        lineDefinitions = savedLineDefinitions.isEmpty || isLegacyBulkCatalog ? LineDefinition.defaults : savedLineDefinitions
         let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
         backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
