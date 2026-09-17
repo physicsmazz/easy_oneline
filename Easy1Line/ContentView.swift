@@ -1017,6 +1017,10 @@ struct ContentView: View {
     }
 
     private func selectConnectionPoint(targetID: UUID, slot: Int) {
+        if connectionMode {
+            handleConnectionModeConnectionPoint(targetID: targetID, slot: slot)
+            return
+        }
         // Wire-first: with a wire selected, tapping a free pin on one of its end targets moves that end.
         if let wire = selectedSegment, wire.startID == targetID || wire.endID == targetID,
            let index = document.segments.firstIndex(where: { $0.id == wire.id }),
@@ -1050,6 +1054,21 @@ struct ContentView: View {
         }
     }
 
+    private func handleConnectionModeConnectionPoint(targetID: UUID, slot: Int) {
+        guard !occupiedSlots(for: targetID).contains(slot) || target(with: targetID)?.kind == .junction else { return }
+        if let previousID = connectionModeTargetIDs.last,
+           let previousSlot = selectedConnectionSlots[previousID],
+           previousID != targetID,
+           connectTargets(previousID, targetID, startSlot: previousSlot, endSlot: slot) {
+            connectionModeTargetIDs = [targetID]
+            selectedConnectionSlots = [targetID: slot]
+        } else if connectionModeTargetIDs.isEmpty {
+            connectionModeTargetIDs = [targetID]
+            selectedConnectionSlots = [targetID: slot]
+        }
+        selectedTargetIDs = [targetID]
+    }
+
     private func connectSelectedTargets() {
         let ids = Array(selectedTargetIDs)
         guard ids.count >= 2 else { return }
@@ -1062,14 +1081,16 @@ struct ContentView: View {
         selectedConnectionSlots.removeAll()
     }
 
-    private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) {
+    @discardableResult
+    private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
         guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
               let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
               !occupiedSlots(for: startID).contains(resolvedStartSlot),
               !occupiedSlots(for: endID).contains(resolvedEndSlot),
-              !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return }
+              !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
+        return true
     }
 
     private var canConnectSelection: Bool {
