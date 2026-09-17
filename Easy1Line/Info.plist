@@ -15,5 +15,25 @@
 		<string>_e1l-schematic._tcp</string>
 		<string>_e1l-schematic._udp</string>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.mazzwebdesign.easy1line.line</string>
+			<key>UTTypeDescription</key>
+			<string>Easy1Line Schematic</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>line</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 </dict>
 </plist>
