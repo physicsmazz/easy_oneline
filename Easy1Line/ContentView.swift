@@ -1065,7 +1065,11 @@ struct ContentView: View {
            previousID != targetID,
            connectTargets(previousID, targetID, startSlot: previousSlot, endSlot: slot) {
             connectionModeTargetIDs = [targetID]
-            selectedConnectionSlots = [targetID: slot]
+            if let nextSlot = firstEmptySlot(for: targetID) {
+                selectedConnectionSlots = [targetID: nextSlot]
+            } else {
+                selectedConnectionSlots.removeAll()
+            }
         } else if connectionModeTargetIDs.isEmpty {
             connectionModeTargetIDs = [targetID]
             selectedConnectionSlots = [targetID: slot]
