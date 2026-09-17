@@ -2279,7 +2279,7 @@ struct ContentView: View {
         let directionMatches = (dx * expectedDX + dy * expectedDY) / max(length * expectedLength, 1) > 0.7
         guard length > 0.5, directionMatches else { return fallback }
         let actualLength = max(minimumLength, length)
-        return CGPoint(x: pin.x + dx / length * actualLength, y: pin.y + dy / length * actualLength)
+        return CGPoint(x: pin.x + expectedDX / expectedLength * actualLength, y: pin.y + expectedDY / expectedLength * actualLength)
     }
 
     private func orthogonalPoints(for segment: SchematicSegment, from startTarget: SchematicTarget, to endTarget: SchematicTarget, avoiding obstacles: [SchematicTarget]) -> [CGPoint] {
