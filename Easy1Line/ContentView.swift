@@ -2825,12 +2825,12 @@ struct ContentView: View {
                 .fill(wire.color)
                 .frame(width: 42, height: max(2, CGFloat(wire.displayWidth)))
             Button { selectSimilarWires(to: wire) } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle")
+                Label("Similar", systemImage: "line.3.horizontal.decrease.circle")
             }
             .buttonStyle(.bordered)
             .help("Select similar wires")
             Button { selectWiresWithSameColor(as: wire) } label: {
-                Image(systemName: "paintpalette")
+                Label("Same color", systemImage: "paintpalette")
             }
             .buttonStyle(.bordered)
             .help("Select wires with the same color")
@@ -2856,7 +2856,7 @@ struct ContentView: View {
         selectedSegmentIDs = Set(ids)
         selectedSegmentID = wire.id
         selectedTargetIDs.removeAll()
-        DispatchQueue.main.async { zoomToWires(ids) }
+        DispatchQueue.main.async { centerWires(ids) }
     }
 
     private func selectWiresWithSameColor(as wire: SchematicSegment) {
@@ -2864,10 +2864,10 @@ struct ContentView: View {
         selectedSegmentIDs = Set(ids)
         selectedSegmentID = wire.id
         selectedTargetIDs.removeAll()
-        DispatchQueue.main.async { zoomToWires(ids) }
+        DispatchQueue.main.async { centerWires(ids) }
     }
 
-    private func zoomToWires(_ ids: [UUID]) {
+    private func centerWires(_ ids: [UUID]) {
         guard editorSize != .zero else { return }
         var bounds = CGRect.null
         for id in ids {
@@ -2881,14 +2881,10 @@ struct ContentView: View {
         }
         guard !bounds.isNull else { return }
         bounds = bounds.insetBy(dx: -60, dy: -60)
-        let scaleX = editorSize.width / bounds.width
-        let scaleY = editorSize.height / bounds.height
-        let newScale = min(max(min(scaleX, scaleY) * 0.85, 0.25), 4)
         let boundsCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        let canvasCenter = CGPoint(x: canvasFieldSize / 2, y: canvasFieldSize / 2)
-        canvasRotation = .zero
-        canvasScale = newScale
-        canvasOffset = CGSize(width: (canvasCenter.x - boundsCenter.x) * newScale, height: (canvasCenter.y - boundsCenter.y) * newScale)
+        let currentCenter = screenPoint(forCanvas: boundsCenter)
+        canvasOffset.width += editorSize.width / 2 - currentCenter.x
+        canvasOffset.height += editorSize.height / 2 - currentCenter.y
     }
     
     private func smartWireID(_ wire: SchematicSegment) -> String {
