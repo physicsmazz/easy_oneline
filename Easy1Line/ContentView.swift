@@ -1429,12 +1429,19 @@ struct ContentView: View {
             handleConnectionModeConnectionPoint(targetID: targetID, slot: slot)
             return
         }
-        // Wire-first: with a wire selected, tapping a free pin on one of its end targets moves that end.
+        // Wire-first: select the existing endpoint pin, then tap a different free pin to move the wire end.
         if let wire = selectedSegment, wire.startID == targetID || wire.endID == targetID,
-           let index = document.segments.firstIndex(where: { $0.id == wire.id }),
-           !occupiedSlots(for: targetID).contains(slot) {
+           let index = document.segments.firstIndex(where: { $0.id == wire.id }) {
+            let currentSlot = wire.startID == targetID ? (wire.startSlot ?? 0) : (wire.endSlot ?? 0)
+            if selectedConnectionSlots[targetID] == nil {
+                selectedConnectionSlots[targetID] = currentSlot
+                return
+            }
+            guard selectedConnectionSlots[targetID] != slot,
+                  !occupiedSlots(for: targetID).subtracting([currentSlot]).contains(slot) else { return }
             if wire.startID == targetID { document.segments[index].startSlot = slot } else { document.segments[index].endSlot = slot }
             document.segments[index].routePoints.removeAll()
+            selectedConnectionSlots[targetID] = slot
             return
         }
         selectedSegmentID = nil
