@@ -95,6 +95,8 @@ struct ContentView: View {
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     @AppStorage("showSelectionBoxNearItem") private var showSelectionBoxNearItem = true
+    @AppStorage("showEditBoxOnSelection") private var showEditBoxOnSelection = true
+    @State private var forceEditBoxTargetID: UUID?
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showCloudLibrary = false
@@ -201,7 +203,7 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!) {
+            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!), showEditBoxOnSelection || forceEditBoxTargetID == target.id {
                 targetBottomPanel(target)
                     .padding(.bottom, 6)
                     .padding(.horizontal, 20)
@@ -465,6 +467,9 @@ struct ContentView: View {
                 }
                 Button { showConnectionNames.toggle() } label: {
                     Label("Connection names: \(showConnectionNames ? "On" : "Off")", systemImage: showConnectionNames ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showEditBoxOnSelection.toggle() } label: {
+                    Label("Show edit box: \(showEditBoxOnSelection ? "On" : "Off")", systemImage: showEditBoxOnSelection ? "checkmark.circle.fill" : "circle")
                 }
                 Divider()
                 Button("Clear all") {
@@ -1325,6 +1330,7 @@ struct ContentView: View {
 
     private func openTargetInfo(_ target: SchematicTarget) {
         guard !connectionMode else { return }
+        forceEditBoxTargetID = target.id
         if !selectedTargetIDs.contains(target.id) {
             selectedTargetIDs = [target.id]
         }
