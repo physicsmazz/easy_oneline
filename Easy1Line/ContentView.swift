@@ -2694,7 +2694,7 @@ struct ContentView: View {
         if !selectedTargetIDs.isEmpty {
             actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 3
         } else {
-            actionCount = selectedSegmentIDs.count == 1 ? 4 : 1
+            actionCount = selectedSegmentIDs.count == 1 ? 5 : 1
         }
         let buttonWidth: CGFloat = 40
         let countWidth: CGFloat = 16
@@ -2727,6 +2727,16 @@ struct ContentView: View {
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
+                Button {
+                    wireConnectionMoveMode.toggle()
+                    wirePinMoveTargetID = nil
+                    selectedConnectionSlots.removeAll()
+                } label: {
+                    Image(systemName: "arrow.uturn.right.circle")
+                }
+                .buttonStyle(EditorButtonStyle(isActive: wireConnectionMoveMode))
+                .help(wireConnectionMoveMode ? "Cancel moving connection" : "Move wire connection")
+                .accessibilityLabel(wireConnectionMoveMode ? "Cancel moving connection" : "Move wire connection")
             }
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
@@ -2906,14 +2916,6 @@ struct ContentView: View {
             Button("Library") { showLineLibrary = true }
                 .buttonStyle(.borderedProminent)
                 .font(.caption)
-            Button(wireConnectionMoveMode ? "Cancel move" : "Move connection") {
-                wireConnectionMoveMode.toggle()
-                wirePinMoveTargetID = nil
-                selectedConnectionSlots.removeAll()
-            }
-            .buttonStyle(.bordered)
-            .tint(wireConnectionMoveMode ? .orange : .cyan)
-            .font(.caption)
         }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
