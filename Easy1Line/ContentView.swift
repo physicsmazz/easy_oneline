@@ -124,6 +124,7 @@ struct ContentView: View {
     @State private var backgroundImagePosition = CGPoint(x: 5000, y: 5000)
     @State private var backgroundImageOpacity: Double = 1.0
     @State private var backgroundImageLocked = false
+    @State private var backgroundImageConstrainProportions = false
     @State private var backgroundImagePhotoItem: PhotosPickerItem?
     @State private var wireLibraryEntries: [SupabaseWireLibraryRecord] = []
     @State private var showWireLibraryPanel = false
@@ -641,8 +642,8 @@ struct ContentView: View {
                                  y: size.height / 2 + (backgroundImagePosition.y - 5000))
                         .gesture(
                             !backgroundImageLocked ? DragGesture().onChanged { value in
-                                backgroundImagePosition.x += value.translation.width / canvasScale
-                                backgroundImagePosition.y += value.translation.height / canvasScale
+                                backgroundImagePosition.x += value.translation.width / (canvasScale * 3)
+                                backgroundImagePosition.y += value.translation.height / (canvasScale * 3)
                             } : nil
                         )
                 }
@@ -1897,19 +1898,37 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Width").font(.caption)
-                        Slider(value: $backgroundImageSize.width, in: 50...800)
+                        Slider(value: $backgroundImageSize.width, in: 50...2000)
+                            .onChange(of: backgroundImageSize.width) { _, newWidth in
+                                if backgroundImageConstrainProportions, let bgImage = backgroundImage {
+                                    let aspectRatio = bgImage.size.height / bgImage.size.width
+                                    backgroundImageSize.height = newWidth * aspectRatio
+                                }
+                            }
                         Text("\(Int(backgroundImageSize.width))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
                     }
                     
                     HStack {
                         Text("Height").font(.caption)
-                        Slider(value: $backgroundImageSize.height, in: 50...800)
+                        Slider(value: $backgroundImageSize.height, in: 50...2000)
+                            .onChange(of: backgroundImageSize.height) { _, newHeight in
+                                if backgroundImageConstrainProportions, let bgImage = backgroundImage {
+                                    let aspectRatio = bgImage.size.width / bgImage.size.height
+                                    backgroundImageSize.width = newHeight * aspectRatio
+                                }
+                            }
                         Text("\(Int(backgroundImageSize.height))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
                     }
                     
                     HStack {
                         Text("Opacity").font(.caption)
                         Slider(value: $backgroundImageOpacity, in: 0...1)
+                    }
+                    
+                    HStack {
+                        Text("Constrain Proportions").font(.caption)
+                        Spacer()
+                        Toggle("", isOn: $backgroundImageConstrainProportions)
                     }
                     
                     HStack {
