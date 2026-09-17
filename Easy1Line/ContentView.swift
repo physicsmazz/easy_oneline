@@ -64,6 +64,7 @@ struct ContentView: View {
     @State private var cachedConnectedColor: [UUID: Color] = [:]
     @State private var cachedConnectedColors: [UUID: [Color]] = [:]
     @State private var cachedOccupiedSlots: [UUID: Set<Int>] = [:]
+        @State private var cachedConnectionCounts: [UUID: [Int: Int]] = [:]
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
@@ -731,6 +732,7 @@ struct ContentView: View {
                         connectedColor: connectedColor(for: target.id),
                         connectedColors: connectedColors(for: target.id),
                         occupiedSlots: occupiedSlots(for: target.id),
+                        connectionCounts: [:],
                         selectedSlots: [],
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
@@ -861,6 +863,7 @@ struct ContentView: View {
                     connectedColor: cachedConnectedColor[target.id] ?? .cyan,
                     connectedColors: cachedConnectedColors[target.id] ?? [],
                     occupiedSlots: cachedOccupiedSlots[target.id] ?? [],
+                                        connectionCounts: cachedConnectionCounts[target.id] ?? [:],
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
@@ -1216,25 +1219,37 @@ struct ContentView: View {
         var connColor: [UUID: Color] = [:]
         var connColors: [UUID: [Color]] = [:]
         var occSlots: [UUID: Set<Int>] = [:]
+        var connectionCounts: [UUID: [Int: Int]] = [:]
         for docTarget in document.targets {
             connColor[docTarget.id] = document.segments.first(where: { $0.startID == docTarget.id || $0.endID == docTarget.id }).map { $0.color } ?? .cyan
             var colorsList: [Color] = []
             var slots = Set<Int>()
+            var counts: [Int: Int] = [:]
             for segment in document.segments {
                 if segment.startID == docTarget.id || segment.endID == docTarget.id {
                     if !colorsList.contains(where: { $0.hexString == segment.color.hexString }) {
                         colorsList.append(segment.color)
                     }
                 }
-                if segment.startID == docTarget.id { slots.insert(segment.startSlot ?? 0) }
-                if segment.endID == docTarget.id { slots.insert(segment.endSlot ?? 0) }
+                if segment.startID == docTarget.id {
+                    let slot = segment.startSlot ?? 0
+                    slots.insert(slot)
+                    counts[slot, default: 0] += 1
+                }
+                if segment.endID == docTarget.id {
+                    let slot = segment.endSlot ?? 0
+                    slots.insert(slot)
+                    counts[slot, default: 0] += 1
+                }
             }
             connColors[docTarget.id] = colorsList
             occSlots[docTarget.id] = slots
+            connectionCounts[docTarget.id] = counts
         }
         cachedConnectedColor = connColor
         cachedConnectedColors = connColors
         cachedOccupiedSlots = occSlots
+        cachedConnectionCounts = connectionCounts
 
         guard wireBridgesEnabled else {
             cachedBridgeStrokes = []
@@ -4206,6 +4221,7 @@ private struct TargetView: View {
     let connectedColor: Color
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
+    let connectionCounts: [Int: Int]
     let selectedSlots: Set<Int>
     let connectionNames: [String]
     let showConnectionNames: Bool
@@ -4313,10 +4329,16 @@ private struct TargetView: View {
 
     @ViewBuilder
     private func connectionPoint(slot: Int) -> some View {
+        let connectionCount = connectionCounts[slot] ?? 0
         let point = Circle()
             .fill(selectedSlots.contains(slot) ? Color.cyan : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
             .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
+            .overlay {
+                if connectionCount > 1 {
+                    Circle().stroke(.white, lineWidth: 2).frame(width: 17, height: 17)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if showConnectionNames {
                 let labelAngle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
