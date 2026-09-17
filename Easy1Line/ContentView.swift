@@ -547,6 +547,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
                 .gesture(panGesture)
                 .onTapGesture {
+                    guard !connectionMode else { return }
                     selectedTargetIDs.removeAll()
                     selectedConnectionSlots.removeAll()
                     selectedSegmentID = nil
