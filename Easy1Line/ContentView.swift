@@ -671,10 +671,11 @@ struct ContentView: View {
         let scaleX = editorSize.width / bounds.width
         let scaleY = editorSize.height / bounds.height
         let newScale = min(max(min(scaleX, scaleY) * 0.85, 0.25), 4)
-        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let boundsCenter = CGPoint(x: bounds.midX, y: bounds.midY)
+        let viewportCenter = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
         canvasRotation = .zero
         canvasScale = newScale
-        canvasOffset = CGSize(width: (5000 - center.x) * newScale, height: (5000 - center.y) * newScale)
+        canvasOffset = CGSize(width: (viewportCenter.x - boundsCenter.x) * newScale, height: (viewportCenter.y - boundsCenter.y) * newScale)
     }
 
     private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
