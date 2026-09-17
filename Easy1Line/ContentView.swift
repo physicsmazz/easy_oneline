@@ -64,6 +64,11 @@ struct ContentView: View {
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("showWireLengths") private var showWireLengths = true
+    @AppStorage("showWireNames") private var showWireNames = true
+    @AppStorage("showWireSizes") private var showWireSizes = false
+    @AppStorage("showWireMaterials") private var showWireMaterials = false
+    @AppStorage("showWireCoverings") private var showWireCoverings = false
+    @AppStorage("showWireNetNames") private var showWireNetNames = false
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
@@ -311,9 +316,16 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
                 .accessibilityLabel("Show connection names")
 
-            Button(showWireLengths ? "Labels: On" : "Labels: Off") { showWireLengths.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: showWireLengths))
-                .accessibilityLabel("Show wire labels")
+            Menu("Labels") {
+                Toggle("Wire names", isOn: $showWireNames)
+                Toggle("Lengths", isOn: $showWireLengths)
+                Toggle("Wire sizes", isOn: $showWireSizes)
+                Toggle("Materials", isOn: $showWireMaterials)
+                Toggle("Coverings", isOn: $showWireCoverings)
+                Toggle("Net names", isOn: $showWireNetNames)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: showWireLabels))
+            .accessibilityLabel("Configure wire labels")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
@@ -648,14 +660,14 @@ struct ContentView: View {
                 }
             }
 
-            if showWireLengths {
+            if showWireLabels {
                 ForEach(document.segments) { segment in
                     if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                         let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                         ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                             let first = points[sectionIndex]
                             let second = points[sectionIndex + 1]
-                            wireLabel(segment.name, from: first, to: second)
+                            wireLabel(segment, from: first, to: second)
                         }
                     }
                 }
@@ -689,7 +701,7 @@ struct ContentView: View {
         }
     }
 
-    private func wireLabel(_ name: String, from first: CGPoint, to second: CGPoint) -> some View {
+    private func wireLabel(_ segment: SchematicSegment, from first: CGPoint, to second: CGPoint) -> some View {
         let dx = second.x - first.x
         let dy = second.y - first.y
         let midpoint = CGPoint(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
@@ -697,7 +709,15 @@ struct ContentView: View {
         let labelPoint = CGPoint(x: midpoint.x - dy / length * 14, y: midpoint.y + dx / length * 14)
         var angle = atan2(dy, dx)
         if angle > .pi / 2 || angle < -.pi / 2 { angle += .pi }
-        return Text(name)
+        let fields = [
+            showWireNames ? segment.name : nil,
+            showWireLengths ? "\(Int(length.rounded())) px" : nil,
+            showWireSizes ? segment.wireSize : nil,
+            showWireMaterials ? segment.material : nil,
+            showWireCoverings ? segment.covering : nil,
+            showWireNetNames ? segment.netName : nil
+        ].compactMap { $0 }
+        return Text(fields.joined(separator: "\n"))
             .font(.system(size: 9, weight: .semibold, design: .rounded))
             .foregroundStyle(.white.opacity(0.9))
             .padding(.horizontal, 4)
@@ -706,6 +726,10 @@ struct ContentView: View {
             .rotationEffect(.radians(angle))
             .position(labelPoint)
             .allowsHitTesting(false)
+    }
+
+    private var showWireLabels: Bool {
+        showWireNames || showWireLengths || showWireSizes || showWireMaterials || showWireCoverings || showWireNetNames
     }
 
     private func placeDockItem(_ kind: TargetKind, at screenLocation: CGPoint) {
