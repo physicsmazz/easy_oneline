@@ -338,6 +338,14 @@ struct ContentView: View {
 
             Button(connectionMode ? "Exit Connect" : "Connect") { toggleConnectionMode() }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode))
+            if connectionMode {
+                Text(connectionModeTargetIDs.isEmpty ? "Select a starting pin" : "Select the next pin")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.yellow.opacity(0.9))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.yellow.opacity(0.1), in: Capsule())
+            }
                 }
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(maxWidth: .infinity, alignment: .trailing)
