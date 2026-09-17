@@ -3607,7 +3607,7 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? connectionAngle(for: target, slot: slot) * Double.pi / 180
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let distance = max(15, CGFloat(connectionStubLength))
+        let distance: CGFloat = target.kind == .junction ? 0 : max(15, CGFloat(connectionStubLength))
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
