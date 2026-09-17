@@ -641,8 +641,8 @@ struct ContentView: View {
                                  y: size.height / 2 + (backgroundImagePosition.y - 5000))
                         .gesture(
                             !backgroundImageLocked ? DragGesture().onChanged { value in
-                                backgroundImagePosition.x += value.translation.width / 10
-                                backgroundImagePosition.y += value.translation.height / 10
+                                backgroundImagePosition.x += value.translation.width / 25
+                                backgroundImagePosition.y += value.translation.height / 25
                             } : nil
                         )
                 }
