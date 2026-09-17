@@ -115,6 +115,8 @@ struct ContentView: View {
     @State private var wireLabelRouteAnchorPoints: [UUID: CGPoint] = [:]
     @State private var showNewDrawingWarning = false
     @State private var pendingNewDrawingAfterSave = false
+    @State private var editingWireID: UUID?
+    @State private var editingWireDraft: SchematicSegment?
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -1901,7 +1903,8 @@ struct ContentView: View {
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var inspectorVisible: Bool {
-        (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1
+        if selectedSegmentIDs.count == 1 && !connectionMode { return false } // Bottom panel handles single wire
+        return (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1
     }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
@@ -1949,66 +1952,147 @@ struct ContentView: View {
     }
 
     private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
-        let binding = segmentBinding(wire)
-        return HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("WIRE ID").font(.caption).foregroundStyle(.white.opacity(0.5))
-                Text(wire.id.uuidString.prefix(8)).font(.caption.monospaced()).foregroundStyle(.cyan)
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                TextField("Wire name", text: binding.name)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-            }
-            .frame(maxWidth: 120)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                TextField("Size", text: binding.wireSize)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-            }
-            .frame(maxWidth: 80)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("MATERIAL").font(.caption).foregroundStyle(.white.opacity(0.5))
-                Picker("", selection: binding.material) {
-                    ForEach(ConductorMaterial.allCases) { material in
-                        Text(material.title).tag(material)
+        let draft = editingWireDraft ?? wire
+        let draftBinding = segmentBinding(draft)
+        let hasChanges = editingWireDraft != nil && editingWireDraft != wire
+        
+        return VStack(spacing: 12) {
+            HStack(spacing: 16) {
+                // Wire ID
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("WIRE ID").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    Text(smartWireID(draft)).font(.caption.monospaced()).foregroundStyle(.cyan)
+                }
+                
+                // Wire visual preview (color bar with thickness)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("PREVIEW").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(draft.color)
+                        .frame(height: max(2, CGFloat(draft.displayWidth)))
+                        .frame(width: 60)
+                }
+                
+                // Name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Wire name", text: draftBinding.name)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 120)
+                
+                // Size
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Size", text: draftBinding.wireSize)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 80)
+                
+                // Material
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("MATERIAL").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    Picker("", selection: draftBinding.material) {
+                        ForEach(ConductorMaterial.allCases) { material in
+                            Text(material.title).tag(material)
+                        }
                     }
+                    .frame(maxWidth: 100)
+                }
+                
+                // Covering
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COVERING").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Covering", text: draftBinding.covering)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
+                }
+                .frame(maxWidth: 90)
+                
+                // Net name
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    TextField("Net name", text: draftBinding.netName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.caption)
                 }
                 .frame(maxWidth: 100)
+                
+                // Display size with color picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    Stepper("", value: draftBinding.displayWidth, in: 1...20, step: 0.5)
+                        .labelsHidden()
+                }
+                
+                // Color picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("COLOR").font(.caption).foregroundStyle(.white.opacity(0.5))
+                    ColorPicker("", selection: draftBinding.color)
+                        .labelsHidden()
+                }
+                
+                Spacer()
+                
+                // Save/Discard buttons (only show if changed)
+                if hasChanges {
+                    HStack(spacing: 8) {
+                        Button(action: saveWireChanges) {
+                            Label("Save", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.green)
+                        
+                        Button(action: discardWireChanges) {
+                            Label("Discard", systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    }
+                }
             }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("COVERING").font(.caption).foregroundStyle(.white.opacity(0.5))
-                TextField("Covering", text: binding.covering)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
+            .onAppear {
+                if editingWireID != wire.id {
+                    editingWireID = wire.id
+                    editingWireDraft = wire
+                }
             }
-            .frame(maxWidth: 90)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                TextField("Net name", text: binding.netName)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
+            .onChange(of: wire.id) { _ in
+                editingWireID = nil
+                editingWireDraft = nil
             }
-            .frame(maxWidth: 100)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
-                Stepper("", value: binding.displayWidth, in: 1...20, step: 0.5)
-                    .labelsHidden()
-            }
-            
-            Spacer()
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
+    
+    private func saveWireChanges() {
+        guard let draft = editingWireDraft, let index = document.segments.firstIndex(where: { $0.id == draft.id }) else { return }
+        document.segments[index] = draft
+        editingWireDraft = nil
+    }
+    
+    private func discardWireChanges() {
+        editingWireDraft = nil
+    }
+    
+    private func smartWireID(_ wire: SchematicSegment) -> String {
+        // Extract numeric part from wireSize (e.g., "336" from "336 AWG" or "14 AWG")
+        let sizeNumber = wire.wireSize.split(separator: " ").first.map(String.init) ?? wire.wireSize
+        
+        // Material abbreviation (Copper -> CU, Aluminum -> AL)
+        let materialAbbrev = wire.material.prefix(2).uppercased()
+        
+        // Covering type (PTFE, None, etc.)
+        let coveringType = wire.covering.isEmpty || wire.covering.lowercased() == "none" ? "BARE" : wire.covering.uppercased()
+        
+        return "\(sizeNumber)_\(coveringType)_\(materialAbbrev)"
+    }
+
 
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
