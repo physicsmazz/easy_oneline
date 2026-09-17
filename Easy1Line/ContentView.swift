@@ -127,6 +127,8 @@ struct ContentView: View {
     @State private var newWireLibrarySizeID: Int?
     @State private var newWireLibraryTypeID: Int?
     @State private var newWireLibraryMiscID: Int?
+    @State private var newWireLibraryDisplaySize: Double = 2.0
+    @State private var newWireLibraryColorHex: String = "31D7E8"
     @State private var selectedWireLibraryID: Int?
     @State private var wireLibraryAction: String? // "change", "changeAll", or nil for discard
     @State private var wireSizeOptions: [SupabaseWireSizeRecord] = []
@@ -1452,13 +1454,17 @@ struct ContentView: View {
                 sizeID: sizeID,
                 typeID: typeID,
                 miscID: miscID,
-                description: newWireLibraryDescription
+                description: newWireLibraryDescription,
+                displaySize: newWireLibraryDisplaySize,
+                colorHex: newWireLibraryColorHex
             )
             wireLibraryEntries.append(newEntry)
             newWireLibrarySizeID = nil
             newWireLibraryTypeID = nil
             newWireLibraryMiscID = nil
             newWireLibraryDescription = ""
+            newWireLibraryDisplaySize = 2.0
+            newWireLibraryColorHex = "31D7E8"
             showWireLibraryPanel = false
             cloudStatus = "Wire library entry created"
         } catch {
@@ -1780,6 +1786,31 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                 }
                 
+                // Display Size Slider
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Display Size").font(.caption.weight(.semibold))
+                        Spacer()
+                        Text(String(format: "%.1f", newWireLibraryDisplaySize)).font(.caption).foregroundColor(.secondary)
+                    }
+                    Slider(value: $newWireLibraryDisplaySize, in: 0.5...10.0, step: 0.5)
+                }
+                
+                // Color Picker
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Color").font(.caption.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Color(hex: newWireLibraryColorHex) ?? .cyan)
+                            .frame(width: 32, height: 32)
+                        
+                        TextField("Hex color (e.g., 31D7E8)", text: $newWireLibraryColorHex)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.caption, design: .monospaced))
+                            .autocapitalization(.allCharacters)
+                    }
+                }
+                
                 // Description TextField
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Description").font(.caption.weight(.semibold))
@@ -1796,6 +1827,8 @@ struct ContentView: View {
                         newWireLibraryTypeID = nil
                         newWireLibraryMiscID = nil
                         newWireLibraryDescription = ""
+                        newWireLibraryDisplaySize = 2.0
+                        newWireLibraryColorHex = "31D7E8"
                         showWireLibraryPanel = false
                     }) {
                         Text("Cancel")
@@ -3676,6 +3709,12 @@ private extension View {
 
 private extension Color {
     init(hex: String) {
+        let value = UInt64(hex, radix: 16) ?? 0
+        self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
+    }
+    
+    init?(hex: String?) {
+        guard let hex = hex, !hex.isEmpty else { return nil }
         let value = UInt64(hex, radix: 16) ?? 0
         self.init(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255, blue: Double(value & 0xFF) / 255)
     }

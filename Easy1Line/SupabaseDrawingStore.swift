@@ -104,7 +104,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadWireLibrary() async throws -> [SupabaseWireLibraryRecord] {
-        var request = URLRequest(url: endpoint("/rest/v1/wire_library?select=id,size_id,type_id,misc_id,description,wire_sizes(size_value),wire_types(type_name,color_hex),wire_misc(misc_value)&order=id.asc"))
+        var request = URLRequest(url: endpoint("/rest/v1/wire_library?select=id,size_id,type_id,misc_id,description,display_size,color_hex,wire_sizes(size_value),wire_types(type_name,color_hex),wire_misc(misc_value)&order=id.asc"))
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -112,14 +112,16 @@ struct SupabaseDrawingStore {
         return try JSONDecoder().decode([SupabaseWireLibraryRecord].self, from: data)
     }
 
-    func createWireLibraryEntry(sizeID: Int, typeID: Int, miscID: Int, description: String = "") async throws -> SupabaseWireLibraryRecord {
+    func createWireLibraryEntry(sizeID: Int, typeID: Int, miscID: Int, description: String = "", displaySize: Double = 2.0, colorHex: String = "31D7E8") async throws -> SupabaseWireLibraryRecord {
         var request = URLRequest(url: endpoint("/rest/v1/wire_library"))
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "size_id": sizeID,
             "type_id": typeID,
             "misc_id": miscID,
-            "description": description
+            "description": description,
+            "display_size": displaySize,
+            "color_hex": colorHex
         ])
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
@@ -225,6 +227,8 @@ struct SupabaseWireLibraryRecord: Codable, Identifiable {
     let typeID: Int
     let miscID: Int
     let description: String
+    let displaySize: Double
+    let colorHex: String
     let wireSizes: [SizeDetail]?
     let wireTypes: [TypeDetail]?
     let wireMisc: [MiscDetail]?
@@ -234,6 +238,8 @@ struct SupabaseWireLibraryRecord: Codable, Identifiable {
         case sizeID = "size_id"
         case typeID = "type_id"
         case miscID = "misc_id"
+        case displaySize = "display_size"
+        case colorHex = "color_hex"
         case wireSizes = "wire_sizes"
         case wireTypes = "wire_types"
         case wireMisc = "wire_misc"

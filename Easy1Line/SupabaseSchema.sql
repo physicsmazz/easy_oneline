@@ -282,6 +282,8 @@ create table if not exists public.wire_library (
     type_id integer not null references public.wire_types(id) on delete restrict,
     misc_id integer not null references public.wire_misc(id) on delete restrict,
     description text not null default '',
+    display_size numeric not null default 2.0,
+    color_hex text not null default '31D7E8',
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     unique(size_id, type_id, misc_id)
