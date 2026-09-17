@@ -524,6 +524,7 @@ struct ContentView: View {
                         selectedSlots: [],
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
+                        connectionMode: false,
                         onSelectConnectionPoint: { _ in },
                         editingConnectionPoints: false,
                         onMoveConnectionPoint: { _, _ in },
@@ -648,6 +649,7 @@ struct ContentView: View {
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
+                    connectionMode: connectionMode,
                     onSelectConnectionPoint: { slot in
                         selectConnectionPoint(targetID: target.id, slot: slot)
                     },
@@ -3042,6 +3044,7 @@ private struct TargetView: View {
     let selectedSlots: Set<Int>
     let connectionNames: [String]
     let showConnectionNames: Bool
+    let connectionMode: Bool
     let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
@@ -3179,7 +3182,10 @@ private struct TargetView: View {
             }
                 .contentShape(Circle())
                 .offset(connectionPointOffset(for: slot))
-                .highPriorityGesture(TapGesture().onEnded { onSelectConnectionPoint(slot) })
+                .highPriorityGesture(
+                    TapGesture().onEnded { onSelectConnectionPoint(slot) },
+                    including: connectionMode ? .all : .gesture
+                )
         }
     }
 
