@@ -95,11 +95,21 @@ struct ContentView: View {
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     @AppStorage("showSelectionBoxNearItem") private var showSelectionBoxNearItem = true
+    @AppStorage("showEditBoxOnSelection") private var showEditBoxOnSelection = true
+    @State private var forceEditBoxTargetID: UUID?
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showCloudLibrary = false
     @State private var cloudDrawings: [CloudDrawingChoice] = []
     @State private var showLineLibrary = false
+    @State private var showLineDefinitionEditor = false
+    @State private var editingLineDefinitionID: UUID?
+    @State private var lineDefinitionNameDraft = ""
+    @State private var lineDefinitionSizeDraft = ""
+    @State private var lineDefinitionTypeDraft = ""
+    @State private var lineDefinitionVoltageDraft = ""
+    @State private var lineDefinitionMiscDraft = ""
+    @State private var lineDefinitionDescriptionDraft = ""
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
     @State private var showNetlist = false
@@ -193,7 +203,7 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!) {
+            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!), showEditBoxOnSelection || forceEditBoxTargetID == target.id {
                 targetBottomPanel(target)
                     .padding(.bottom, 6)
                     .padding(.horizontal, 20)
@@ -318,9 +328,6 @@ struct ContentView: View {
             recomputeWireGeometry()
             sanitizeTargetDefinitionSymbols()
         }
-        .task {
-            await loadWireLibrary()
-        }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
@@ -389,8 +396,8 @@ struct ContentView: View {
                 cloudStatus = failMsg
             }
         }
-        .sheet(isPresented: $showWireLibraryPanel) {
-            wireLibraryCreationSheet
+        .sheet(isPresented: $showLineDefinitionEditor) {
+            lineDefinitionEditor
         }
         .onChange(of: selectedTargetIDs) { _, ids in
             guard let id = ids.last, let target = target(with: id) else {
@@ -440,8 +447,7 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
-                Button("Create Wire Library") { showWireLibraryPanel.toggle() }
-                Button("Sync libraries") { Task { await syncLibraries() } }
+                Button("Sync target library") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -461,6 +467,9 @@ struct ContentView: View {
                 }
                 Button { showConnectionNames.toggle() } label: {
                     Label("Connection names: \(showConnectionNames ? "On" : "Off")", systemImage: showConnectionNames ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showEditBoxOnSelection.toggle() } label: {
+                    Label("Show edit box: \(showEditBoxOnSelection ? "On" : "Off")", systemImage: showEditBoxOnSelection ? "checkmark.circle.fill" : "circle")
                 }
                 Divider()
                 Button("Clear all") {
@@ -1321,6 +1330,7 @@ struct ContentView: View {
 
     private func openTargetInfo(_ target: SchematicTarget) {
         guard !connectionMode else { return }
+        forceEditBoxTargetID = target.id
         if !selectedTargetIDs.contains(target.id) {
             selectedTargetIDs = [target.id]
         }
@@ -1458,7 +1468,7 @@ struct ContentView: View {
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
+        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: "31D7E8", size: line.wireSize, type: line.wireType, misc: line.misc, voltage: line.voltage, displayWidth: 3, description: line.description))
         return true
     }
 
@@ -1505,8 +1515,8 @@ struct ContentView: View {
         let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, voltage: segment.voltage, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, voltage: segment.voltage, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
         let targetSlot = selectedConnectionSlots[targetID] ?? closestAvailableSlot(for: targetID, to: junction.id) ?? 0
         document.segments.append(SchematicSegment(startID: targetID, endID: junction.id, startSlot: targetSlot, endSlot: 2, name: "Connection", colorHex: "31D7E8", size: "14 AWG", type: "Copper", misc: "BARE", displayWidth: 3, description: "Target connection"))
         selectedTargetIDs.removeAll()
@@ -1637,6 +1647,16 @@ struct ContentView: View {
 
     private func removeTargetFromWire(_ target: SchematicTarget) {
         let attached = document.segments.filter { $0.startID == target.id || $0.endID == target.id }
+        guard !attached.isEmpty else { return }
+        if attached.count == 1 {
+            captureForUndo()
+            document.segments.removeAll { $0.id == attached[0].id }
+            selectedTargetIDs = [target.id]
+            selectedSegmentID = nil
+            selectedSegmentIDs.removeAll()
+            selectedConnectionSlots.removeAll()
+            return
+        }
         guard attached.count == 2 else { return }
         let first = attached[0]
         let route = orthogonalPoints(for: first, from: self.target(with: first.startID) ?? target, to: self.target(with: first.endID) ?? target, avoiding: [])
@@ -1657,7 +1677,7 @@ struct ContentView: View {
     }
 
     private func canRemoveTargetFromWire(_ target: SchematicTarget) -> Bool {
-        document.segments.filter { $0.startID == target.id || $0.endID == target.id }.count == 2
+        !document.segments.filter { $0.startID == target.id || $0.endID == target.id }.isEmpty
     }
 
     private func mergeWireAroundTarget(_ target: SchematicTarget) -> Bool {
@@ -1852,19 +1872,13 @@ struct ContentView: View {
         }
         do {
             let targetTypes = try await store.loadTargetTypes()
-            let conductors = try await store.loadConductorCatalog()
             let syncedTargets = targetTypes.compactMap { record -> TargetDefinition? in
                 guard let kind = TargetKind(rawValue: record.kind) else { return nil }
                 let validSymbol = record.symbol.flatMap { UIImage(systemName: $0) != nil ? $0 : nil } ?? kind.symbol
                 return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: validSymbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
             }
             if !syncedTargets.isEmpty { document.targetDefinitions = syncedTargets }
-            let syncedLines = conductors.compactMap { record -> LineDefinition? in
-                guard let material = ConductorMaterial(rawValue: record.material) else { return nil }
-                return LineDefinition(name: "\(material.rawValue) \(record.wireSize)", colorHex: material.defaultColorHex, wireSize: record.wireSize, material: material, displayWidth: 3, description: "Synced conductor")
-            }
-            if !syncedLines.isEmpty { document.lineDefinitions = syncedLines }
-            cloudStatus = "Libraries synced"
+            cloudStatus = "Target library synced"
         } catch {
             cloudStatus = "Library sync failed: \(cloudErrorText(error))"
         }
@@ -2009,7 +2023,7 @@ struct ContentView: View {
             HStack {
                 Text("WIRE LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
                 Spacer()
-                Button { document.lineDefinitions.append(.defaultLine) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
+                Button { beginNewLineDefinition() } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
                 Button { showLineLibrary = false } label: { Image(systemName: "xmark") }.foregroundStyle(.white.opacity(0.65))
             }
             TextField("Search material or wire size", text: $lineLibrarySearch)
@@ -2017,46 +2031,33 @@ struct ContentView: View {
 
             ScrollView {
                 LazyVStack(spacing: 6) {
-                    ForEach(ConductorMaterial.allCases) { material in
-                        let materialLines = document.lineDefinitions.filter {
-                            $0.material == material && (lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch))
-                        }
-                        if !materialLines.isEmpty {
-                            Text(material.rawValue.uppercased())
-                                .font(.system(size: 9, weight: .bold))
-                                .tracking(1.1)
-                                .foregroundStyle(.white.opacity(0.4))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, 5)
-
-                            ForEach(materialLines) { line in
-                                Button {
-                                    selectedLineDefinitionID = line.id
-                                    if selectedSegmentIDs.count > 1 {
-                                        applyLineDefinition(line, to: selectedSegmentIDs)
-                                    } else if let selectedSegmentID {
-                                        applyLineDefinition(line, to: selectedSegmentID)
-                                    } else {
-                                        applyLineDefinition(line, to: selectedSegmentIDs)
-                                    }
-                                    showLineLibrary = false
-                                } label: {
-                                    HStack(spacing: 9) {
-                                        Circle().fill(Color(hex: line.colorHex)).frame(width: 10, height: 10)
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(line.wireSize).font(.system(size: 12, weight: .semibold))
-                                            Text("\(line.displayWidth, specifier: "%.1f") pt").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                    ForEach(document.lineDefinitions.filter {
+                        lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireType.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.voltage.localizedCaseInsensitiveContains(lineLibrarySearch)
+                    }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { line in
+                                HStack(spacing: 8) {
+                                    Button {
+                                        selectedLineDefinitionID = line.id
+                                        if selectedSegmentIDs.count > 1 {
+                                            applyLineDefinition(line, to: selectedSegmentIDs)
+                                        } else if let selectedSegmentID {
+                                            applyLineDefinition(line, to: selectedSegmentID)
                                         }
-                                        Spacer()
-                                        if selectedLineDefinitionID == line.id { Image(systemName: "checkmark").foregroundStyle(.cyan) }
+                                        showLineLibrary = false
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(line.name).font(.system(size: 12, weight: .semibold))
+                                            Text("\(line.wireSize) · \(line.wireType) · \(line.voltage)").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     }
-                                    .padding(.horizontal, 8)
-                                    .frame(height: 34)
-                                    .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                                    .buttonStyle(.plain)
+                                    Button { beginEditLineDefinition(line) } label: { Image(systemName: "pencil") }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.cyan)
                                 }
-                                .buttonStyle(.plain)
-                            }
-                        }
+                                .padding(.horizontal, 8)
+                                .frame(minHeight: 42)
+                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
                     }
                 }
             }
@@ -2091,6 +2092,52 @@ struct ContentView: View {
         .padding(14)
         .frame(width: 360, height: 540)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var lineDefinitionEditor: some View {
+        NavigationStack {
+            Form {
+                Section("Wire") {
+                    TextField("Name", text: $lineDefinitionNameDraft)
+                    Picker("Size", selection: $lineDefinitionSizeDraft) {
+                        ForEach(lineDefinitionSizeOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("Custom size", text: $lineDefinitionSizeDraft)
+                    Picker("Type", selection: $lineDefinitionTypeDraft) {
+                        ForEach(lineDefinitionTypeOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("Custom type", text: $lineDefinitionTypeDraft)
+                    Picker("Voltage", selection: $lineDefinitionVoltageDraft) {
+                        ForEach(lineDefinitionVoltageOptions, id: \.self) { Text($0).tag($0) }
+                    }
+                    TextField("Custom voltage", text: $lineDefinitionVoltageDraft)
+                    TextField("Construction / use", text: $lineDefinitionMiscDraft)
+                    TextField("Description", text: $lineDefinitionDescriptionDraft)
+                }
+            }
+            .navigationTitle(editingLineDefinitionID == nil ? "New Wire" : "Edit Wire")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showLineDefinitionEditor = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { saveLineDefinitionDraft() }
+                        .disabled(lineDefinitionNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var lineDefinitionSizeOptions: [String] {
+        Array(Set(document.lineDefinitions.map(\.wireSize) + [lineDefinitionSizeDraft])).filter { !$0.isEmpty }.sorted()
+    }
+
+    private var lineDefinitionTypeOptions: [String] {
+        Array(Set(document.lineDefinitions.map(\.wireType) + [lineDefinitionTypeDraft])).filter { !$0.isEmpty }.sorted()
+    }
+
+    private var lineDefinitionVoltageOptions: [String] {
+        Array(Set(document.lineDefinitions.map(\.voltage) + [lineDefinitionVoltageDraft])).filter { !$0.isEmpty }.sorted()
     }
 
     private var netlistText: String {
@@ -2558,7 +2605,7 @@ struct ContentView: View {
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
                 if canRemoveTargetFromWire(target) && target.kind != .junction {
-                    Button { removeTargetFromWire(target) } label: { Image(systemName: "link.badge.minus") }
+                    Button { removeTargetFromWire(target) } label: { Image(systemName: "arrow.uturn.right.circle") }
                         .buttonStyle(EditorButtonStyle())
                         .help("Disconnect item from wire and join the wire")
                         .accessibilityLabel("Disconnect item from wire")
@@ -2681,281 +2728,38 @@ struct ContentView: View {
     }
 
     private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
-        let draft = editingWireDraft ?? wire
-        let hasChanges = editingWireDraft != nil && editingWireDraft != wire
-        
-        // Create bindings that update editingWireDraft by replacing the whole struct
-        let nameBinding = Binding(
-            get: { editingWireDraft?.name ?? wire.name },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.name = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.name = $0
-                    editingWireDraft = draft
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("WIRE").font(.caption.weight(.bold)).foregroundStyle(.cyan)
+                Spacer()
+                Button("Choose wire from library") {
+                    showLineLibrary = true
                 }
+                .buttonStyle(.borderedProminent)
             }
-        )
-        let sizeBinding = Binding(
-            get: { editingWireDraft?.size ?? wire.size },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.size = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.size = $0
-                    editingWireDraft = draft
-                }
+            Text(wire.name).font(.headline)
+            HStack(spacing: 18) {
+                readOnlyWireField("SIZE", wire.size)
+                readOnlyWireField("TYPE", wire.type)
+                readOnlyWireField("VOLTAGE", wire.voltage.isEmpty ? "Not specified" : wire.voltage)
+                readOnlyWireField("MISC", wire.misc)
+                readOnlyWireField("NET", netName(for: wire))
             }
-        )
-        let typeBinding = Binding(
-            get: { editingWireDraft?.type ?? wire.type },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.type = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.type = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let miscBinding = Binding(
-            get: { editingWireDraft?.misc ?? wire.misc },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.misc = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.misc = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let netNameBinding = Binding(
-            get: { editingWireDraft?.netName ?? wire.netName },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.netName = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.netName = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let displayWidthBinding = Binding(
-            get: { editingWireDraft?.displayWidth ?? wire.displayWidth },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.displayWidth = $0
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.displayWidth = $0
-                    editingWireDraft = draft
-                }
-            }
-        )
-        let colorBinding = Binding(
-            get: { Color(hex: editingWireDraft?.colorHex ?? wire.colorHex) ?? .cyan },
-            set: { 
-                if var draft = editingWireDraft {
-                    draft.colorHex = $0.hexString
-                    editingWireDraft = draft
-                } else {
-                    var draft = wire
-                    draft.colorHex = $0.hexString
-                    editingWireDraft = draft
-                }
-            }
-        )
-        
-        return VStack(spacing: 12) {
-            // Wire Library section
-            if !wireLibraryEntries.isEmpty {
-                HStack(spacing: 12) {
-                    Text("LIBRARY").font(.caption.weight(.bold)).foregroundStyle(.white.opacity(0.5))
-                    
-                    Picker("", selection: $selectedWireLibraryID) {
-                        Text("Select...").tag(nil as Int?)
-                        ForEach(wireLibraryEntries) { entry in
-                            Text("\(entry.size) / \(entry.type) / \(entry.misc)").tag(entry.id as Int?)
-                        }
-                    }
-                    .frame(maxWidth: 250)
-                    
-                    // When a library entry is selected, show action buttons
-                    if let selectedID = selectedWireLibraryID, let selectedEntry = wireLibraryEntries.first(where: { $0.id == selectedID }) {
-                        Button("Apply") {
-                            editingWireDraft = draft
-                            editingWireDraft?.size = selectedEntry.size
-                            editingWireDraft?.type = selectedEntry.type
-                            editingWireDraft?.misc = selectedEntry.misc
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.blue)
-                        .font(.caption)
-                        
-                        Button("Apply to All") {
-                            let simialar = document.segments.filter { seg in
-                                seg.size == wire.size && seg.type == wire.type && seg.misc == wire.misc
-                            }
-                            for i in document.segments.indices {
-                                if simialar.contains(where: { $0.id == document.segments[i].id }) {
-                                    document.segments[i].size = selectedEntry.size
-                                    document.segments[i].type = selectedEntry.type
-                                    document.segments[i].misc = selectedEntry.misc
-                                }
-                            }
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.orange)
-                        .font(.caption)
-                        
-                        Button("Cancel") {
-                            selectedWireLibraryID = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.gray)
-                        .font(.caption)
-                    }
-                    
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-            }
-            
-            HStack(spacing: 16) {
-                // Wire visual preview (color bar with thickness) - above size
-                VStack(alignment: .center, spacing: 4) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(draft.color)
-                        .frame(height: max(2, CGFloat(draft.displayWidth)))
-                        .frame(width: 60)
-                }
-                
-                // Name
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Wire name", text: nameBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 120)
-                
-                // Size
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Size", text: sizeBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 80)
-                
-                // Misc
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("MISC").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Misc", text: miscBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 90)
-                
-                // Net name
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Net name", text: netNameBinding)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 100)
-                
-                // Display size with color picker
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Stepper("", value: displayWidthBinding, in: 1...20, step: 0.5)
-                        .labelsHidden()
-                }
-                
-                // Color picker
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("COLOR").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    ColorPicker("", selection: colorBinding)
-                        .labelsHidden()
-                }
-                
-                if hasChanges || selectedSegmentIDs.count > 1 {
-                    Button(action: {
-                        if editingWireDraft == nil {
-                            editingWireDraft = wire
-                        }
-                        saveWireChanges()
-                    }) {
-                        Text(selectedSegmentIDs.count > 1 ? "Apply to All" : "Apply")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .font(.caption.weight(.semibold))
-                }
-            }
-            .onAppear {
-                if editingWireID != wire.id {
-                    editingWireID = wire.id
-                    editingWireDraft = wire
-                }
-            }
-            .onChange(of: wire.id) { _ in
-                editingWireID = nil
-                editingWireDraft = nil
+            HStack(spacing: 12) {
+                Text("Drawing").font(.caption).foregroundStyle(.white.opacity(0.5))
+                RoundedRectangle(cornerRadius: 3).fill(wire.color).frame(width: 56, height: max(2, CGFloat(wire.displayWidth)))
+                Text("Color and thickness are drawing properties").font(.caption2).foregroundStyle(.white.opacity(0.45))
             }
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
-    
-    private func saveWireChanges() {
-        guard let draft = editingWireDraft else { return }
-        // Apply to all selected wires
-        for id in selectedSegmentIDs {
-            if let index = document.segments.firstIndex(where: { $0.id == id }) {
-                document.segments[index].name = draft.name
-                document.segments[index].size = draft.size
-                document.segments[index].type = draft.type
-                document.segments[index].misc = draft.misc
-                document.segments[index].netName = draft.netName
-                document.segments[index].displayWidth = draft.displayWidth
-                document.segments[index].colorHex = draft.colorHex
-            }
+
+    private func readOnlyWireField(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.caption2).foregroundStyle(.white.opacity(0.5))
+            Text(value.isEmpty ? "-" : value).font(.caption.weight(.semibold))
         }
-        editingWireDraft = nil
-    }
-    
-    private func applyWireChangesToAll() {
-        guard let draft = editingWireDraft else { return }
-        // Apply draft properties to all selected wires
-        for id in selectedSegmentIDs {
-            if let index = document.segments.firstIndex(where: { $0.id == id }) {
-                document.segments[index].name = draft.name
-                document.segments[index].size = draft.size
-                document.segments[index].type = draft.type
-                document.segments[index].misc = draft.misc
-                document.segments[index].netName = draft.netName
-                document.segments[index].displayWidth = draft.displayWidth
-                document.segments[index].colorHex = draft.colorHex
-            }
-        }
-        editingWireDraft = nil
     }
     
     private func smartWireID(_ wire: SchematicSegment) -> String {
@@ -3026,12 +2830,21 @@ struct ContentView: View {
     private func connectionAngle(for target: SchematicTarget, slot: Int) -> Double {
         if target.connectionAngles.indices.contains(slot) { return target.connectionAngles[slot] }
         if target.kind == .junction {
-            let connectionCount = max(1, connectionCount(for: target.id))
+            let occupied = occupiedSlots(for: target.id).sorted()
+            if occupied.count == 2, let firstSlot = occupied.first, let secondSlot = occupied.last {
+                let firstAngle = junctionSlotAngle(slot: firstSlot, slotCount: 4)
+                return slot == secondSlot ? firstAngle + 180 : firstAngle
+            }
+            let connectionCount = max(1, occupied.count)
             let slotCount = connectionCount > 4 ? 8 : 4
-            let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
-            return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
+            return junctionSlotAngle(slot: slot, slotCount: slotCount)
         }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func junctionSlotAngle(slot: Int, slotCount: Int) -> Double {
+        let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
+        return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
     }
 
     private func angularDistance(_ first: Double, _ second: Double) -> Double {
@@ -3351,6 +3164,10 @@ struct ContentView: View {
             : nil
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
+        }
+        if points.count == 4 {
+            let interior = Array(points.dropFirst().dropLast())
+            return removeRouteBacktracks(orthogonalizedPoints([startPin] + interior + [endPin], alignmentTolerance: 0))
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
         return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
@@ -3935,10 +3752,10 @@ struct ContentView: View {
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
         guard let index = document.segments.firstIndex(where: { $0.id == segmentID }) else { return }
         document.segments[index].name = line.name
-        document.segments[index].colorHex = line.colorHex
         document.segments[index].size = line.wireSize
-        document.segments[index].type = line.material.rawValue.capitalized
-        document.segments[index].displayWidth = line.displayWidth
+        document.segments[index].type = line.wireType
+        document.segments[index].misc = line.misc
+        document.segments[index].voltage = line.voltage
         document.segments[index].description = line.description
     }
 
@@ -3946,6 +3763,48 @@ struct ContentView: View {
         for segmentID in segmentIDs {
             applyLineDefinition(line, to: segmentID)
         }
+    }
+
+    private func beginNewLineDefinition() {
+        editingLineDefinitionID = nil
+        lineDefinitionNameDraft = ""
+        lineDefinitionSizeDraft = lineDefinitionSizeOptions.first ?? ""
+        lineDefinitionTypeDraft = lineDefinitionTypeOptions.first ?? ""
+        lineDefinitionVoltageDraft = lineDefinitionVoltageOptions.first ?? ""
+        lineDefinitionMiscDraft = ""
+        lineDefinitionDescriptionDraft = ""
+        showLineDefinitionEditor = true
+    }
+
+    private func beginEditLineDefinition(_ line: LineDefinition) {
+        editingLineDefinitionID = line.id
+        lineDefinitionNameDraft = line.name
+        lineDefinitionSizeDraft = line.wireSize
+        lineDefinitionTypeDraft = line.wireType
+        lineDefinitionVoltageDraft = line.voltage
+        lineDefinitionMiscDraft = line.misc
+        lineDefinitionDescriptionDraft = line.description
+        showLineDefinitionEditor = true
+    }
+
+    private func saveLineDefinitionDraft() {
+        let material = ConductorMaterial.allCases.first { lineDefinitionTypeDraft.localizedCaseInsensitiveContains($0.rawValue) } ?? .copper
+        let definition = LineDefinition(
+            id: editingLineDefinitionID ?? UUID(),
+            name: lineDefinitionNameDraft.trimmingCharacters(in: .whitespacesAndNewlines),
+            wireSize: lineDefinitionSizeDraft,
+            wireType: lineDefinitionTypeDraft,
+            material: material,
+            voltage: lineDefinitionVoltageDraft,
+            misc: lineDefinitionMiscDraft,
+            description: lineDefinitionDescriptionDraft
+        )
+        if let editingLineDefinitionID, let index = document.lineDefinitions.firstIndex(where: { $0.id == editingLineDefinitionID }) {
+            document.lineDefinitions[index] = definition
+        } else {
+            document.lineDefinitions.append(definition)
+        }
+        showLineDefinitionEditor = false
     }
 }
 
@@ -4008,7 +3867,8 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         assignMissingTargetIdentifiers()
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
         let savedLineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? []
-        lineDefinitions = savedLineDefinitions.isEmpty ? LineDefinition.defaults : savedLineDefinitions
+        let isLegacyBulkCatalog = savedLineDefinitions.count > 20 && savedLineDefinitions.allSatisfy { $0.description.contains("Common") || $0.name.contains(" ") }
+        lineDefinitions = savedLineDefinitions.isEmpty || isLegacyBulkCatalog ? LineDefinition.defaults : savedLineDefinitions
         let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
         backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
@@ -4160,6 +4020,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var size: String // e.g., "14 AWG", "1/0", "2/0"
     var type: String // e.g., "Copper", "Aluminum", "ACSR"
     var misc: String // e.g., "BARE", "INSULATED", "POLYETHYLENE"
+    var voltage: String
     var netName: String
     var displayWidth: Double
     var description: String
@@ -4170,9 +4031,9 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var labelSectionPosition: Double
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, size: String = "14 AWG", type: String = "Copper", misc: String = "BARE", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, size: String = "14 AWG", type: String = "Copper", misc: String = "BARE", voltage: String = "", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.size = size; self.type = type; self.misc = misc; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
+        self.size = size; self.type = type; self.misc = misc; self.voltage = voltage; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
     }
 
     init(from decoder: Decoder) throws {
@@ -4190,6 +4051,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "Copper"
         // Handle both old (covering) and new (misc) field names
         misc = try container.decodeIfPresent(String.self, forKey: .misc) ?? "BARE"
+        voltage = try container.decodeIfPresent(String.self, forKey: .voltage) ?? ""
         netName = try container.decodeIfPresent(String.self, forKey: .netName) ?? "N001"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
@@ -4206,23 +4068,25 @@ private struct LineDefinition: Identifiable, Codable, Equatable {
     var name: String
     var colorHex: String
     var wireSize: String
+    var wireType: String
     var material: ConductorMaterial
+    var voltage: String
+    var misc: String
     var displayWidth: Double
     var description: String
 
-    init(id: UUID = UUID(), name: String, colorHex: String, wireSize: String, material: ConductorMaterial = .copper, displayWidth: Double, description: String) {
-        self.id = id; self.name = name; self.colorHex = colorHex; self.wireSize = wireSize; self.material = material; self.displayWidth = displayWidth; self.description = description
+    init(id: UUID = UUID(), name: String, colorHex: String = "31D7E8", wireSize: String, wireType: String = "Copper", material: ConductorMaterial = .copper, voltage: String = "", misc: String = "BARE", displayWidth: Double = 3, description: String) {
+        self.id = id; self.name = name; self.colorHex = colorHex; self.wireSize = wireSize; self.wireType = wireType; self.material = material; self.voltage = voltage; self.misc = misc; self.displayWidth = displayWidth; self.description = description
     }
 
-    static let defaultLine = LineDefinition(name: "Standard wire", colorHex: "31D7E8", wireSize: "14 AWG", material: .copper, displayWidth: 3, description: "General purpose connection")
-    static let defaults: [LineDefinition] = {
-        let sizes = ["1/0", "2/0", "4/0", "2", "4", "6", "8", "10", "12", "14", "16", "18"]
-        return ConductorMaterial.allCases.flatMap { material in
-            sizes.map { size in
-                LineDefinition(name: "\(material.rawValue) \(size)", colorHex: material.defaultColorHex, wireSize: size, material: material, displayWidth: 3, description: "Common \(material.rawValue) conductor")
-            }
-        }
-    }()
+    static let defaultLine = LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord")
+    static let defaults: [LineDefinition] = [
+        LineDefinition(name: "1/0 AAAC", wireSize: "1/0", wireType: "AAAC", material: .aaac, voltage: "15 kV", misc: "Bare overhead", description: "Aluminum alloy overhead conductor"),
+        LineDefinition(name: "1/0 ACSR", wireSize: "1/0", wireType: "ACSR", material: .acsr, voltage: "15 kV", misc: "Bare overhead", description: "Aluminum conductor steel reinforced"),
+        LineDefinition(name: "12/3 SO", wireSize: "12/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord"),
+        LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord"),
+        LineDefinition(name: "#4 Solid Copper", wireSize: "#4", wireType: "Solid Copper", material: .copper, voltage: "600 V", misc: "Solid", description: "Solid copper conductor")
+    ]
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -4231,6 +4095,9 @@ private struct LineDefinition: Identifiable, Codable, Equatable {
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? "31D7E8"
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
         material = try container.decodeIfPresent(ConductorMaterial.self, forKey: .material) ?? .copper
+        wireType = try container.decodeIfPresent(String.self, forKey: .wireType) ?? material.rawValue
+        voltage = try container.decodeIfPresent(String.self, forKey: .voltage) ?? ""
+        misc = try container.decodeIfPresent(String.self, forKey: .misc) ?? ""
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
     }
