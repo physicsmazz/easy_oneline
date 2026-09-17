@@ -1072,6 +1072,12 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
                 .disabled(canvasLocked)
+            Button { canvasRotation = .zero } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .buttonStyle(EditorButtonStyle())
+            .help("Reset rotation only (keep zoom)")
+            .disabled(canvasLocked)
             Button { zoomToExtents() } label: {
                 Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
             }
