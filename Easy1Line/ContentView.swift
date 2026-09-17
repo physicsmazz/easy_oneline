@@ -3141,16 +3141,6 @@ struct ContentView: View {
                         points[stubIndex].x = points[pinIndex].x + direction * minimumStub
                     }
                 }
-                // If the leg after the stub went diagonal, jog at the stub end so that leg keeps its original line.
-                let nextIndex = segment.startID == targetID ? stubIndex + 1 : stubIndex - 1
-                if points.indices.contains(nextIndex) {
-                    let moved = points[stubIndex], next = points[nextIndex]
-                    if abs(moved.x - next.x) > 0.5 && abs(moved.y - next.y) > 0.5 {
-                        let legWasHorizontal = abs(stub.y - next.y) < 0.5
-                        let corner = legWasHorizontal ? CGPoint(x: moved.x, y: next.y) : CGPoint(x: next.x, y: moved.y)
-                        points.insert(corner, at: max(stubIndex, nextIndex))
-                    }
-                }
             }
             if let start = target(with: segment.startID), let end = target(with: segment.endID), target(with: targetID)?.kind != .junction {
                 let rectangles = routingObstacles(excluding: start.id, end.id)
