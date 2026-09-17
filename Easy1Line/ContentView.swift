@@ -2074,6 +2074,15 @@ struct ContentView: View {
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
+        if wireAlignmentPreviewSegmentIDs.contains(id),
+           let index = document.segments.firstIndex(where: { $0.id == id }) {
+            let route = document.segments[index].routePoints
+            let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+            document.segments[index].routePoints = simplified
+            if let labelAnchor = wireLabelRouteAnchorPoints[id] {
+                updateWireLabelPosition(id, route: simplified, near: labelAnchor)
+            }
+        }
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
     }
