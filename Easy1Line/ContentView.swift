@@ -457,7 +457,9 @@ struct ContentView: View {
 
             Menu("Visualizations") {
                 Toggle("Wire bridges", isOn: $wireBridgesEnabled)
+                    .toggleStyle(.switch)
                 Toggle("Connection names", isOn: $showConnectionNames)
+                    .toggleStyle(.switch)
                 Divider()
                 Button("Clear all") {
                     wireBridgesEnabled = false
@@ -469,11 +471,17 @@ struct ContentView: View {
 
             Menu("Labels") {
                 Toggle("Wire names", isOn: $showWireNames)
+                    .toggleStyle(.switch)
                 Toggle("Lengths", isOn: $showWireLengths)
+                    .toggleStyle(.switch)
                 Toggle("Wire sizes", isOn: $showWireSizes)
+                    .toggleStyle(.switch)
                 Toggle("Materials", isOn: $showWireMaterials)
+                    .toggleStyle(.switch)
                 Toggle("Coverings", isOn: $showWireCoverings)
+                    .toggleStyle(.switch)
                 Toggle("Net names", isOn: $showWireNetNames)
+                    .toggleStyle(.switch)
                 Divider()
                 Button("Clear all") {
                     showWireNames = false
@@ -489,7 +497,9 @@ struct ContentView: View {
 
             Menu("Settings") {
                 Toggle("Snap to grid", isOn: $snapToGrid)
+                    .toggleStyle(.switch)
                 Toggle("Selection popup near item", isOn: $showSelectionBoxNearItem)
+                    .toggleStyle(.switch)
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 Button("Background color") { showBackgroundColorPicker = true }
