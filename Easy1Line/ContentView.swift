@@ -2891,10 +2891,17 @@ struct ContentView: View {
 
     private func closestAvailableSlot(for id: UUID, to otherID: UUID) -> Int? {
         guard let sourceTarget = target(with: id), let otherTarget = target(with: otherID) else { return nil }
-        guard sourceTarget.kind != .junction else { return firstEmptySlot(for: id) }
         let occupied = occupiedSlots(for: id)
-        return (0..<sourceTarget.maxConnections)
-            .filter { !occupied.contains($0) }
+        let availableSlots = (0..<sourceTarget.maxConnections).filter { !occupied.contains($0) }
+        guard sourceTarget.kind != .junction else {
+            let desiredAngle = atan2(otherTarget.position.y - sourceTarget.position.y, otherTarget.position.x - sourceTarget.position.x) * 180 / Double.pi
+            return availableSlots.min { lhs, rhs in
+                let lhsDistance = angularDistance(connectionAngle(for: sourceTarget, slot: lhs), desiredAngle)
+                let rhsDistance = angularDistance(connectionAngle(for: sourceTarget, slot: rhs), desiredAngle)
+                return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+            }
+        }
+        return availableSlots
             .min { lhs, rhs in
                 let lhsPoint = connectionPoint(for: sourceTarget, slot: lhs)
                 let rhsPoint = connectionPoint(for: sourceTarget, slot: rhs)
@@ -2916,9 +2923,15 @@ struct ContentView: View {
         if target.kind == .junction {
             let connectionCount = max(1, connectionCount(for: target.id))
             let slotCount = connectionCount > 4 ? 8 : 4
-            return (360 * Double(slot) / Double(slotCount)) - 90
+            let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
+            return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
         }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func angularDistance(_ first: Double, _ second: Double) -> Double {
+        let difference = abs(first - second).truncatingRemainder(dividingBy: 360)
+        return min(difference, 360 - difference)
     }
 
     private func connectionDragKey(_ targetID: UUID, slot: Int) -> String { "\(targetID.uuidString)-\(slot)" }
