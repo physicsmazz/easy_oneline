@@ -2856,7 +2856,6 @@ struct ContentView: View {
         selectedSegmentIDs = Set(ids)
         selectedSegmentID = wire.id
         selectedTargetIDs.removeAll()
-        DispatchQueue.main.async { centerWires(ids) }
     }
 
     private func selectWiresWithSameColor(as wire: SchematicSegment) {
@@ -2864,27 +2863,6 @@ struct ContentView: View {
         selectedSegmentIDs = Set(ids)
         selectedSegmentID = wire.id
         selectedTargetIDs.removeAll()
-        DispatchQueue.main.async { centerWires(ids) }
-    }
-
-    private func centerWires(_ ids: [UUID]) {
-        guard editorSize != .zero else { return }
-        var bounds = CGRect.null
-        for id in ids {
-            guard let segment = document.segments.first(where: { $0.id == id }),
-                  let start = target(with: segment.startID),
-                  let end = target(with: segment.endID) else { continue }
-            let points = cachedWirePoints[id] ?? orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
-            for point in points {
-                bounds = bounds.union(CGRect(x: point.x, y: point.y, width: 1, height: 1))
-            }
-        }
-        guard !bounds.isNull else { return }
-        bounds = bounds.insetBy(dx: -60, dy: -60)
-        let boundsCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        let currentCenter = screenPoint(forCanvas: boundsCenter)
-        canvasOffset.width += editorSize.width / 2 - currentCenter.x
-        canvasOffset.height += editorSize.height / 2 - currentCenter.y
     }
     
     private func smartWireID(_ wire: SchematicSegment) -> String {
