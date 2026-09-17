@@ -41,6 +41,8 @@ private struct PDFShareItem: Identifiable {
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
+    @State private var undoStack: [SchematicDocument] = []
+    @State private var redoStack: [SchematicDocument] = []
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -375,6 +377,12 @@ struct ContentView: View {
                 HStack(spacing: 8) {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
+                Divider()
+                Button("Undo", action: undo)
+                    .disabled(undoStack.isEmpty)
+                Button("Redo", action: redo)
+                    .disabled(redoStack.isEmpty)
+                Divider()
                 Button("New Drawing") { showNewDrawingWarning = true }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
                 Button("Export .line") { showFileExporter = true }
@@ -1218,6 +1226,7 @@ struct ContentView: View {
               !occupiedSlots(for: startID).contains(resolvedStartSlot),
               !occupiedSlots(for: endID).contains(resolvedEndSlot),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
+        captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
         return true
@@ -1263,6 +1272,7 @@ struct ContentView: View {
     }
 
     private func addTarget(_ kind: TargetKind, at point: CGPoint? = nil) {
+        captureForUndo()
         let rawPosition = point ?? CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
         let position = snappedPosition(rawPosition)
         document.targets.append(SchematicTarget(kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
@@ -1274,6 +1284,7 @@ struct ContentView: View {
     }
 
     private func addTarget(from template: TargetDefinition) {
+        captureForUndo()
         let position = snappedPosition(CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height))
         document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
@@ -1408,6 +1419,30 @@ struct ContentView: View {
         if let index = savedDocuments.firstIndex(where: { $0.id == document.id }) { savedDocuments[index] = document } else { savedDocuments.append(document) }
         SchematicDocument.saveAll(savedDocuments)
         SchematicDocument.saveLast(document)
+    }
+
+    private func captureForUndo() {
+        redoStack.removeAll()
+        undoStack.append(document)
+        if undoStack.count > 10 {
+            undoStack.removeFirst()
+        }
+    }
+
+    private func undo() {
+        guard !undoStack.isEmpty else { return }
+        redoStack.append(document)
+        document = undoStack.removeLast()
+        SchematicDocument.saveLast(document)
+        restoreBackgroundImage()
+    }
+
+    private func redo() {
+        guard !redoStack.isEmpty else { return }
+        undoStack.append(document)
+        document = redoStack.removeLast()
+        SchematicDocument.saveLast(document)
+        restoreBackgroundImage()
     }
 
     private func saveToCloud() async {
@@ -1720,6 +1755,7 @@ struct ContentView: View {
     }
 
     private func deleteSelectedContent() {
+        captureForUndo()
         if selectedTargetIDs.count == 1,
            let targetID = selectedTargetIDs.first,
            let target = target(with: targetID) {
@@ -3176,6 +3212,7 @@ struct ContentView: View {
         let freeSlots = document.targets[targetIndex].maxConnections - occupiedSlots(for: targetID).count
         guard freeSlots >= 2 else { return }
         guard let hit = splitCandidate(at: document.targets[targetIndex].position, excluding: targetID) else { return }
+        captureForUndo()
         let segment = hit.segment
         let isJunction = document.targets[targetIndex].kind == .junction
         let junctionPosition = hit.point
