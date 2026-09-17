@@ -110,6 +110,7 @@ struct ContentView: View {
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
+    @State private var wirePlacementMode: WirePlacementMode?
     @State private var wireLabelDragStartPoints: [UUID: CGPoint] = [:]
     @State private var wireLabelRouteAnchorPoints: [UUID: CGPoint] = [:]
     @State private var showNewDrawingWarning = false
@@ -607,6 +608,8 @@ struct ContentView: View {
                                 selectedTargetIDs.removeAll()
                             }, onDoubleTap: {
                                 openWireInfo(segment, sectionIndex: sectionIndex)
+                            }, onTapAt: { location in
+                                if wirePlacementMode != nil { placeWirePoint(at: location) }
                             })
                         } else {
                             // Stub sections: keep the hit area clear of the pin so pin taps aren't swallowed by the wire.
@@ -625,6 +628,8 @@ struct ContentView: View {
                                 selectedTargetIDs.removeAll()
                             }, onDoubleTap: {
                                 openWireInfo(segment, sectionIndex: sectionIndex)
+                            }, onTapAt: { location in
+                                if wirePlacementMode != nil { placeWirePoint(at: location) }
                             })
                         }
                     }
@@ -1720,7 +1725,7 @@ struct ContentView: View {
         if !selectedTargetIDs.isEmpty {
             actionCount = selectedTargetIDs.count == 1 ? 6 : 3
         } else {
-            actionCount = selectedSegmentIDs.count == 1 ? 2 : 1
+            actionCount = selectedSegmentIDs.count == 1 ? 3 : 1
         }
         let buttonWidth: CGFloat = 40
         let countWidth: CGFloat = 16
@@ -1745,10 +1750,14 @@ struct ContentView: View {
                     .accessibilityLabel("Connect selected items")
             }
             if selectedTargetIDs.isEmpty, selectedSegmentIDs.count == 1, let segment = selectedSegment {
-                Button { splitWire(segment) } label: { Image(systemName: "scissors") }
+                Button { wirePlacementMode = .connection } label: { Image(systemName: "point.topleft.down.curvedto.point.bottomright.up") }
                     .buttonStyle(EditorButtonStyle())
-                    .help("Split selected wire")
-                    .accessibilityLabel("Split selected wire")
+                    .help("Add connection at clicked point")
+                    .accessibilityLabel("Add connection at clicked point")
+                Button { wirePlacementMode = .bend } label: { Image(systemName: "angle") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Add bend point at clicked point")
+                    .accessibilityLabel("Add bend point at clicked point")
             }
             Button(role: .destructive) {
                 showDeleteWarning = true
@@ -2509,11 +2518,11 @@ struct ContentView: View {
         return simplifyOrthogonalPoints((points.isEmpty ? [fallback] : points) + [corner, escape, pin])
     }
 
-    private func splitWire(_ segment: SchematicSegment) {
+    private func splitWire(_ segment: SchematicSegment, at placedPoint: CGPoint? = nil) {
         guard let start = target(with: segment.startID), let end = target(with: segment.endID),
               let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
-        let midpoint = nearestPoint(on: route, to: CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)).point
+        let midpoint = placedPoint ?? nearestPoint(on: route, to: CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)).point
         let junctionPosition = snapToGrid ? snappedPosition(midpoint) : midpoint
         let splitRoutes = splitRoutePoints(route, at: junctionPosition)
         let junction = SchematicTarget(kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
@@ -2523,6 +2532,23 @@ struct ContentView: View {
         document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, wireSize: segment.wireSize, material: segment.material, covering: segment.covering, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
         selectedSegmentIDs.remove(segment.id)
         selectedSegmentID = nil
+    }
+
+    private func placeWirePoint(at screenLocation: CGPoint) {
+        guard let mode = wirePlacementMode,
+              let segment = selectedSegment,
+              let start = target(with: segment.startID),
+              let end = target(with: segment.endID) else { return }
+        let canvasPoint = canvasDropPoint(screenLocation, canvasSize: editorSize)
+        let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+        let placedPoint = nearestPoint(on: route, to: canvasPoint).point
+        if mode == .connection {
+            splitWire(segment, at: placedPoint)
+        } else if let index = document.segments.firstIndex(where: { $0.id == segment.id }) {
+            let split = splitRoutePoints(route, at: placedPoint)
+            document.segments[index].routePoints = orthogonalizedPoints(split.first + Array(split.second.dropFirst()), alignmentTolerance: 0)
+        }
+        wirePlacementMode = nil
     }
 
     private func splitRoutePoints(_ points: [CGPoint], at point: CGPoint) -> (first: [CGPoint], second: [CGPoint]) {
@@ -2658,6 +2684,11 @@ private struct CloudDrawingChoice: Identifiable {
     let id: UUID
     let name: String
     let data: Data
+}
+
+private enum WirePlacementMode {
+    case connection
+    case bend
 }
 
 private struct ActivityView: UIViewControllerRepresentable {
@@ -3149,11 +3180,13 @@ private struct SegmentHitArea: View {
     let onEndDrag: () -> Void
     let onTap: () -> Void
     let onDoubleTap: () -> Void
+    var onTapAt: ((CGPoint) -> Void)? = nil
     var body: some View {
         path.stroke(isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
             .contentShape((hitPath ?? path).strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
             .onTapGesture(count: 2, perform: onDoubleTap)
+            .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { value in onTapAt?(value.location) })
             .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
     }
 }
