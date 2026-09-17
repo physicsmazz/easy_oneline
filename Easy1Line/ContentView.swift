@@ -110,6 +110,7 @@ struct ContentView: View {
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
+    @State private var wireLabelDragStartPositions: [UUID: Double] = [:]
     @State private var showNewDrawingWarning = false
     @State private var pendingNewDrawingAfterSave = false
 
@@ -580,7 +581,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .allowsHitTesting(false)
+            .allowsHitTesting(true)
             .frame(width: 10000, height: 10000)
             .position(x: size.width / 2, y: size.height / 2)
 
@@ -664,11 +665,7 @@ struct ContentView: View {
                 ForEach(document.segments) { segment in
                     if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                         let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
-                        ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
-                            let first = points[sectionIndex]
-                            let second = points[sectionIndex + 1]
-                            wireLabel(segment, from: first, to: second)
-                        }
+                        wireLabel(segment, on: points)
                     }
                 }
             }
@@ -701,17 +698,15 @@ struct ContentView: View {
         }
     }
 
-    private func wireLabel(_ segment: SchematicSegment, from first: CGPoint, to second: CGPoint) -> some View {
-        let dx = second.x - first.x
-        let dy = second.y - first.y
-        let midpoint = CGPoint(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
-        let length = max(hypot(dx, dy), 1)
-        let labelPoint = CGPoint(x: midpoint.x - dy / length * 14, y: midpoint.y + dx / length * 14)
-        var angle = atan2(dy, dx)
+    private func wireLabel(_ segment: SchematicSegment, on points: [CGPoint]) -> some View {
+        let labelPoint = point(on: points, at: segment.labelPosition)
+        let direction = direction(on: points, at: segment.labelPosition)
+        let labelPointWithOffset = CGPoint(x: labelPoint.x - direction.dy / max(direction.length, 1) * 14, y: labelPoint.y + direction.dx / max(direction.length, 1) * 14)
+        var angle = atan2(direction.dy, direction.dx)
         if angle > .pi / 2 || angle < -.pi / 2 { angle += .pi }
-        let fields = [
+        let fields: [String] = [
             showWireNames ? segment.name : nil,
-            showWireLengths ? "\(Int(length.rounded())) px" : nil,
+            showWireLengths ? "\(Int(pathLength(points).rounded())) px" : nil,
             showWireSizes ? segment.wireSize : nil,
             showWireMaterials ? segment.material : nil,
             showWireCoverings ? segment.covering : nil,
@@ -724,8 +719,60 @@ struct ContentView: View {
             .padding(.vertical, 2)
             .background(.black.opacity(0.7), in: Capsule())
             .rotationEffect(.radians(angle))
-            .position(labelPoint)
-            .allowsHitTesting(false)
+            .position(labelPointWithOffset)
+            .gesture(DragGesture(coordinateSpace: .global).onChanged { value in
+                let start = wireLabelDragStartPositions[segment.id] ?? segment.labelPosition
+                wireLabelDragStartPositions[segment.id] = start
+                guard let startTarget = target(with: segment.startID), let endTarget = target(with: segment.endID) else { return }
+                let route = orthogonalPoints(for: segment, from: startTarget, to: endTarget, avoiding: [])
+                let startPoint = point(on: route, at: start)
+                let delta = canvasDelta(for: value.translation)
+                let proposed = CGPoint(x: startPoint.x + delta.width, y: startPoint.y + delta.height)
+                updateWireLabelPosition(segment.id, route: route, near: proposed)
+            }.onEnded { _ in
+                wireLabelDragStartPositions.removeValue(forKey: segment.id)
+            })
+            .allowsHitTesting(true)
+    }
+
+    private func point(on points: [CGPoint], at fraction: Double) -> CGPoint {
+        let total = pathLength(points)
+        guard total > 0 else { return points.first ?? .zero }
+        var remaining = CGFloat(min(max(fraction, 0), 1)) * total
+        for pair in zip(points, points.dropFirst()) {
+            let length = hypot(pair.1.x - pair.0.x, pair.1.y - pair.0.y)
+            if remaining <= length {
+                let ratio = length == 0 ? 0 : remaining / length
+                return CGPoint(x: pair.0.x + (pair.1.x - pair.0.x) * ratio, y: pair.0.y + (pair.1.y - pair.0.y) * ratio)
+            }
+            remaining -= length
+        }
+        return points.last ?? .zero
+    }
+
+    private func direction(on points: [CGPoint], at fraction: Double) -> (dx: CGFloat, dy: CGFloat, length: CGFloat) {
+        let currentPoint = point(on: points, at: fraction)
+        let nextPoint = point(on: points, at: min(fraction + 0.01, 1))
+        return (nextPoint.x - currentPoint.x, nextPoint.y - currentPoint.y, hypot(nextPoint.x - currentPoint.x, nextPoint.y - currentPoint.y))
+    }
+
+    private func updateWireLabelPosition(_ id: UUID, route: [CGPoint], near location: CGPoint) {
+        guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
+        var bestFraction = 0.5
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        let total = pathLength(route)
+        var traversed: CGFloat = 0
+        for pair in zip(route, route.dropFirst()) {
+            let candidate = nearestPoint(on: [pair.0, pair.1], to: location)
+            let segmentLength = hypot(pair.1.x - pair.0.x, pair.1.y - pair.0.y)
+            if candidate.distance < bestDistance {
+                bestDistance = candidate.distance
+                let along = traversed + hypot(candidate.point.x - pair.0.x, candidate.point.y - pair.0.y)
+                bestFraction = total == 0 ? 0.5 : Double(along / total)
+            }
+            traversed += segmentLength
+        }
+        document.segments[index].labelPosition = min(max(bestFraction, 0), 1)
     }
 
     private var showWireLabels: Bool {
@@ -2706,11 +2753,12 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var description: String
     var bendOffset: CGFloat
     var routePoints: [CGPoint]
+    var labelPosition: Double
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = []) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, wireSize: String = "14 AWG", material: String = "Copper", covering: String = "None", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.wireSize = wireSize; self.material = material; self.covering = covering; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints
+        self.wireSize = wireSize; self.material = material; self.covering = covering; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition
     }
 
     init(from decoder: Decoder) throws {
@@ -2730,6 +2778,7 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
         bendOffset = try container.decodeIfPresent(CGFloat.self, forKey: .bendOffset) ?? 0
         routePoints = try container.decodeIfPresent([CGPoint].self, forKey: .routePoints) ?? []
+        labelPosition = try container.decodeIfPresent(Double.self, forKey: .labelPosition) ?? 0.5
     }
 }
 
@@ -2889,8 +2938,7 @@ private struct TargetView: View {
                 } else if target.isCompact {
                     Circle().stroke(.cyan, lineWidth: 3).frame(width: 44, height: 44).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else {
-                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 64, height: 54).shadow(color: .cyan.opacity(0.8), radius: 8)
-                        .offset(y: -9)
+                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 88, height: 76).shadow(color: .cyan.opacity(0.8), radius: 8)
                 }
             }
         }
@@ -3002,7 +3050,7 @@ private struct TargetBodyHitShape: Shape {
         if isCompact {
             return Circle().path(in: CGRect(x: rect.midX - 20, y: rect.midY - 20, width: 40, height: 40))
         }
-        return RoundedRectangle(cornerRadius: 10).path(in: CGRect(x: rect.midX - 29, y: rect.midY - 33, width: 58, height: 48))
+        return RoundedRectangle(cornerRadius: 10).path(in: CGRect(x: rect.midX - 44, y: rect.midY - 38, width: 88, height: 76))
     }
 }
 
