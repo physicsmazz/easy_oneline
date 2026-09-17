@@ -2014,12 +2014,6 @@ struct ContentView: View {
                     .help("Remove straight bend points")
                     .accessibilityLabel("Remove straight bend points")
             }
-            Button(role: .destructive) {
-                showDeleteWarning = true
-            } label: { Image(systemName: "trash") }
-                .buttonStyle(EditorButtonStyle())
-                .help("Delete selected items")
-                .accessibilityLabel("Delete selected items")
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
                     Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
@@ -2048,6 +2042,12 @@ struct ContentView: View {
                     .help(target.locked ? "Unlock selected item" : "Lock selected item")
                     .accessibilityLabel(target.locked ? "Unlock selected item" : "Lock selected item")
             }
+            Button(role: .destructive) {
+                showDeleteWarning = true
+            } label: { Image(systemName: "trash") }
+                .buttonStyle(EditorButtonStyle())
+                .help("Delete selected items")
+                .accessibilityLabel("Delete selected items")
         }
         .padding(12)
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
@@ -2146,8 +2146,100 @@ struct ContentView: View {
 
     private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
         let draft = editingWireDraft ?? wire
-        let draftBinding = segmentBinding(draft)
         let hasChanges = editingWireDraft != nil && editingWireDraft != wire
+        
+        // Create bindings that update editingWireDraft by replacing the whole struct
+        let nameBinding = Binding(
+            get: { editingWireDraft?.name ?? wire.name },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.name = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.name = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let sizeBinding = Binding(
+            get: { editingWireDraft?.size ?? wire.size },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.size = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.size = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let typeBinding = Binding(
+            get: { editingWireDraft?.type ?? wire.type },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.type = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.type = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let miscBinding = Binding(
+            get: { editingWireDraft?.misc ?? wire.misc },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.misc = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.misc = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let netNameBinding = Binding(
+            get: { editingWireDraft?.netName ?? wire.netName },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.netName = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.netName = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let displayWidthBinding = Binding(
+            get: { editingWireDraft?.displayWidth ?? wire.displayWidth },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.displayWidth = $0
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.displayWidth = $0
+                    editingWireDraft = draft
+                }
+            }
+        )
+        let colorBinding = Binding(
+            get: { Color(hex: editingWireDraft?.colorHex ?? wire.colorHex) ?? .cyan },
+            set: { 
+                if var draft = editingWireDraft {
+                    draft.colorHex = $0.hexString
+                    editingWireDraft = draft
+                } else {
+                    var draft = wire
+                    draft.colorHex = $0.hexString
+                    editingWireDraft = draft
+                }
+            }
+        )
         
         return VStack(spacing: 12) {
             // Wire Library section
@@ -2209,15 +2301,8 @@ struct ContentView: View {
             }
             
             HStack(spacing: 16) {
-                // Wire ID
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("WIRE ID").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Text(smartWireID(draft)).font(.caption.monospaced()).foregroundStyle(.cyan)
-                }
-                
-                // Wire visual preview (color bar with thickness)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("PREVIEW").font(.caption).foregroundStyle(.white.opacity(0.5))
+                // Wire visual preview (color bar with thickness) - above size
+                VStack(alignment: .center, spacing: 4) {
                     RoundedRectangle(cornerRadius: 4)
                         .fill(draft.color)
                         .frame(height: max(2, CGFloat(draft.displayWidth)))
@@ -2227,7 +2312,7 @@ struct ContentView: View {
                 // Name
                 VStack(alignment: .leading, spacing: 4) {
                     Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Wire name", text: draftBinding.name)
+                    TextField("Wire name", text: nameBinding)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
                 }
@@ -2236,25 +2321,16 @@ struct ContentView: View {
                 // Size
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Size", text: draftBinding.size)
+                    TextField("Size", text: sizeBinding)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
                 }
                 .frame(maxWidth: 80)
                 
-                // Type
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("TYPE").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Type", text: draftBinding.type)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.caption)
-                }
-                .frame(maxWidth: 100)
-                
                 // Misc
                 VStack(alignment: .leading, spacing: 4) {
                     Text("MISC").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Misc", text: draftBinding.misc)
+                    TextField("Misc", text: miscBinding)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
                 }
@@ -2263,7 +2339,7 @@ struct ContentView: View {
                 // Net name
                 VStack(alignment: .leading, spacing: 4) {
                     Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    TextField("Net name", text: draftBinding.netName)
+                    TextField("Net name", text: netNameBinding)
                         .textFieldStyle(.roundedBorder)
                         .font(.caption)
                 }
@@ -2272,36 +2348,29 @@ struct ContentView: View {
                 // Display size with color picker
                 VStack(alignment: .leading, spacing: 4) {
                     Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    Stepper("", value: draftBinding.displayWidth, in: 1...20, step: 0.5)
+                    Stepper("", value: displayWidthBinding, in: 1...20, step: 0.5)
                         .labelsHidden()
                 }
                 
                 // Color picker
                 VStack(alignment: .leading, spacing: 4) {
                     Text("COLOR").font(.caption).foregroundStyle(.white.opacity(0.5))
-                    ColorPicker("", selection: draftBinding.color)
+                    ColorPicker("", selection: colorBinding)
                         .labelsHidden()
                 }
                 
-                Spacer()
-                
-                // Save/Discard buttons (only show if changed)
-                if hasChanges {
-                    HStack(spacing: 8) {
-                        Button(action: saveWireChanges) {
-                            Label("Save", systemImage: "checkmark.circle.fill")
-                                .font(.caption)
+                if hasChanges || selectedSegmentIDs.count > 1 {
+                    Button(action: {
+                        if editingWireDraft == nil {
+                            editingWireDraft = wire
                         }
-                        .buttonStyle(.bordered)
-                        .tint(.green)
-                        
-                        Button(action: discardWireChanges) {
-                            Label("Discard", systemImage: "xmark.circle.fill")
-                                .font(.caption)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
+                        saveWireChanges()
+                    }) {
+                        Text(selectedSegmentIDs.count > 1 ? "Apply to All" : "Apply")
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                    .font(.caption.weight(.semibold))
                 }
             }
             .onAppear {
@@ -2320,12 +2389,36 @@ struct ContentView: View {
     }
     
     private func saveWireChanges() {
-        guard let draft = editingWireDraft, let index = document.segments.firstIndex(where: { $0.id == draft.id }) else { return }
-        document.segments[index] = draft
+        guard let draft = editingWireDraft else { return }
+        // Apply to all selected wires
+        for id in selectedSegmentIDs {
+            if let index = document.segments.firstIndex(where: { $0.id == id }) {
+                document.segments[index].name = draft.name
+                document.segments[index].size = draft.size
+                document.segments[index].type = draft.type
+                document.segments[index].misc = draft.misc
+                document.segments[index].netName = draft.netName
+                document.segments[index].displayWidth = draft.displayWidth
+                document.segments[index].colorHex = draft.colorHex
+            }
+        }
         editingWireDraft = nil
     }
     
-    private func discardWireChanges() {
+    private func applyWireChangesToAll() {
+        guard let draft = editingWireDraft else { return }
+        // Apply draft properties to all selected wires
+        for id in selectedSegmentIDs {
+            if let index = document.segments.firstIndex(where: { $0.id == id }) {
+                document.segments[index].name = draft.name
+                document.segments[index].size = draft.size
+                document.segments[index].type = draft.type
+                document.segments[index].misc = draft.misc
+                document.segments[index].netName = draft.netName
+                document.segments[index].displayWidth = draft.displayWidth
+                document.segments[index].colorHex = draft.colorHex
+            }
+        }
         editingWireDraft = nil
     }
     
