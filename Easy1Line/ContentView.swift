@@ -581,7 +581,7 @@ struct ContentView: View {
                     }
                 }
             }
-            .allowsHitTesting(true)
+            .allowsHitTesting(false)
             .frame(width: 10000, height: 10000)
             .position(x: size.width / 2, y: size.height / 2)
 
