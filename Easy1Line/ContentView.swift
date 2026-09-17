@@ -832,6 +832,7 @@ struct ContentView: View {
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
                         connectionMode: false,
+                        connectionMoveMode: false,
                         onSelectConnectionPoint: { _ in },
                         editingConnectionPoints: false,
                         onMoveConnectionPoint: { _, _ in },
@@ -963,6 +964,7 @@ struct ContentView: View {
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
                     connectionMode: connectionMode,
+                    connectionMoveMode: wireConnectionMoveMode,
                     onSelectConnectionPoint: { slot in
                         selectConnectionPoint(targetID: target.id, slot: slot)
                     },
@@ -4413,6 +4415,7 @@ private struct TargetView: View {
     let connectionNames: [String]
     let showConnectionNames: Bool
     let connectionMode: Bool
+    let connectionMoveMode: Bool
     let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
@@ -4494,7 +4497,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(connectionMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
+        .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
         .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -4551,7 +4554,7 @@ private struct TargetView: View {
                 .offset(connectionPointOffset(for: slot))
                 .highPriorityGesture(
                     TapGesture().onEnded { onSelectConnectionPoint(slot) },
-                    including: connectionMode ? .all : .gesture
+                    including: connectionMode || connectionMoveMode ? .all : .gesture
                 )
         }
     }
