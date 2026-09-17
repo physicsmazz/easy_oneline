@@ -326,6 +326,8 @@ struct ContentView: View {
                 Toggle("Materials", isOn: $showWireMaterials)
                 Toggle("Coverings", isOn: $showWireCoverings)
                 Toggle("Net names", isOn: $showWireNetNames)
+                Divider()
+                Stepper("Alignment: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
             }
             .buttonStyle(EditorButtonStyle(isActive: showWireLabels))
             .accessibilityLabel("Configure wire labels")
@@ -524,6 +526,7 @@ struct ContentView: View {
                         selectedSlots: [],
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
+                        connectionMode: false,
                         onSelectConnectionPoint: { _ in },
                         editingConnectionPoints: false,
                         onMoveConnectionPoint: { _, _ in },
@@ -648,6 +651,7 @@ struct ContentView: View {
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
+                    connectionMode: connectionMode,
                     onSelectConnectionPoint: { slot in
                         selectConnectionPoint(targetID: target.id, slot: slot)
                     },
@@ -1017,6 +1021,10 @@ struct ContentView: View {
     }
 
     private func selectConnectionPoint(targetID: UUID, slot: Int) {
+        if connectionMode {
+            handleConnectionModeConnectionPoint(targetID: targetID, slot: slot)
+            return
+        }
         // Wire-first: with a wire selected, tapping a free pin on one of its end targets moves that end.
         if let wire = selectedSegment, wire.startID == targetID || wire.endID == targetID,
            let index = document.segments.firstIndex(where: { $0.id == wire.id }),
@@ -1050,26 +1058,48 @@ struct ContentView: View {
         }
     }
 
+    private func handleConnectionModeConnectionPoint(targetID: UUID, slot: Int) {
+        guard !occupiedSlots(for: targetID).contains(slot) || target(with: targetID)?.kind == .junction else { return }
+        if let previousID = connectionModeTargetIDs.last,
+           let previousSlot = selectedConnectionSlots[previousID],
+           previousID != targetID,
+           connectTargets(previousID, targetID, startSlot: previousSlot, endSlot: slot) {
+            connectionModeTargetIDs = [targetID]
+            selectedConnectionSlots = [targetID: slot]
+        } else if connectionModeTargetIDs.isEmpty {
+            connectionModeTargetIDs = [targetID]
+            selectedConnectionSlots = [targetID: slot]
+        }
+        selectedTargetIDs = [targetID]
+    }
+
     private func connectSelectedTargets() {
         let ids = Array(selectedTargetIDs)
         guard ids.count >= 2 else { return }
+        var connected = false
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            connectTargets(startID, endID, startSlot: selectedConnectionSlots[startID], endSlot: selectedConnectionSlots[endID])
+            let startSlot = selectedConnectionSlots[startID] ?? closestAvailableSlot(for: startID, to: endID)
+            let endSlot = selectedConnectionSlots[endID] ?? closestAvailableSlot(for: endID, to: startID)
+            connected = connectTargets(startID, endID, startSlot: startSlot, endSlot: endSlot) || connected
         }
-        selectedTargetIDs.removeAll()
-        selectedConnectionSlots.removeAll()
+        if connected {
+            selectedTargetIDs.removeAll()
+            selectedConnectionSlots.removeAll()
+        }
     }
 
-    private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) {
+    @discardableResult
+    private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
         guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
               let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
               !occupiedSlots(for: startID).contains(resolvedStartSlot),
               !occupiedSlots(for: endID).contains(resolvedEndSlot),
-              !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return }
+              !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, wireSize: line.wireSize, material: line.material.rawValue, displayWidth: line.displayWidth, description: line.description))
+        return true
     }
 
     private var canConnectSelection: Bool {
@@ -2124,7 +2154,7 @@ struct ContentView: View {
     private func removeStraightBends(from segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
-        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: 0.5)
+        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
@@ -3021,6 +3051,7 @@ private struct TargetView: View {
     let selectedSlots: Set<Int>
     let connectionNames: [String]
     let showConnectionNames: Bool
+    let connectionMode: Bool
     let onSelectConnectionPoint: (Int) -> Void
     let editingConnectionPoints: Bool
     let onMoveConnectionPoint: (Int, CGSize) -> Void
@@ -3109,7 +3140,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(targetHitShape)
+        .contentShape(connectionMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
         .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -3158,7 +3189,10 @@ private struct TargetView: View {
             }
                 .contentShape(Circle())
                 .offset(connectionPointOffset(for: slot))
-                .highPriorityGesture(TapGesture().onEnded { onSelectConnectionPoint(slot) })
+                .highPriorityGesture(
+                    TapGesture().onEnded { onSelectConnectionPoint(slot) },
+                    including: connectionMode ? .all : .gesture
+                )
         }
     }
 
