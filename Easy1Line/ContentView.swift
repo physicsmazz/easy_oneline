@@ -1067,6 +1067,14 @@ struct ContentView: View {
 
     private func handleConnectionModeConnectionPoint(targetID: UUID, slot: Int) {
         guard !occupiedSlots(for: targetID).contains(slot) || target(with: targetID)?.kind == .junction else { return }
+        
+        // Toggle: clicking selected pin deselects it
+        if selectedConnectionSlots[targetID] == slot {
+            selectedConnectionSlots.removeValue(forKey: targetID)
+            connectionModeTargetIDs.removeAll(where: { $0 == targetID })
+            return
+        }
+        
         if let previousID = connectionModeTargetIDs.last,
            let previousSlot = selectedConnectionSlots[previousID],
            previousID != targetID,
