@@ -2677,6 +2677,7 @@ struct ContentView: View {
                 Spacer()
                 if target.kind != .junction {
                     ColorPicker("Target color", selection: targetBinding(target).color).labelsHidden()
+                    Text("CUSTOM").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55)).padding(.trailing, 12)
                     ForEach(document.colorLegend) { entry in
                         Button {
                             targetBinding(target).color.wrappedValue = Color(hex: entry.colorHex)
@@ -2685,6 +2686,8 @@ struct ContentView: View {
                                 Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
                                 Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
                             }
+                            .padding(3)
+                            .background(Color(hex: target.colorHex).hexString.caseInsensitiveCompare(entry.colorHex) == .orderedSame ? Color.white.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
                         }
                         .buttonStyle(.plain)
                         .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
@@ -2960,17 +2963,41 @@ struct ContentView: View {
         )
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
+                Text(selectedSegmentIDs.count > 1 ? "LAST SELECTED\nWIRE" : "SELECTED\nWIRE")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.cyan)
+                    .multilineTextAlignment(.leading)
+                    .frame(width: 112, alignment: .leading)
                 readOnlyWireField("NAME", wire.name).frame(width: 130, alignment: .leading)
                 readOnlyWireField("SIZE", wire.size).frame(width: 55, alignment: .leading)
                 readOnlyWireField("TYPE", wire.type).frame(width: 90, alignment: .leading)
                 readOnlyWireField("MISC", wire.misc).frame(width: 200, alignment: .leading)
+                Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    Button { selectSimilarWires(to: wire) } label: {
+                        Label("Similar Wires", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Similar Wires")
+                    Button { selectWiresWithSameColor(as: wire) } label: {
+                        Label("Same Colors", systemImage: "paintpalette")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Same Colors")
+                    if selectedSegmentIDs.count > 1 {
+                        Button("Copy Last To All") { copyLastWireToAll(wire) }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+                    }
+                }
             }
             HStack(spacing: 10) {
-                Text("ITEM COLOR").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.5))
+                Text("ITEM\nCOLOR").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.5)).multilineTextAlignment(.leading)
                 HStack(spacing: 6) {
                     ColorPicker("", selection: colorBinding)
                         .labelsHidden()
                         .help("Custom item color")
+                    Text("CUSTOM").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55)).padding(.trailing, 12)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 6) {
                             ForEach(document.colorLegend) { entry in
@@ -2981,6 +3008,8 @@ struct ContentView: View {
                                         Circle().fill(Color(hex: entry.colorHex)).frame(width: 22, height: 22)
                                         Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption.weight(.semibold))
                                     }
+                                    .padding(3)
+                                    .background(wire.colorHex.caseInsensitiveCompare(entry.colorHex) == .orderedSame ? Color.white.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
                                 }
                                 .buttonStyle(.plain)
                                 .help(entry.meaning.isEmpty ? "Use custom item color" : entry.meaning)
@@ -2993,20 +3022,6 @@ struct ContentView: View {
                     Stepper("\(wire.displayWidth, specifier: "%.1f") pt", value: displayWidthBinding, in: 1...20, step: 0.5)
                         .labelsHidden()
                         .frame(width: 92)
-                }
-                VStack(spacing: 4) {
-                    Button { selectSimilarWires(to: wire) } label: {
-                        Label("Similar Wires", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Similar Wires")
-                    .frame(height: 24)
-                    Button { selectWiresWithSameColor(as: wire) } label: {
-                        Label("Same Colors", systemImage: "paintpalette")
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Same Colors")
-                    .frame(height: 24)
                 }
                 Button { showLineLibrary = true } label: {
                     Label("Library", systemImage: "books.vertical")
@@ -3040,6 +3055,20 @@ struct ContentView: View {
         selectedSegmentIDs = Set(ids)
         selectedSegmentID = wire.id
         selectedTargetIDs.removeAll()
+    }
+
+    private func copyLastWireToAll(_ source: SchematicSegment) {
+        for index in document.segments.indices where selectedSegmentIDs.contains(document.segments[index].id) {
+            guard document.segments[index].id != source.id else { continue }
+            document.segments[index].name = source.name
+            document.segments[index].colorHex = source.colorHex
+            document.segments[index].colorMeaning = source.colorMeaning
+            document.segments[index].size = source.size
+            document.segments[index].type = source.type
+            document.segments[index].misc = source.misc
+            document.segments[index].displayWidth = source.displayWidth
+            document.segments[index].description = source.description
+        }
     }
     
     private func smartWireID(_ wire: SchematicSegment) -> String {
