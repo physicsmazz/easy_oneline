@@ -52,6 +52,7 @@ struct ContentView: View {
     @State private var canvasRotation = Angle.zero
     @State private var gestureStartScale: CGFloat?
     @State private var gestureStartRotation: Angle?
+    @State private var isPinchingOrRotating = false
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
@@ -859,17 +860,21 @@ struct ContentView: View {
         .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             guard !canvasLocked else { return }
+            isPinchingOrRotating = true
             if gestureStartScale == nil { gestureStartScale = canvasScale }
             canvasScale = min(4, max(0.25, (gestureStartScale ?? 1) * value))
         }.onEnded { _ in
             gestureStartScale = nil
+            isPinchingOrRotating = false
         })
         .simultaneousGesture(RotationGesture().onChanged { value in
             guard !canvasLocked else { return }
+            isPinchingOrRotating = true
             if gestureStartRotation == nil { gestureStartRotation = canvasRotation }
             canvasRotation = (gestureStartRotation ?? .zero) + value
         }.onEnded { _ in
             gestureStartRotation = nil
+            isPinchingOrRotating = false
         })
         .overlay(alignment: .topTrailing) {
             zoomControls
@@ -1027,7 +1032,7 @@ struct ContentView: View {
     private var panGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
-                guard !canvasLocked else { return }
+                guard !canvasLocked, !isPinchingOrRotating else { return }
                 canvasOffset = CGSize(width: panStart.width + value.translation.width, height: panStart.height + value.translation.height)
             }
             .onEnded { _ in panStart = canvasOffset }
