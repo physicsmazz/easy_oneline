@@ -34,18 +34,43 @@ struct SupabaseDrawingStore {
         URL(string: pathAndQuery, relativeTo: configuration.url)!.absoluteURL
     }
 
-    func saveDrawing(id: UUID, name: String, data: Data) async throws {
+    func saveDrawing(id: UUID, name: String, data: Data, createdByName: String = "", updatedByName: String = "") async throws {
         var request = URLRequest(url: endpoint("/rest/v1/rpc/save_drawing"))
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "p_id": id.uuidString,
             "p_name": name,
-            "p_data": try JSONSerialization.jsonObject(with: data)
+            "p_data": try JSONSerialization.jsonObject(with: data),
+            "p_created_by_name": createdByName,
+            "p_updated_by_name": updatedByName
         ])
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         try await perform(request)
+    }
+
+    func loadProfiles() async throws -> [SupabaseProfileRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/profiles?select=id,display_name&order=display_name.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseProfileRecord].self, from: data)
+    }
+
+    func createProfile(name: String) async throws -> SupabaseProfileRecord {
+        var request = URLRequest(url: endpoint("/rest/v1/profiles"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["display_name": name])
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        guard let profile = try JSONDecoder().decode([SupabaseProfileRecord].self, from: data).first else { throw StoreError.invalidResponse }
+        return profile
     }
 
     func loadDrawings() async throws -> [SupabaseDrawingRecord] {
@@ -65,6 +90,37 @@ struct SupabaseDrawingStore {
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         return try JSONDecoder().decode([SupabaseTargetTypeRecord].self, from: data)
+    }
+
+    func loadWireDefinitions() async throws -> [SupabaseWireDefinitionRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_definitions?select=id,name,wire_size,wire_type,material,misc,description&order=name.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseWireDefinitionRecord].self, from: data)
+    }
+
+    func upsertWireDefinition(_ definition: SharedWireDefinitionPayload) async throws {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_definitions"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(definition)
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        try await perform(request)
+    }
+
+    func upsertTargetDefinition(_ definition: SharedTargetDefinitionPayload) async throws {
+        var request = URLRequest(url: endpoint("/rest/v1/target_types"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONEncoder().encode(definition)
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        try await perform(request)
     }
 
     func loadConductorCatalog() async throws -> [SupabaseConductorRecord] {
@@ -184,6 +240,12 @@ struct SupabaseDrawingRecord: Codable {
     let data: [String: JSONValue]
 }
 
+struct SupabaseProfileRecord: Codable, Identifiable {
+    let id: UUID
+    let displayName: String
+    enum CodingKeys: String, CodingKey { case id; case displayName = "display_name" }
+}
+
 struct SupabaseTargetTypeRecord: Codable {
     let kind: String
     let name: String
@@ -194,6 +256,58 @@ struct SupabaseTargetTypeRecord: Codable {
     let connectionAngles: [Double]
 
     enum CodingKeys: String, CodingKey { case kind, name, symbol, colorHex = "color_hex", maxConnections = "max_connections", connectionAngle = "connection_angle", connectionAngles = "connection_angles" }
+}
+
+struct SupabaseWireDefinitionRecord: Codable, Identifiable {
+    let id: UUID
+    let name: String
+    let wireSize: String
+    let wireType: String
+    let material: String
+    let misc: String
+    let description: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, material, misc, description
+        case wireSize = "wire_size"
+        case wireType = "wire_type"
+    }
+}
+
+struct SharedWireDefinitionPayload: Codable {
+    let id: UUID
+    let name: String
+    let wireSize: String
+    let wireType: String
+    let material: String
+    let misc: String
+    let description: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, material, misc, description
+        case wireSize = "wire_size"
+        case wireType = "wire_type"
+    }
+}
+
+struct SharedTargetDefinitionPayload: Codable {
+    let id: UUID
+    let kind: String
+    let name: String
+    let symbol: String
+    let colorHex: String
+    let maxConnections: Int
+    let scale: Double
+    let connectionAngle: Double
+    let connectionAngles: [Double]
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, name, symbol, scale
+        case colorHex = "color_hex"
+        case maxConnections = "max_connections"
+        case connectionAngle = "connection_angle"
+        case connectionAngles = "connection_angles"
+    }
 }
 
 struct SupabaseConductorRecord: Codable {

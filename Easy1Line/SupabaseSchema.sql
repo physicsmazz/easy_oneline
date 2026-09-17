@@ -15,6 +15,22 @@ create table if not exists public.drawings (
 create index if not exists drawings_owner_id_idx on public.drawings(owner_id);
 create index if not exists drawings_data_gin_idx on public.drawings using gin(data);
 
+alter table public.drawings add column if not exists created_by_name text not null default '';
+alter table public.drawings add column if not exists updated_by_name text not null default '';
+
+create table if not exists public.profiles (
+    id uuid primary key default gen_random_uuid(),
+    display_name text not null unique,
+    created_at timestamptz not null default now(),
+    last_seen_at timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+drop policy if exists "anonymous can read profiles" on public.profiles;
+drop policy if exists "anonymous can create profiles" on public.profiles;
+create policy "anonymous can read profiles" on public.profiles for select using (true);
+create policy "anonymous can create profiles" on public.profiles for insert with check (true);
+
 create table if not exists public.conductor_catalog (
     material text not null check (material in ('Copper', 'AAAC', 'AAC', 'ACSR', 'Covered')),
     wire_size text not null,
@@ -123,13 +139,48 @@ create table if not exists public.drawing_segments (
 );
 
 create index if not exists target_types_owner_idx on public.target_types(owner_id);
+
+-- Shared wire library. Drawing-specific color, thickness, routes, and net data stay on the drawing instance.
+create table if not exists public.wire_definitions (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid references auth.users(id),
+    name text not null,
+    wire_size text not null,
+    wire_type text not null,
+    material text not null default 'Copper',
+    misc text not null default '',
+    description text not null default '',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+insert into public.wire_definitions (name, wire_size, wire_type, material, misc, description)
+select seed.name, seed.wire_size, seed.wire_type, seed.material, seed.misc, seed.description
+from (values
+    ('1/0 AAAC', '1/0', 'AAAC', 'AAAC', 'Bare overhead', 'Aluminum alloy overhead conductor'),
+    ('1/0 ACSR', '1/0', 'ACSR', 'ACSR', 'Bare overhead', 'Aluminum conductor steel reinforced'),
+    ('12/3 SO', '12/3', 'SO', 'Copper', 'Flexible cord', 'Common portable cord'),
+    ('14/3 SO', '14/3', 'SO', 'Copper', 'Flexible cord', 'Common portable cord'),
+    ('#4 Solid Copper', '#4', 'Solid Copper', 'Copper', 'Solid', 'Solid copper conductor')
+) as seed(name, wire_size, wire_type, material, misc, description)
+where not exists (
+    select 1 from public.wire_definitions existing where existing.owner_id is null and existing.name = seed.name
+);
+
+create index if not exists wire_definitions_owner_idx on public.wire_definitions(owner_id);
+alter table public.wire_definitions enable row level security;
+drop policy if exists "anonymous can read wire definitions" on public.wire_definitions;
+drop policy if exists "anonymous can manage wire definitions" on public.wire_definitions;
+create policy "anonymous can read wire definitions" on public.wire_definitions for select using (true);
+create policy "anonymous can manage wire definitions" on public.wire_definitions for all using (true) with check (true);
+
 create index if not exists drawing_line_definitions_drawing_idx on public.drawing_line_definitions(drawing_id);
 create index if not exists drawing_targets_drawing_idx on public.drawing_targets(drawing_id);
 create index if not exists drawing_targets_location_idx on public.drawing_targets using gist(location);
 create index if not exists drawing_segments_drawing_idx on public.drawing_segments(drawing_id);
 
 -- One-call normalized save used by the app. The JSON payload remains the portable snapshot.
-create or replace function public.save_drawing(p_id uuid, p_name text, p_data jsonb)
+create or replace function public.save_drawing(p_id uuid, p_name text, p_data jsonb, p_created_by_name text default '', p_updated_by_name text default '')
 returns void
 language plpgsql
 security definer
@@ -137,8 +188,8 @@ set search_path = public
 as $$
 begin
     insert into public.drawings (id, name, data, updated_at)
-    values (p_id, p_name, p_data, now())
-    on conflict (id) do update set name = excluded.name, data = excluded.data, updated_at = now();
+    values (p_id, p_name, p_data, p_created_by_name, p_updated_by_name, now())
+    on conflict (id) do update set name = excluded.name, data = excluded.data, updated_by_name = excluded.updated_by_name, updated_at = now();
 
     delete from public.drawing_segments where drawing_id = p_id;
     delete from public.drawing_targets where drawing_id = p_id;
@@ -163,6 +214,7 @@ end;
 $$;
 
 grant execute on function public.save_drawing(uuid, text, jsonb) to anon, authenticated;
+grant execute on function public.save_drawing(uuid, text, jsonb, text, text) to anon, authenticated;
 
 -- Anonymous prototype policies. Replace with owner checks when auth is enabled.
 alter table public.target_types enable row level security;

@@ -51,6 +51,11 @@ struct ContentView: View {
     @State private var redoStack: [SchematicDocument] = []
     @StateObject private var multipeerSession = MultipeerSession()
     @State private var showMultiuserSheet = false
+    @AppStorage("currentDisplayName") private var currentDisplayName = ""
+    @State private var profileNames: [String] = []
+    @State private var profileNameDraft = ""
+    @State private var showProfilePicker = false
+    @State private var editingDocumentName = false
     @State private var isApplyingRemoteDocument = false
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
@@ -215,6 +220,11 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
+            if showProfilePicker {
+                profilePickerPanel
+                    .zIndex(1400)
+            }
+
             if wireConnectionMoveMode {
                 Text(wirePinMoveTargetID == nil ? "Select endpoint to move" : "Select new connection")
                     .font(.caption.weight(.semibold))
@@ -364,6 +374,7 @@ struct ContentView: View {
             restoreBackgroundImage()
             recomputeWireGeometry()
             sanitizeTargetDefinitionSymbols()
+            if currentDisplayName.isEmpty { showProfilePicker = true }
         }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
@@ -456,11 +467,38 @@ struct ContentView: View {
                 Text("Easy1Line")
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .tracking(1.5)
-                TextField("Schematic name", text: $document.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .textFieldStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .frame(width: 150)
+                HStack(spacing: 5) {
+                    if editingDocumentName {
+                        TextField("Schematic name", text: $document.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .textFieldStyle(.plain)
+                            .foregroundStyle(.white.opacity(0.5))
+                            .frame(width: 150)
+                    } else {
+                        Text(document.name)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .lineLimit(1)
+                            .frame(width: 150, alignment: .leading)
+                    }
+                    Button { editingDocumentName.toggle() } label: {
+                        Image(systemName: editingDocumentName ? "checkmark" : "pencil")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .help(editingDocumentName ? "Finish renaming drawing" : "Rename drawing")
+                }
+                if !currentDisplayName.isEmpty {
+                    Button { showProfilePicker = true } label: {
+                        Label(currentDisplayName, systemImage: "person")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.35))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Change profile")
+                }
                 if !cloudStatus.isEmpty {
                     Text(cloudStatus)
                         .font(.system(size: 10, weight: .medium))
@@ -1811,6 +1849,7 @@ struct ContentView: View {
     }
 
     private func saveCurrent() {
+        document.updatedByName = currentDisplayName
         if let index = savedDocuments.firstIndex(where: { $0.id == document.id }) { savedDocuments[index] = document } else { savedDocuments.append(document) }
         SchematicDocument.saveAll(savedDocuments)
         SchematicDocument.saveLast(document)
@@ -1861,7 +1900,7 @@ struct ContentView: View {
         }
         do {
             let data = try JSONEncoder().encode(document)
-            try await store.saveDrawing(id: document.id, name: document.name, data: data)
+            try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
             cloudStatus = "Saved to cloud"
         } catch {
             cloudStatus = "Cloud save failed: \(cloudErrorText(error))"
@@ -1926,13 +1965,31 @@ struct ContentView: View {
         }
         do {
             let targetTypes = try await store.loadTargetTypes()
+            let wireDefinitions = try await store.loadWireDefinitions()
             let syncedTargets = targetTypes.compactMap { record -> TargetDefinition? in
                 guard let kind = TargetKind(rawValue: record.kind) else { return nil }
                 let validSymbol = record.symbol.flatMap { UIImage(systemName: $0) != nil ? $0 : nil } ?? kind.symbol
                 return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: validSymbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
             }
             if !syncedTargets.isEmpty { document.targetDefinitions = syncedTargets }
-            cloudStatus = "Target library synced"
+            if !wireDefinitions.isEmpty {
+                let existingByName = Dictionary(uniqueKeysWithValues: document.lineDefinitions.map { ($0.name, $0) })
+                document.lineDefinitions = wireDefinitions.map { record in
+                    let existing = existingByName[record.name]
+                    return LineDefinition(
+                        id: existing?.id ?? record.id,
+                        name: record.name,
+                        colorHex: existing?.colorHex ?? "31D7E8",
+                        wireSize: record.wireSize,
+                        wireType: record.wireType,
+                        material: ConductorMaterial(rawValue: record.material) ?? .copper,
+                        misc: record.misc,
+                        displayWidth: existing?.displayWidth ?? 3,
+                        description: record.description
+                    )
+                }
+            }
+            cloudStatus = "Shared libraries synced"
         } catch {
             cloudStatus = "Library sync failed: \(cloudErrorText(error))"
         }
@@ -2035,6 +2092,52 @@ struct ContentView: View {
         .padding(14)
         .frame(width: 270)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var profilePickerPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("WHO ARE YOU?").font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.55))
+            Text("Choose your name for shared drawing history.").font(.caption).foregroundStyle(.white.opacity(0.65))
+            ForEach(profileNames, id: \.self) { name in
+                Button(name) { selectProfileName(name) }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Divider()
+            TextField("Add your name", text: $profileNameDraft)
+                .textFieldStyle(.roundedBorder)
+            Button("Use this name") { createAndSelectProfile() }
+                .buttonStyle(.borderedProminent)
+                .disabled(profileNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .padding(20)
+        .frame(width: 320)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.35).ignoresSafeArea())
+        .task { await loadProfiles() }
+    }
+
+    private func selectProfileName(_ name: String) {
+        currentDisplayName = name
+        showProfilePicker = false
+    }
+
+    private func loadProfiles() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        profileNames = (try? await store.loadProfiles().map(\.displayName)) ?? []
+    }
+
+    private func createAndSelectProfile() {
+        let name = profileNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        currentDisplayName = name
+        profileNames.append(name)
+        showProfilePicker = false
+        Task {
+            guard let store = SupabaseDrawingStore() else { return }
+            _ = try? await store.createProfile(name: name)
+        }
     }
 
     private var cloudLibraryPanel: some View {
@@ -4197,6 +4300,8 @@ private struct ColorLegendEntry: Identifiable, Codable, Equatable {
 private struct SchematicDocument: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
+    var createdByName: String = ""
+    var updatedByName: String = ""
     var targets: [SchematicTarget] = []
     var segments: [SchematicSegment] = []
     var lineDefinitions: [LineDefinition] = LineDefinition.defaults
@@ -4218,6 +4323,8 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled schematic"
+        createdByName = try container.decodeIfPresent(String.self, forKey: .createdByName) ?? ""
+        updatedByName = try container.decodeIfPresent(String.self, forKey: .updatedByName) ?? ""
         targets = try container.decodeIfPresent([SchematicTarget].self, forKey: .targets) ?? []
         assignMissingTargetIdentifiers()
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
