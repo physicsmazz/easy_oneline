@@ -492,7 +492,7 @@ struct ContentView: View {
         }
         for segment in document.segments {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             for point in points {
                 bounds = bounds.union(CGRect(x: point.x, y: point.y, width: 1, height: 1))
             }
@@ -508,7 +508,7 @@ struct ContentView: View {
                 Canvas { context, _ in
                     for segment in document.segments {
                         guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                        let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                        let path = orthogonalPath(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                         context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                     }
                 }
@@ -558,7 +558,7 @@ struct ContentView: View {
                 context.translateBy(x: 5000 - size.width / 2, y: 5000 - size.height / 2)
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -572,10 +572,10 @@ struct ContentView: View {
                 if wireBridgesEnabled {
                     for firstIndex in document.segments.indices {
                     guard let firstStart = target(with: document.segments[firstIndex].startID), let firstEnd = target(with: document.segments[firstIndex].endID) else { continue }
-                    let firstPoints = orthogonalPoints(for: document.segments[firstIndex], from: firstStart, to: firstEnd, avoiding: document.targets.filter { $0.id != firstStart.id && $0.id != firstEnd.id })
+                    let firstPoints = orthogonalPoints(for: document.segments[firstIndex], from: firstStart, to: firstEnd, avoiding: routingObstacles(excluding: firstStart.id, firstEnd.id))
                     for secondIndex in document.segments.indices.dropFirst(firstIndex + 1) {
                         guard let secondStart = target(with: document.segments[secondIndex].startID), let secondEnd = target(with: document.segments[secondIndex].endID) else { continue }
-                        let secondPoints = orthogonalPoints(for: document.segments[secondIndex], from: secondStart, to: secondEnd, avoiding: document.targets.filter { $0.id != secondStart.id && $0.id != secondEnd.id })
+                        let secondPoints = orthogonalPoints(for: document.segments[secondIndex], from: secondStart, to: secondEnd, avoiding: routingObstacles(excluding: secondStart.id, secondEnd.id))
                         for crossing in crossings(between: firstPoints, and: secondPoints) {
                             let bridge = bridgePath(at: crossing.point, overHorizontal: !crossing.firstIsHorizontal)
                             let bridgeColor = document.segments[secondIndex].color
@@ -592,7 +592,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                    let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                         if sectionIndex > 0 && sectionIndex + 1 < points.count - 1 {
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
@@ -674,7 +674,7 @@ struct ContentView: View {
             if showWireLabels {
                 ForEach(document.segments) { segment in
                     if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                        let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+                        let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                         wireLabel(segment, on: points)
                     }
                 }
@@ -942,6 +942,12 @@ struct ContentView: View {
             height: translation.width * CGFloat(sin(angle)) + translation.height * CGFloat(cos(angle))
         )
         return CGSize(width: rotated.width / canvasScale, height: rotated.height / canvasScale)
+    }
+
+    private func routingObstacles(excluding ids: UUID...) -> [SchematicTarget] {
+        document.targets.filter { target in
+            !ids.contains(target.id) && target.id != draggingTargetID
+        }
     }
 
     private func targetTapped(_ target: SchematicTarget) {
@@ -2035,7 +2041,7 @@ struct ContentView: View {
     private func captureAttachedRoutes(for targetID: UUID) {
         for segment in document.segments where segment.startID == targetID || segment.endID == targetID {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            var points = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            var points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             if points.count == 2 {
                 // Straight wires collapse their stubs; restore them so both ends keep leaving their pins outward while dragging.
                 let startSlot = segment.startSlot ?? nearestConnectionSlot(for: start, to: points[0])
@@ -2057,8 +2063,7 @@ struct ContentView: View {
             let startMoved = targetIDs.contains(segment.startID)
             let endMoved = targetIDs.contains(segment.endID)
             if onlyFullySelected && !(startMoved && endMoved) {
-                document.segments[index].routePoints.removeAll()
-                continue
+                // Keep the captured route for connections to stationary items; move only the selected endpoint.
             }
             if startMoved && endMoved {
                 document.segments[index].routePoints = points.map { CGPoint(x: $0.x + translation.width, y: $0.y + translation.height) }
@@ -2118,7 +2123,7 @@ struct ContentView: View {
         guard let index = document.segments.firstIndex(where: { $0.id == id }) else { return }
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
-            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
@@ -2588,7 +2593,7 @@ struct ContentView: View {
     private func splitWire(_ segment: SchematicSegment, at placedPoint: CGPoint? = nil) {
         guard let start = target(with: segment.startID), let end = target(with: segment.endID),
               let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
-        let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+        let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
         let midpoint = placedPoint ?? nearestPoint(on: route, to: CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)).point
         let junctionPosition = snapToGrid ? snappedPosition(midpoint) : midpoint
         let splitRoutes = splitRoutePoints(route, at: junctionPosition)
@@ -2607,7 +2612,7 @@ struct ContentView: View {
               let start = target(with: segment.startID),
               let end = target(with: segment.endID) else { return }
         let canvasPoint = canvasDropPoint(screenLocation, canvasSize: editorSize)
-        let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+        let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
         let placedPoint = nearestPoint(on: route, to: canvasPoint).point
         if mode == .connection {
             splitWire(segment, at: placedPoint)
