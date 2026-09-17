@@ -107,12 +107,10 @@ struct ContentView: View {
     @State private var lineDefinitionNameDraft = ""
     @State private var lineDefinitionSizeDraft = ""
     @State private var lineDefinitionTypeDraft = ""
-    @State private var lineDefinitionVoltageDraft = ""
     @State private var lineDefinitionMiscDraft = ""
     @State private var lineDefinitionDescriptionDraft = ""
     @State private var lineDefinitionUsesCustomSize = false
     @State private var lineDefinitionUsesCustomType = false
-    @State private var lineDefinitionUsesCustomVoltage = false
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
     @State private var showNetlist = false
@@ -1471,7 +1469,7 @@ struct ContentView: View {
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: "31D7E8", size: line.wireSize, type: line.wireType, misc: line.misc, voltage: line.voltage, displayWidth: 3, description: line.description))
+        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: "31D7E8", size: line.wireSize, type: line.wireType, misc: line.misc, displayWidth: 3, description: line.description))
         return true
     }
 
@@ -1518,8 +1516,8 @@ struct ContentView: View {
         let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, voltage: segment.voltage, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
-        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, voltage: segment.voltage, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
+        document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
+        document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
         let targetSlot = selectedConnectionSlots[targetID] ?? closestAvailableSlot(for: targetID, to: junction.id) ?? 0
         document.segments.append(SchematicSegment(startID: targetID, endID: junction.id, startSlot: targetSlot, endSlot: 2, name: "Connection", colorHex: "31D7E8", size: "14 AWG", type: "Copper", misc: "BARE", displayWidth: 3, description: "Target connection"))
         selectedTargetIDs.removeAll()
@@ -2035,7 +2033,7 @@ struct ContentView: View {
             ScrollView {
                 LazyVStack(spacing: 6) {
                     ForEach(document.lineDefinitions.filter {
-                        lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireType.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.voltage.localizedCaseInsensitiveContains(lineLibrarySearch)
+                        lineLibrarySearch.isEmpty || $0.name.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireSize.localizedCaseInsensitiveContains(lineLibrarySearch) || $0.wireType.localizedCaseInsensitiveContains(lineLibrarySearch)
                     }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }) { line in
                                 HStack(spacing: 8) {
                                     Button {
@@ -2049,7 +2047,7 @@ struct ContentView: View {
                                     } label: {
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text(line.name).font(.system(size: 12, weight: .semibold))
-                                            Text("\(line.wireSize) · \(line.wireType) · \(line.voltage)").font(.caption2).foregroundStyle(.white.opacity(0.4))
+                                            Text("\(line.wireSize) · \(line.wireType)").font(.caption2).foregroundStyle(.white.opacity(0.4))
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                     }
@@ -2136,23 +2134,6 @@ struct ContentView: View {
                             }
                         }
                     }
-                    if lineDefinitionUsesCustomVoltage {
-                        HStack {
-                            TextField("New voltage", text: $lineDefinitionVoltageDraft)
-                            Button("Use saved") { lineDefinitionUsesCustomVoltage = false }
-                        }
-                    } else {
-                        Picker("Voltage", selection: $lineDefinitionVoltageDraft) {
-                            ForEach(lineDefinitionVoltageOptions, id: \.self) { Text($0).tag($0) }
-                            Text("Add new…").tag("__new_voltage__")
-                        }
-                        .onChange(of: lineDefinitionVoltageDraft) { _, value in
-                            if value == "__new_voltage__" {
-                                lineDefinitionVoltageDraft = ""
-                                lineDefinitionUsesCustomVoltage = true
-                            }
-                        }
-                    }
                     TextField("Construction / use", text: $lineDefinitionMiscDraft)
                     TextField("Description", text: $lineDefinitionDescriptionDraft)
                 }
@@ -2176,10 +2157,6 @@ struct ContentView: View {
 
     private var lineDefinitionTypeOptions: [String] {
         Array(Set(document.lineDefinitions.map(\.wireType) + [lineDefinitionTypeDraft])).filter { !$0.isEmpty }.sorted()
-    }
-
-    private var lineDefinitionVoltageOptions: [String] {
-        Array(Set(document.lineDefinitions.map(\.voltage) + [lineDefinitionVoltageDraft])).filter { !$0.isEmpty }.sorted()
     }
 
     private var netlistText: String {
@@ -2791,7 +2768,6 @@ struct ContentView: View {
             }
             readOnlyWireField("SIZE", wire.size)
             readOnlyWireField("TYPE", wire.type)
-            readOnlyWireField("VOLTAGE", wire.voltage.isEmpty ? "Not specified" : wire.voltage)
             readOnlyWireField("MISC", wire.misc)
             Spacer(minLength: 4)
             ColorPicker("", selection: colorBinding)
@@ -3811,7 +3787,6 @@ struct ContentView: View {
         document.segments[index].size = line.wireSize
         document.segments[index].type = line.wireType
         document.segments[index].misc = line.misc
-        document.segments[index].voltage = line.voltage
         document.segments[index].description = line.description
     }
 
@@ -3825,11 +3800,9 @@ struct ContentView: View {
         editingLineDefinitionID = nil
         lineDefinitionUsesCustomSize = false
         lineDefinitionUsesCustomType = false
-        lineDefinitionUsesCustomVoltage = false
         lineDefinitionNameDraft = ""
         lineDefinitionSizeDraft = lineDefinitionSizeOptions.first ?? ""
         lineDefinitionTypeDraft = lineDefinitionTypeOptions.first ?? ""
-        lineDefinitionVoltageDraft = lineDefinitionVoltageOptions.first ?? ""
         lineDefinitionMiscDraft = ""
         lineDefinitionDescriptionDraft = ""
         showLineDefinitionEditor = true
@@ -3839,11 +3812,9 @@ struct ContentView: View {
         editingLineDefinitionID = line.id
         lineDefinitionUsesCustomSize = false
         lineDefinitionUsesCustomType = false
-        lineDefinitionUsesCustomVoltage = false
         lineDefinitionNameDraft = line.name
         lineDefinitionSizeDraft = line.wireSize
         lineDefinitionTypeDraft = line.wireType
-        lineDefinitionVoltageDraft = line.voltage
         lineDefinitionMiscDraft = line.misc
         lineDefinitionDescriptionDraft = line.description
         showLineDefinitionEditor = true
@@ -3857,7 +3828,6 @@ struct ContentView: View {
             wireSize: lineDefinitionSizeDraft,
             wireType: lineDefinitionTypeDraft,
             material: material,
-            voltage: lineDefinitionVoltageDraft,
             misc: lineDefinitionMiscDraft,
             description: lineDefinitionDescriptionDraft
         )
@@ -4082,7 +4052,6 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var size: String // e.g., "14 AWG", "1/0", "2/0"
     var type: String // e.g., "Copper", "Aluminum", "ACSR"
     var misc: String // e.g., "BARE", "INSULATED", "POLYETHYLENE"
-    var voltage: String
     var netName: String
     var displayWidth: Double
     var description: String
@@ -4093,9 +4062,9 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
     var labelSectionPosition: Double
     var color: Color { Color(hex: colorHex) }
 
-    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, size: String = "14 AWG", type: String = "Copper", misc: String = "BARE", voltage: String = "", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
+    init(startID: UUID, endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil, name: String, colorHex: String, size: String = "14 AWG", type: String = "Copper", misc: String = "BARE", netName: String = "N001", displayWidth: Double = 3, description: String = "", bendOffset: CGFloat = 0, routePoints: [CGPoint] = [], labelPosition: Double = 0.5, labelSectionIndex: Int = -1, labelSectionPosition: Double = 0.5) {
         self.startID = startID; self.endID = endID; self.startSlot = startSlot; self.endSlot = endSlot; self.name = name; self.colorHex = colorHex
-        self.size = size; self.type = type; self.misc = misc; self.voltage = voltage; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
+        self.size = size; self.type = type; self.misc = misc; self.netName = netName; self.displayWidth = displayWidth; self.description = description; self.bendOffset = bendOffset; self.routePoints = routePoints; self.labelPosition = labelPosition; self.labelSectionIndex = labelSectionIndex; self.labelSectionPosition = labelSectionPosition
     }
 
     init(from decoder: Decoder) throws {
@@ -4113,7 +4082,6 @@ private struct SchematicSegment: Identifiable, Codable, Equatable {
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "Copper"
         // Handle both old (covering) and new (misc) field names
         misc = try container.decodeIfPresent(String.self, forKey: .misc) ?? "BARE"
-        voltage = try container.decodeIfPresent(String.self, forKey: .voltage) ?? ""
         netName = try container.decodeIfPresent(String.self, forKey: .netName) ?? "N001"
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
@@ -4132,22 +4100,21 @@ private struct LineDefinition: Identifiable, Codable, Equatable {
     var wireSize: String
     var wireType: String
     var material: ConductorMaterial
-    var voltage: String
     var misc: String
     var displayWidth: Double
     var description: String
 
-    init(id: UUID = UUID(), name: String, colorHex: String = "31D7E8", wireSize: String, wireType: String = "Copper", material: ConductorMaterial = .copper, voltage: String = "", misc: String = "BARE", displayWidth: Double = 3, description: String) {
-        self.id = id; self.name = name; self.colorHex = colorHex; self.wireSize = wireSize; self.wireType = wireType; self.material = material; self.voltage = voltage; self.misc = misc; self.displayWidth = displayWidth; self.description = description
+    init(id: UUID = UUID(), name: String, colorHex: String = "31D7E8", wireSize: String, wireType: String = "Copper", material: ConductorMaterial = .copper, misc: String = "BARE", displayWidth: Double = 3, description: String) {
+        self.id = id; self.name = name; self.colorHex = colorHex; self.wireSize = wireSize; self.wireType = wireType; self.material = material; self.misc = misc; self.displayWidth = displayWidth; self.description = description
     }
 
-    static let defaultLine = LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord")
+    static let defaultLine = LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, misc: "Flexible cord", description: "Common portable cord")
     static let defaults: [LineDefinition] = [
-        LineDefinition(name: "1/0 AAAC", wireSize: "1/0", wireType: "AAAC", material: .aaac, voltage: "15 kV", misc: "Bare overhead", description: "Aluminum alloy overhead conductor"),
-        LineDefinition(name: "1/0 ACSR", wireSize: "1/0", wireType: "ACSR", material: .acsr, voltage: "15 kV", misc: "Bare overhead", description: "Aluminum conductor steel reinforced"),
-        LineDefinition(name: "12/3 SO", wireSize: "12/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord"),
-        LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, voltage: "600 V", misc: "Flexible cord", description: "Common portable cord"),
-        LineDefinition(name: "#4 Solid Copper", wireSize: "#4", wireType: "Solid Copper", material: .copper, voltage: "600 V", misc: "Solid", description: "Solid copper conductor")
+        LineDefinition(name: "1/0 AAAC", wireSize: "1/0", wireType: "AAAC", material: .aaac, misc: "Bare overhead", description: "Aluminum alloy overhead conductor"),
+        LineDefinition(name: "1/0 ACSR", wireSize: "1/0", wireType: "ACSR", material: .acsr, misc: "Bare overhead", description: "Aluminum conductor steel reinforced"),
+        LineDefinition(name: "12/3 SO", wireSize: "12/3", wireType: "SO", material: .copper, misc: "Flexible cord", description: "Common portable cord"),
+        LineDefinition(name: "14/3 SO", wireSize: "14/3", wireType: "SO", material: .copper, misc: "Flexible cord", description: "Common portable cord"),
+        LineDefinition(name: "#4 Solid Copper", wireSize: "#4", wireType: "Solid Copper", material: .copper, misc: "Solid", description: "Solid copper conductor")
     ]
 
     init(from decoder: Decoder) throws {
@@ -4158,7 +4125,6 @@ private struct LineDefinition: Identifiable, Codable, Equatable {
         wireSize = try container.decodeIfPresent(String.self, forKey: .wireSize) ?? "14 AWG"
         material = try container.decodeIfPresent(ConductorMaterial.self, forKey: .material) ?? .copper
         wireType = try container.decodeIfPresent(String.self, forKey: .wireType) ?? material.rawValue
-        voltage = try container.decodeIfPresent(String.self, forKey: .voltage) ?? ""
         misc = try container.decodeIfPresent(String.self, forKey: .misc) ?? ""
         displayWidth = try container.decodeIfPresent(Double.self, forKey: .displayWidth) ?? 3
         description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
