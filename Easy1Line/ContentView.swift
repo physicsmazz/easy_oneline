@@ -254,6 +254,7 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .onChange(of: document) { _, _ in
             SchematicDocument.saveLast(document)
+            restoreBackgroundImage()
         }
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item, let targetID = selectedTargetIDs.first else { return }
@@ -3372,6 +3373,15 @@ struct ContentView: View {
             backgroundImageOpacity = document.backgroundImageOpacity
             backgroundImageLocked = document.backgroundImageLocked
             backgroundImageConstrainProportions = document.backgroundImageConstrainProportions
+        } else {
+            // Clear background image if document has no background image
+            backgroundImage = nil
+            backgroundImageSize = CGSize(width: 500, height: 500)
+            backgroundImagePosition = CGPoint(x: 5000, y: 5000)
+            backgroundImageOpacity = 1.0
+            backgroundImageLocked = false
+            backgroundImageConstrainProportions = false
+            backgroundImagePhotoItem = nil
         }
     }
     
