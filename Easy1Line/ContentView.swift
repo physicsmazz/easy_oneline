@@ -1611,6 +1611,63 @@ struct ContentView: View {
         selectedConnectionSlots.removeAll()
     }
 
+    private func removeTargetFromWire(_ target: SchematicTarget) {
+        let attached = document.segments.filter { $0.startID == target.id || $0.endID == target.id }
+        guard attached.count == 2 else { return }
+        let first = attached[0]
+        let route = orthogonalPoints(for: first, from: self.target(with: first.startID) ?? target, to: self.target(with: first.endID) ?? target, avoiding: [])
+        let nearest = nearestPoint(on: route, to: target.position).point
+        guard let section = nearestSection(of: route, to: nearest) else { return }
+        let dx = section.end.x - section.start.x
+        let dy = section.end.y - section.start.y
+        let length: CGFloat = max(hypot(dx, dy), CGFloat(1))
+        let side = CGPoint(x: -dy / length, y: dx / length)
+        let movedPosition = CGPoint(x: nearest.x + side.x * 64, y: nearest.y + side.y * 64)
+        guard mergeWireAroundTarget(target) else { return }
+        guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
+        document.targets[index].position = movedPosition
+        selectedTargetIDs = [target.id]
+        selectedSegmentID = nil
+        selectedSegmentIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+    }
+
+    private func canRemoveTargetFromWire(_ target: SchematicTarget) -> Bool {
+        document.segments.filter { $0.startID == target.id || $0.endID == target.id }.count == 2
+    }
+
+    private func mergeWireAroundTarget(_ target: SchematicTarget) -> Bool {
+        let attached = document.segments.filter { $0.startID == target.id || $0.endID == target.id }
+        guard attached.count == 2 else { return false }
+        let first = attached[0]
+        let second = attached[1]
+        let firstOtherID = first.startID == target.id ? first.endID : first.startID
+        let secondOtherID = second.startID == target.id ? second.endID : second.startID
+        guard firstOtherID != secondOtherID,
+              let firstOther = self.target(with: firstOtherID),
+              let secondOther = self.target(with: secondOtherID) else { return false }
+        let firstOuterSlot = first.startID == target.id ? first.endSlot : first.startSlot
+        let secondOuterSlot = second.startID == target.id ? second.endSlot : second.startSlot
+        let startPoint = connectionPoint(for: firstOther, slot: firstOuterSlot)
+        let endPoint = connectionPoint(for: secondOther, slot: secondOuterSlot)
+        let startEscape = escapePoint(for: firstOther, slot: firstOuterSlot ?? 0, toward: secondOther)
+        let endEscape = escapePoint(for: secondOther, slot: secondOuterSlot ?? 0, toward: firstOther)
+        let obstacles = document.targets.filter { $0.id != target.id && $0.id != firstOtherID && $0.id != secondOtherID }.map(obstacleRect(for:))
+        let candidates = [
+            [startEscape, CGPoint(x: endEscape.x, y: startEscape.y), endEscape],
+            [startEscape, CGPoint(x: startEscape.x, y: endEscape.y), endEscape],
+            [startEscape, CGPoint(x: (startEscape.x + endEscape.x) / 2, y: startEscape.y), CGPoint(x: (startEscape.x + endEscape.x) / 2, y: endEscape.y), endEscape],
+            [startEscape, CGPoint(x: startEscape.x, y: (startEscape.y + endEscape.y) / 2), CGPoint(x: endEscape.x, y: (startEscape.y + endEscape.y) / 2), endEscape]
+        ].map { normalizedRoute(orthogonalizedPoints($0)) }.filter { pointsAreClear($0, from: obstacles) }
+        let middleRoute = candidates.min(by: { pathLength($0) < pathLength($1) }) ?? []
+        let routePoints = middleRoute.isEmpty ? [] : normalizedRoute([startPoint, startEscape] + middleRoute.dropFirst().dropLast() + [endEscape, endPoint])
+        let replacement = SchematicSegment(startID: firstOtherID, endID: secondOtherID, startSlot: firstOuterSlot, endSlot: secondOuterSlot, name: first.name, colorHex: first.colorHex, size: first.size, type: first.type, misc: first.misc, netName: first.netName, displayWidth: first.displayWidth, description: first.description, routePoints: routePoints)
+        captureForUndo()
+        document.segments.removeAll { $0.id == first.id || $0.id == second.id }
+        document.segments.append(replacement)
+        return true
+    }
+
     private var selectedTargetsAreLocked: Bool {
         !selectedTargetIDs.isEmpty && selectedTargetIDs.allSatisfy { target(with: $0)?.locked == true }
     }
@@ -2431,7 +2488,7 @@ struct ContentView: View {
     private var selectionBoxSize: CGSize {
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? 6 : 3
+            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) } == true ? 7 : 6) : 3
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 4 : 1
         }
@@ -2476,6 +2533,12 @@ struct ContentView: View {
                     .accessibilityLabel(selectedTargetsAreLocked ? "Unlock selected items" : "Lock selected items")
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
+                if canRemoveTargetFromWire(target) {
+                    Button { removeTargetFromWire(target) } label: { Image(systemName: "arrow.uturn.right.circle") }
+                        .buttonStyle(EditorButtonStyle())
+                        .help("Remove item from wire and join the wire")
+                        .accessibilityLabel("Remove item from wire")
+                }
                 Button { captureForUndo(); rotateTarget(target, by: -90) } label: { Image(systemName: "rotate.left") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Rotate selected item counter-clockwise")
