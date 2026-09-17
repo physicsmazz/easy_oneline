@@ -445,6 +445,16 @@ struct ContentView: View {
             }
             .buttonStyle(EditorButtonStyle())
 
+            Menu("Tools") {
+                Button {
+                    fixAllWires()
+                } label: {
+                    Label("Fix all wires", systemImage: "cross.case")
+                }
+            }
+            .buttonStyle(EditorButtonStyle())
+            .accessibilityLabel("Schematic tools")
+
             Menu("Visualizations") {
                 Toggle("Snap to grid", isOn: $snapToGrid)
                 Toggle("Wire bridges", isOn: $wireBridgesEnabled)
@@ -2432,10 +2442,6 @@ struct ContentView: View {
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
-                Button { fixWire(segment) } label: { Image(systemName: "arrow.triangle.merge") }
-                    .buttonStyle(EditorButtonStyle())
-                    .help("Fix wire (straighten and remove loops)")
-                    .accessibilityLabel("Fix wire")
             }
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
@@ -3082,6 +3088,14 @@ struct ContentView: View {
 
     /// "Fix wire": simplifies collinear bend points AND collapses unnecessary out-and-back loops
     /// (e.g. horizontal-vertical-horizontal where the two horizontal legs reverse direction) into a single clean turn.
+    private func fixAllWires() {
+        guard !document.segments.isEmpty else { return }
+        captureForUndo()
+        for segment in document.segments {
+            fixWire(segment)
+        }
+    }
+
     private func fixWire(_ segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
