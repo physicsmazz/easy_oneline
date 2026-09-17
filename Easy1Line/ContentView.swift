@@ -2595,7 +2595,7 @@ struct ContentView: View {
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
                 if canRemoveTargetFromWire(target) && target.kind != .junction {
-                    Button { removeTargetFromWire(target) } label: { Image(systemName: "link.badge.minus") }
+                    Button { removeTargetFromWire(target) } label: { Image(systemName: "arrow.uturn.right.circle") }
                         .buttonStyle(EditorButtonStyle())
                         .help("Disconnect item from wire and join the wire")
                         .accessibilityLabel("Disconnect item from wire")
