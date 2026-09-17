@@ -53,6 +53,8 @@ struct ContentView: View {
     @State private var gestureStartScale: CGFloat?
     @State private var gestureStartRotation: Angle?
     @State private var isPinchingOrRotating = false
+    @State private var cachedWirePoints: [UUID: [CGPoint]] = [:]
+    @State private var cachedBridgeStrokes: [(path: Path, color: Color, width: CGFloat)] = []
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
@@ -262,9 +264,13 @@ struct ContentView: View {
         .onChange(of: document) { _, newValue in
             SchematicDocument.saveLast(document)
             restoreBackgroundImage()
+            recomputeWireGeometry()
             if !isApplyingRemoteDocument {
                 broadcastDocumentIfNeeded(newValue)
             }
+        }
+        .onChange(of: wireBridgesEnabled) { _, _ in
+            recomputeWireGeometry()
         }
         .onAppear {
             multipeerSession.onReceiveData = { data in
@@ -299,6 +305,7 @@ struct ContentView: View {
         .onAppear {
             if snapToGrid { snapAllTargets() }
             restoreBackgroundImage()
+            recomputeWireGeometry()
         }
         .task {
             await loadWireLibrary()
@@ -695,6 +702,8 @@ struct ContentView: View {
     private func schematicCanvas(in size: CGSize) -> some View {
         ZStack {
             GridBackground()
+                .frame(width: 10000, height: 10000)
+                .position(x: size.width / 2, y: size.height / 2)
                 .contentShape(Rectangle())
                 .simultaneousGesture(panGesture)
                 .onTapGesture {
@@ -729,8 +738,10 @@ struct ContentView: View {
                 context.translateBy(x: 5000 - size.width / 2, y: 5000 - size.height / 2)
                 
                 for segment in document.segments {
-                    guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-                    let path = orthogonalPath(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+                    guard let points = cachedWirePoints[segment.id], !points.isEmpty else { continue }
+                    var path = Path()
+                    path.move(to: points[0])
+                    for point in points.dropFirst() { path.addLine(to: point) }
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
@@ -741,21 +752,8 @@ struct ContentView: View {
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
 
-                if wireBridgesEnabled {
-                    for firstIndex in document.segments.indices {
-                    guard let firstStart = target(with: document.segments[firstIndex].startID), let firstEnd = target(with: document.segments[firstIndex].endID) else { continue }
-                    let firstPoints = orthogonalPoints(for: document.segments[firstIndex], from: firstStart, to: firstEnd, avoiding: routingObstacles(excluding: firstStart.id, firstEnd.id))
-                    for secondIndex in document.segments.indices.dropFirst(firstIndex + 1) {
-                        guard let secondStart = target(with: document.segments[secondIndex].startID), let secondEnd = target(with: document.segments[secondIndex].endID) else { continue }
-                        let secondPoints = orthogonalPoints(for: document.segments[secondIndex], from: secondStart, to: secondEnd, avoiding: routingObstacles(excluding: secondStart.id, secondEnd.id))
-                        for crossing in crossings(between: firstPoints, and: secondPoints) {
-                            let bridge = bridgePath(at: crossing.point, overHorizontal: !crossing.firstIsHorizontal)
-                            let bridgeColor = document.segments[secondIndex].color
-                            context.stroke(bridge, with: .color(Color(red: 0.07, green: 0.09, blue: 0.105)), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth + 7, lineCap: .round, lineJoin: .round))
-                            context.stroke(bridge, with: .color(bridgeColor), style: StrokeStyle(lineWidth: document.segments[secondIndex].displayWidth, lineCap: .round, lineJoin: .round))
-                        }
-                    }
-                    }
+                for bridge in cachedBridgeStrokes {
+                    context.stroke(bridge.path, with: .color(bridge.color), style: StrokeStyle(lineWidth: bridge.width, lineCap: .round, lineJoin: .round))
                 }
             }
             .allowsHitTesting(false)
@@ -764,7 +762,7 @@ struct ContentView: View {
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                    let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+                    let points = cachedWirePoints[segment.id] ?? orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                         if sectionIndex > 0 && sectionIndex + 1 < points.count - 1 {
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
@@ -846,7 +844,7 @@ struct ContentView: View {
             if showWireLabels {
                 ForEach(document.segments) { segment in
                     if let start = target(with: segment.startID), let end = target(with: segment.endID) {
-                        let points = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+                        let points = cachedWirePoints[segment.id] ?? orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
                         wireLabel(segment, on: points)
                     }
                 }
@@ -1125,6 +1123,37 @@ struct ContentView: View {
         document.targets.filter { target in
             !ids.contains(target.id) && target.id != draggingTargetID
         }
+    }
+
+    /// Recomputes wire routing (points + bridge crossings) once per document change instead of on every render,
+    /// so panning/zooming the canvas (which doesn't change the document) doesn't re-run pathfinding every frame.
+    private func recomputeWireGeometry() {
+        var points: [UUID: [CGPoint]] = [:]
+        for segment in document.segments {
+            guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
+            points[segment.id] = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+        }
+        cachedWirePoints = points
+
+        guard wireBridgesEnabled else {
+            cachedBridgeStrokes = []
+            return
+        }
+        var bridges: [(path: Path, color: Color, width: CGFloat)] = []
+        for firstIndex in document.segments.indices {
+            guard let firstPoints = points[document.segments[firstIndex].id] else { continue }
+            for secondIndex in document.segments.indices.dropFirst(firstIndex + 1) {
+                guard let secondPoints = points[document.segments[secondIndex].id] else { continue }
+                for crossing in crossings(between: firstPoints, and: secondPoints) {
+                    let bridge = bridgePath(at: crossing.point, overHorizontal: !crossing.firstIsHorizontal)
+                    let bridgeColor = document.segments[secondIndex].color
+                    let bridgeWidth = document.segments[secondIndex].displayWidth
+                    bridges.append((bridge, Color(red: 0.07, green: 0.09, blue: 0.105), bridgeWidth + 7))
+                    bridges.append((bridge, bridgeColor, bridgeWidth))
+                }
+            }
+        }
+        cachedBridgeStrokes = bridges
     }
 
     private func targetTapped(_ target: SchematicTarget) {
