@@ -1,2 +1,3 @@
 .DS_Store
 Supabase.local.xcconfig
+**/xcuserdata/
