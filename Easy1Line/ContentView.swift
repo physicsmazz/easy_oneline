@@ -319,7 +319,10 @@ struct ContentView: View {
             contentType: .line,
             defaultFilename: document.name
         ) { result in
-            if case .failure(let error) = result { cloudStatus = "Export failed: \(error.localizedDescription)" }
+            if case .failure(let error) = result { 
+                let exportError = error.localizedDescription
+                cloudStatus = "Export failed: " + exportError
+            }
         }
         .sheet(item: $pdfShareItem) { item in
             ActivityView(activityItems: [item.url])
@@ -330,7 +333,9 @@ struct ContentView: View {
                 document = try SchematicFileDocument.load(from: url).document
                 cloudStatus = "Imported schematic"
             } catch {
-                cloudStatus = "Import failed: \(error.localizedDescription)"
+                let errorMsg = error.localizedDescription
+                let failMsg = "Import failed: " + errorMsg
+                cloudStatus = failMsg
             }
         }
         .sheet(isPresented: $showWireLibraryPanel) {
@@ -643,10 +648,14 @@ struct ContentView: View {
                         .position(x: size.width / 2 + (backgroundImagePosition.x - 5000),
                                  y: size.height / 2 + (backgroundImagePosition.y - 5000))
                         .gesture(
-                            !backgroundImageLocked ? DragGesture().onChanged { value in
-                                backgroundImagePosition.x += value.translation.width / 25
-                                backgroundImagePosition.y += value.translation.height / 25
-                            } : nil
+                            !backgroundImageLocked ? DragGesture()
+                                .onChanged { value in
+                                    backgroundImagePosition.x += value.translation.width / 25
+                                    backgroundImagePosition.y += value.translation.height / 25
+                                }
+                                .onEnded { _ in
+                                    saveBackgroundImageState()
+                                } : nil
                         )
                 }
             
@@ -1901,6 +1910,7 @@ struct ContentView: View {
                                     let aspectRatio = bgImage.size.height / bgImage.size.width
                                     backgroundImageSize.height = newWidth * aspectRatio
                                 }
+                                saveBackgroundImageState()
                             }
                             .frame(maxWidth: 80)
                         Text("\(Int(backgroundImageSize.width))").font(.caption2).monospacedDigit().foregroundStyle(.white.opacity(0.65)).frame(width: 35)
@@ -1914,6 +1924,7 @@ struct ContentView: View {
                                     let aspectRatio = bgImage.size.width / bgImage.size.height
                                     backgroundImageSize.width = newHeight * aspectRatio
                                 }
+                                saveBackgroundImageState()
                             }
                             .frame(maxWidth: 80)
                         Text("\(Int(backgroundImageSize.height))").font(.caption2).monospacedDigit().foregroundStyle(.white.opacity(0.65)).frame(width: 35)
@@ -1922,13 +1933,16 @@ struct ContentView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "circle.fill").font(.caption2)
                         Slider(value: $backgroundImageOpacity, in: 0...1)
+                            .onChange(of: backgroundImageOpacity) { _, _ in saveBackgroundImageState() }
                             .frame(maxWidth: 60)
                     }
                     
                     Toggle("", isOn: $backgroundImageConstrainProportions)
+                        .onChange(of: backgroundImageConstrainProportions) { _, _ in saveBackgroundImageState() }
                         .scaleEffect(0.8, anchor: .center)
                     
                     Toggle("", isOn: $backgroundImageLocked)
+                        .onChange(of: backgroundImageLocked) { _, _ in saveBackgroundImageState() }
                         .scaleEffect(0.8, anchor: .center)
                     
                     Button(role: .destructive) {
@@ -3338,7 +3352,7 @@ struct ContentView: View {
         backgroundImage = uiImage
         backgroundImageSize = CGSize(width: 200, height: 200)
         backgroundImagePhotoItem = nil
-        updateBackgroundImageInDocument()
+        saveBackgroundImageState()
     }
     
     private func clearBackgroundImage() {
@@ -3361,7 +3375,7 @@ struct ContentView: View {
         }
     }
     
-    private func updateBackgroundImageInDocument() {
+    private func saveBackgroundImageState() {
         if let bgImage = backgroundImage, let imageData = bgImage.pngData() {
             document.backgroundImageBase64 = imageData.base64EncodedString()
         } else {
