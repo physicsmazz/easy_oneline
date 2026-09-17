@@ -378,11 +378,6 @@ struct ContentView: View {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
                 Divider()
-                Button("Undo", action: undo)
-                    .disabled(undoStack.isEmpty)
-                Button("Redo", action: redo)
-                    .disabled(redoStack.isEmpty)
-                Divider()
                 Button("New Drawing") { showNewDrawingWarning = true }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
                 Button("Export .line") { showFileExporter = true }
@@ -394,6 +389,14 @@ struct ContentView: View {
                 Button("Background") { showBackgroundImagePanel.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
+
+            Button("Undo", action: undo)
+                .buttonStyle(EditorButtonStyle())
+                .disabled(undoStack.isEmpty)
+
+            Button("Redo", action: redo)
+                .buttonStyle(EditorButtonStyle())
+                .disabled(redoStack.isEmpty)
 
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
