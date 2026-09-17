@@ -3399,12 +3399,8 @@ struct ContentView: View {
     private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint, matching expected: CGPoint) -> CGPoint {
         let dx = existingPoint.x - pin.x
         let dy = existingPoint.y - pin.y
-        let expectedDX = expected.x - pin.x
-        let expectedDY = expected.y - pin.y
         let length = hypot(dx, dy)
-        let expectedLength = max(hypot(expectedDX, expectedDY), 1)
-        let directionMatches = (dx * expectedDX + dy * expectedDY) / max(length * expectedLength, 1) > 0.7
-        guard length > 0.5, directionMatches else { return fallback }
+        guard length > 0.5 else { return fallback }
         let actualLength = max(minimumLength, length)
         return CGPoint(x: pin.x + dx / length * actualLength, y: pin.y + dy / length * actualLength)
     }
