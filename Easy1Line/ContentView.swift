@@ -53,6 +53,7 @@ struct ContentView: View {
     @State private var gestureStartScale: CGFloat?
     @State private var gestureStartRotation: Angle?
     @State private var isPinchingOrRotating = false
+    @State private var quickAddCascadeIndex = 0
     @State private var cachedWirePoints: [UUID: [CGPoint]] = [:]
     @State private var cachedBridgeStrokes: [(path: Path, color: Color, width: CGFloat)] = []
     @State private var cachedConnectedColor: [UUID: Color] = [:]
@@ -1393,7 +1394,7 @@ struct ContentView: View {
 
     private func addTarget(_ kind: TargetKind, at point: CGPoint? = nil) {
         captureForUndo()
-        let rawPosition = point ?? CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height)
+        let rawPosition = point ?? quickAddPosition()
         let position = snappedPosition(rawPosition)
         document.targets.append(SchematicTarget(kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
         selectedTargetIDs = [document.targets.last!.id]
@@ -1405,12 +1406,20 @@ struct ContentView: View {
 
     private func addTarget(from template: TargetDefinition) {
         captureForUndo()
-        let position = snappedPosition(CGPoint(x: 480 - canvasOffset.width, y: 330 - canvasOffset.height))
+        let position = snappedPosition(quickAddPosition())
         document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
         showTargetLibrary = false
+    }
+
+    /// Cascades consecutively tap-added items diagonally so they don't stack directly on top of each other.
+    private func quickAddPosition() -> CGPoint {
+        let step: CGFloat = 44
+        let cascade = CGFloat(quickAddCascadeIndex % 8)
+        quickAddCascadeIndex += 1
+        return CGPoint(x: 480 - canvasOffset.width + cascade * step, y: 330 - canvasOffset.height + cascade * step)
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
