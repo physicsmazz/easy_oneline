@@ -1197,9 +1197,6 @@ struct ContentView: View {
                 targetDragStartRoutes.removeAll()
                 for targetID in activeTargetDragIDs {
                     snapTarget(targetID, canvasSize: canvasSize)
-                    if connectionCount(for: targetID) == 0 {
-                        splitSegmentIfNeeded(for: targetID)
-                    }
                 }
                 for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
                     let attachedJunction = activeTargetDragIDs.contains(where: { self.target(with: $0)?.kind == .junction }) &&
