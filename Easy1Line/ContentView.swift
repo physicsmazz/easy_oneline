@@ -39,6 +39,11 @@ private struct PDFShareItem: Identifiable {
     let url: URL
 }
 
+private struct NetEndpoint: Hashable {
+    let targetID: UUID
+    let slot: Int
+}
+
 struct ContentView: View {
     @State private var document = SchematicDocument.loadLast()
     @State private var savedDocuments = SchematicDocument.loadAll()
@@ -950,7 +955,7 @@ struct ContentView: View {
             showWireSizes ? segment.size : nil,
             showWireMaterials ? segment.type : nil,
             showWireCoverings ? segment.misc : nil,
-            showWireNetNames ? segment.netName : nil
+            showWireNetNames ? netName(for: segment) : nil
         ].compactMap { $0 }
         return Text(fields.joined(separator: "\n"))
             .font(.system(size: 9, weight: .semibold, design: .rounded))
@@ -1434,7 +1439,7 @@ struct ContentView: View {
         let segment = document.segments[segmentIndex]
         let route = [start.position, CGPoint(x: (start.position.x + end.position.x) / 2, y: start.position.y), CGPoint(x: (start.position.x + end.position.x) / 2, y: end.position.y), end.position]
         let nearest = nearestPoint(on: route, to: document.targets[targetIndex].position).point
-        let junction = SchematicTarget(kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
+        let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: segmentIndex)
         document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
@@ -1451,7 +1456,7 @@ struct ContentView: View {
         captureForUndo()
         let rawPosition = point ?? quickAddPosition()
         let position = snappedPosition(rawPosition)
-        document.targets.append(SchematicTarget(kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
+        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: kind), kind: kind, name: kind.title, position: position, maxConnections: kind == .junction ? 8 : 2, colorHex: kind.defaultColorHex))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -1459,10 +1464,19 @@ struct ContentView: View {
         selectedSegmentIDs.removeAll()
     }
 
+    private func nextTargetIdentifier(for kind: TargetKind) -> String {
+        let used = Set(document.targets.map(\.identifier))
+        var number = 1
+        while used.contains(String(format: "%@%03d", kind.designatorPrefix, number)) {
+            number += 1
+        }
+        return String(format: "%@%03d", kind.designatorPrefix, number)
+    }
+
     private func addTarget(from template: TargetDefinition) {
         captureForUndo()
         let position = snappedPosition(quickAddPosition())
-        document.targets.append(SchematicTarget(kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
+        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: template.kind), kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -1486,6 +1500,7 @@ struct ContentView: View {
     private func duplicateTarget(_ target: SchematicTarget) {
         var copy = target
         copy.id = UUID()
+        copy.identifier = nextTargetIdentifier(for: target.kind)
         copy.name = "\(target.name) copy"
         copy.position = snappedPosition(CGPoint(x: target.position.x + 48, y: target.position.y + 48))
         document.targets.append(copy)
@@ -1951,17 +1966,60 @@ struct ContentView: View {
     }
 
     private var netlistText: String {
-        document.targets.map { target in
+        let netNames = generatedNetNames
+        return document.targets.map { target in
             let pins = (0..<target.maxConnections).map { slot in
                 let pinName = target.connectionNames.indices.contains(slot) ? target.connectionNames[slot] : defaultConnectionName(for: slot)
-                let netNames = document.segments.compactMap { segment -> String? in
-                    guard (segment.startID == target.id && segment.startSlot == slot) || (segment.endID == target.id && segment.endSlot == slot) else { return nil }
-                    return segment.netName
-                }
-                return "\(pinName)=\((netNames.first ?? "NC"))"
+                let identifier = target.identifier.isEmpty ? target.name : target.identifier
+                let netName = netNames[NetEndpoint(targetID: target.id, slot: slot)] ?? "NC"
+                return "\(identifier).\(pinName)=\(netName)"
             }.joined(separator: " ")
-            return "\(target.name) \(pins)"
+            return "\(target.identifier.isEmpty ? target.name : target.identifier) \(pins)"
         }.joined(separator: "\n")
+    }
+
+    private var generatedNetNames: [NetEndpoint: String] {
+        var adjacency: [NetEndpoint: Set<NetEndpoint>] = [:]
+        func connect(_ first: NetEndpoint, _ second: NetEndpoint) {
+            adjacency[first, default: []].insert(second)
+            adjacency[second, default: []].insert(first)
+        }
+
+        for segment in document.segments {
+            guard let startSlot = segment.startSlot, let endSlot = segment.endSlot else { continue }
+            connect(NetEndpoint(targetID: segment.startID, slot: startSlot), NetEndpoint(targetID: segment.endID, slot: endSlot))
+        }
+
+        for target in document.targets where target.kind == .junction {
+            let endpoints = (0..<target.maxConnections).map { NetEndpoint(targetID: target.id, slot: $0) }
+            for endpoint in endpoints.dropFirst() {
+                connect(endpoints[0], endpoint)
+            }
+        }
+
+        var names: [NetEndpoint: String] = [:]
+        var visited = Set<NetEndpoint>()
+        var nextNumber = 1
+        let endpoints = adjacency.keys.sorted { ($0.targetID.uuidString, $0.slot) < ($1.targetID.uuidString, $1.slot) }
+        for endpoint in endpoints where !visited.contains(endpoint) {
+            let name = String(format: "N%03d", nextNumber)
+            nextNumber += 1
+            var queue = [endpoint]
+            visited.insert(endpoint)
+            while let current = queue.popLast() {
+                names[current] = name
+                for neighbor in adjacency[current, default: []] where !visited.contains(neighbor) {
+                    visited.insert(neighbor)
+                    queue.append(neighbor)
+                }
+            }
+        }
+        return names
+    }
+
+    private func netName(for segment: SchematicSegment) -> String {
+        guard let startSlot = segment.startSlot else { return "NC" }
+        return generatedNetNames[NetEndpoint(targetID: segment.startID, slot: startSlot)] ?? "NC"
     }
 
     private var deleteWarningTitle: String {
@@ -3536,7 +3594,7 @@ struct ContentView: View {
         let midpoint = placedPoint ?? nearestPoint(on: route, to: CGPoint(x: (start.position.x + end.position.x) / 2, y: (start.position.y + end.position.y) / 2)).point
         let junctionPosition = snapToGrid ? snappedPosition(midpoint) : midpoint
         let splitRoutes = splitRoutePoints(route, at: junctionPosition)
-        let junction = SchematicTarget(kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
+        let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
         document.segments.remove(at: index)
         document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
@@ -3791,6 +3849,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
 
     init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = LineDefinition.defaults, targetDefinitions: [TargetDefinition] = TargetDefinition.defaults) {
         self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions; self.targetDefinitions = targetDefinitions
+        assignMissingTargetIdentifiers()
     }
 
     init(from decoder: Decoder) throws {
@@ -3798,6 +3857,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled schematic"
         targets = try container.decodeIfPresent([SchematicTarget].self, forKey: .targets) ?? []
+        assignMissingTargetIdentifiers()
         segments = try container.decodeIfPresent([SchematicSegment].self, forKey: .segments) ?? []
         let savedLineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? []
         lineDefinitions = savedLineDefinitions.isEmpty ? LineDefinition.defaults : savedLineDefinitions
@@ -3809,6 +3869,23 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         backgroundImageOpacity = try container.decodeIfPresent(Double.self, forKey: .backgroundImageOpacity) ?? 1.0
         backgroundImageLocked = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageLocked) ?? false
         backgroundImageConstrainProportions = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageConstrainProportions) ?? false
+    }
+
+    private mutating func assignMissingTargetIdentifiers() {
+        var used = Set(targets.map(\.identifier).filter { !$0.isEmpty })
+        var counters: [String: Int] = [:]
+        for index in targets.indices where targets[index].identifier.isEmpty {
+            let prefix = targets[index].kind.designatorPrefix
+            var number = counters[prefix, default: 1]
+            var identifier = String(format: "%@%03d", prefix, number)
+            while used.contains(identifier) {
+                number += 1
+                identifier = String(format: "%@%03d", prefix, number)
+            }
+            targets[index].identifier = identifier
+            used.insert(identifier)
+            counters[prefix] = number + 1
+        }
     }
 
     static func loadLast() -> SchematicDocument {
@@ -3825,6 +3902,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
 
 private struct SchematicTarget: Identifiable, Codable, Equatable {
     var id = UUID()
+    var identifier: String
     var kind: TargetKind
     var name: String
     var position: CGPoint
@@ -3839,8 +3917,9 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     var isCompact: Bool
     var locked: Bool
 
-    init(id: UUID = UUID(), kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], connectionNames: [String] = [], scale: Double = 1, isCompact: Bool = false, locked: Bool = false) {
+    init(id: UUID = UUID(), identifier: String = "", kind: TargetKind, name: String, position: CGPoint, maxConnections: Int, colorHex: String, symbol: String? = nil, imageData: Data? = nil, connectionAngle: Double = 0, connectionAngles: [Double] = [], connectionNames: [String] = [], scale: Double = 1, isCompact: Bool = false, locked: Bool = false) {
         self.id = id
+        self.identifier = identifier
         self.kind = kind
         self.name = name
         self.position = position
@@ -3859,6 +3938,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        identifier = try container.decodeIfPresent(String.self, forKey: .identifier) ?? ""
         let rawKind = try container.decodeIfPresent(String.self, forKey: .kind) ?? TargetKind.source.rawValue
         kind = TargetKind(rawValue: rawKind) ?? .source
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
@@ -4038,6 +4118,22 @@ private enum TargetKind: String, CaseIterable, Identifiable, Codable {
     var defaultColorHex: String {
         switch self {
         case .source: return "FF9F43"; case .transformer: return "F59E0B"; case .switchTarget: return "6EE7B7"; case .fuse: return "F87171"; case .recloser: return "FCA5A5"; case .pt: return "A78BFA"; case .ct: return "818CF8"; case .capacitor: return "F472B6"; case .ground: return "94A3B8"; case .threePhaseTransformer: return "FBBF24"; case .junction: return "31D7E8"
+        }
+    }
+
+    var designatorPrefix: String {
+        switch self {
+        case .source: return "SRC"
+        case .transformer: return "T"
+        case .switchTarget: return "SW"
+        case .fuse: return "F"
+        case .recloser: return "REC"
+        case .pt: return "PT"
+        case .ct: return "CT"
+        case .capacitor: return "C"
+        case .ground: return "GND"
+        case .threePhaseTransformer: return "T3"
+        case .junction: return "J"
         }
     }
 }
