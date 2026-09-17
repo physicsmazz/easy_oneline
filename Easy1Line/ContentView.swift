@@ -456,10 +456,12 @@ struct ContentView: View {
             .accessibilityLabel("Schematic tools")
 
             Menu("Visualizations") {
-                Toggle("Wire bridges", isOn: $wireBridgesEnabled)
-                    .toggleStyle(.switch)
-                Toggle("Connection names", isOn: $showConnectionNames)
-                    .toggleStyle(.switch)
+                Button { wireBridgesEnabled.toggle() } label: {
+                    Label("Wire bridges: \(wireBridgesEnabled ? "On" : "Off")", systemImage: wireBridgesEnabled ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showConnectionNames.toggle() } label: {
+                    Label("Connection names: \(showConnectionNames ? "On" : "Off")", systemImage: showConnectionNames ? "checkmark.circle.fill" : "circle")
+                }
                 Divider()
                 Button("Clear all") {
                     wireBridgesEnabled = false
@@ -470,18 +472,24 @@ struct ContentView: View {
             .accessibilityLabel("Toggle canvas visualizations")
 
             Menu("Labels") {
-                Toggle("Wire names", isOn: $showWireNames)
-                    .toggleStyle(.switch)
-                Toggle("Lengths", isOn: $showWireLengths)
-                    .toggleStyle(.switch)
-                Toggle("Wire sizes", isOn: $showWireSizes)
-                    .toggleStyle(.switch)
-                Toggle("Materials", isOn: $showWireMaterials)
-                    .toggleStyle(.switch)
-                Toggle("Coverings", isOn: $showWireCoverings)
-                    .toggleStyle(.switch)
-                Toggle("Net names", isOn: $showWireNetNames)
-                    .toggleStyle(.switch)
+                Button { showWireNames.toggle() } label: {
+                    Label("Wire names: \(showWireNames ? "On" : "Off")", systemImage: showWireNames ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showWireLengths.toggle() } label: {
+                    Label("Lengths: \(showWireLengths ? "On" : "Off")", systemImage: showWireLengths ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showWireSizes.toggle() } label: {
+                    Label("Wire sizes: \(showWireSizes ? "On" : "Off")", systemImage: showWireSizes ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showWireMaterials.toggle() } label: {
+                    Label("Materials: \(showWireMaterials ? "On" : "Off")", systemImage: showWireMaterials ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showWireCoverings.toggle() } label: {
+                    Label("Coverings: \(showWireCoverings ? "On" : "Off")", systemImage: showWireCoverings ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showWireNetNames.toggle() } label: {
+                    Label("Net names: \(showWireNetNames ? "On" : "Off")", systemImage: showWireNetNames ? "checkmark.circle.fill" : "circle")
+                }
                 Divider()
                 Button("Clear all") {
                     showWireNames = false
@@ -496,10 +504,12 @@ struct ContentView: View {
             .accessibilityLabel("Configure wire labels")
 
             Menu("Settings") {
-                Toggle("Snap to grid", isOn: $snapToGrid)
-                    .toggleStyle(.switch)
-                Toggle("Selection popup near item", isOn: $showSelectionBoxNearItem)
-                    .toggleStyle(.switch)
+                Button { snapToGrid.toggle() } label: {
+                    Label("Snap to grid: \(snapToGrid ? "On" : "Off")", systemImage: snapToGrid ? "checkmark.circle.fill" : "circle")
+                }
+                Button { showSelectionBoxNearItem.toggle() } label: {
+                    Label("Selection popup near item: \(showSelectionBoxNearItem ? "On" : "Off")", systemImage: showSelectionBoxNearItem ? "checkmark.circle.fill" : "circle")
+                }
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 Button("Background color") { showBackgroundColorPicker = true }
