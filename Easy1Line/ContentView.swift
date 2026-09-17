@@ -1076,13 +1076,18 @@ struct ContentView: View {
     private func connectSelectedTargets() {
         let ids = Array(selectedTargetIDs)
         guard ids.count >= 2 else { return }
+        var connected = false
         for pairIndex in 0..<(ids.count - 1) {
             let startID = ids[pairIndex]
             let endID = ids[pairIndex + 1]
-            connectTargets(startID, endID, startSlot: selectedConnectionSlots[startID], endSlot: selectedConnectionSlots[endID])
+            let startSlot = selectedConnectionSlots[startID] ?? closestAvailableSlot(for: startID, to: endID)
+            let endSlot = selectedConnectionSlots[endID] ?? closestAvailableSlot(for: endID, to: startID)
+            connected = connectTargets(startID, endID, startSlot: startSlot, endSlot: endSlot) || connected
         }
-        selectedTargetIDs.removeAll()
-        selectedConnectionSlots.removeAll()
+        if connected {
+            selectedTargetIDs.removeAll()
+            selectedConnectionSlots.removeAll()
+        }
     }
 
     @discardableResult
