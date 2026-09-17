@@ -1091,6 +1091,9 @@ struct ContentView: View {
                         splitSegmentIfNeeded(for: targetID)
                     }
                 }
+                for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
+                    removeStraightBends(from: segment)
+                }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
                 splitCandidateSegmentID = nil
@@ -2985,6 +2988,9 @@ struct ContentView: View {
     private func finalizeWireSectionDrag(_ id: UUID) {
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
+        if let segment = document.segments.first(where: { $0.id == id }) {
+            removeStraightBends(from: segment)
+        }
     }
 
     private func removeStraightBends(from segment: SchematicSegment) {
