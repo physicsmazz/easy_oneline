@@ -2690,6 +2690,9 @@ struct ContentView: View {
     }
 
     private var selectionBoxSize: CGSize {
+        if selectedTargetIDs.isEmpty && selectedSegmentIDs.count == 1 {
+            return CGSize(width: 360, height: 60)
+        }
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
             actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 3
