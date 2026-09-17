@@ -441,15 +441,13 @@ struct ContentView: View {
             }
             .buttonStyle(EditorButtonStyle())
 
-            Button(snapToGrid ? "Snap: On" : "Snap: Off") { snapToGrid.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: snapToGrid))
-
-            Button(wireBridgesEnabled ? "Bridges: On" : "Bridges: Off") { wireBridgesEnabled.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: wireBridgesEnabled))
-
-            Button(showConnectionNames ? "Pins: On" : "Pins: Off") { showConnectionNames.toggle() }
-                .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
-                .accessibilityLabel("Show connection names")
+            Menu("Visualizations") {
+                Toggle("Snap to grid", isOn: $snapToGrid)
+                Toggle("Wire bridges", isOn: $wireBridgesEnabled)
+                Toggle("Connection names", isOn: $showConnectionNames)
+            }
+            .buttonStyle(EditorButtonStyle(isActive: snapToGrid || wireBridgesEnabled || showConnectionNames))
+            .accessibilityLabel("Toggle canvas visualizations")
 
             Menu("Labels") {
                 Toggle("Wire names", isOn: $showWireNames)
