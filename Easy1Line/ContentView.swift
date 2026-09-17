@@ -2732,7 +2732,7 @@ struct ContentView: View {
                     wirePinMoveTargetID = nil
                     selectedConnectionSlots.removeAll()
                 } label: {
-                    Image(systemName: "arrow.uturn.right.circle")
+                    Label("Move connection", systemImage: "arrow.uturn.right.circle")
                 }
                 .buttonStyle(EditorButtonStyle(isActive: wireConnectionMoveMode))
                 .help(wireConnectionMoveMode ? "Cancel moving connection" : "Move wire connection")
@@ -2904,12 +2904,12 @@ struct ContentView: View {
                 .fill(wire.color)
                 .frame(width: 42, height: max(2, CGFloat(wire.displayWidth)))
             Button { selectSimilarWires(to: wire) } label: {
-                Label("Similar", systemImage: "line.3.horizontal.decrease.circle")
+                Label("Select similar wires", systemImage: "line.3.horizontal.decrease.circle")
             }
             .buttonStyle(.bordered)
             .help("Select similar wires")
             Button { selectWiresWithSameColor(as: wire) } label: {
-                Label("Same color", systemImage: "paintpalette")
+                Label("Select same-color wires", systemImage: "paintpalette")
             }
             .buttonStyle(.bordered)
             .help("Select wires with the same color")
