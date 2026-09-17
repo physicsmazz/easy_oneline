@@ -530,9 +530,6 @@ struct ContentView: View {
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
-                    if splitCandidateSegmentID == segment.id {
-                        context.stroke(path, with: .color(.yellow.opacity(0.55)), style: StrokeStyle(lineWidth: segment.displayWidth + 14, lineCap: .round, lineJoin: .round))
-                    }
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
