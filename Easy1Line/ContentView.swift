@@ -222,7 +222,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
-            if selectedSegmentIDs.count == 1, !connectionMode, let segment = selectedSegment {
+            if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
                 wireBottomPanel(segment)
                     .padding(.bottom, 20)
                     .padding(.horizontal, 20)
@@ -253,10 +253,6 @@ struct ContentView: View {
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(deleteWarningTitle, isPresented: $showDeleteWarning, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { deleteSelectedContent() }
             Button("Cancel", role: .cancel) {}
         }
         .popover(isPresented: $showDeleteWarning, attachmentAnchor: .point(.center), arrowEdge: .bottom) {
@@ -2104,8 +2100,8 @@ struct ContentView: View {
 
     private var hasSelection: Bool { !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty }
     private var inspectorVisible: Bool {
-        if selectedSegmentIDs.count == 1 && !connectionMode { return false } // Bottom panel handles single wire
-        return (hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1) || selectedSegmentIDs.count > 1
+        if selectedSegmentIDs.count >= 1 && !connectionMode { return false } // Bottom panel handles all wires
+        return hasSelection && (showInfoPanel || doubleTapInfoIsCurrent) && selectedTargetIDs.count <= 1
     }
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
