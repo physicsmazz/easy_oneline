@@ -306,6 +306,7 @@ struct ContentView: View {
             if snapToGrid { snapAllTargets() }
             restoreBackgroundImage()
             recomputeWireGeometry()
+            sanitizeTargetDefinitionSymbols()
         }
         .task {
             await loadWireLibrary()
@@ -702,8 +703,6 @@ struct ContentView: View {
     private func schematicCanvas(in size: CGSize) -> some View {
         ZStack {
             GridBackground()
-                .frame(width: 10000, height: 10000)
-                .position(x: size.width / 2, y: size.height / 2)
                 .contentShape(Rectangle())
                 .simultaneousGesture(panGesture)
                 .onTapGesture {
@@ -1592,6 +1591,22 @@ struct ContentView: View {
         }
     }
 
+    /// Replaces any invalid/unknown SF Symbol name (e.g. a stale value synced from an old Supabase seed) with the target kind's default symbol.
+    private func sanitizeTargetDefinitionSymbols() {
+        for index in document.targetDefinitions.indices {
+            let symbol = document.targetDefinitions[index].symbol
+            if UIImage(systemName: symbol) == nil {
+                document.targetDefinitions[index].symbol = document.targetDefinitions[index].kind.symbol
+            }
+        }
+        for index in document.targets.indices {
+            let symbol = document.targets[index].symbol
+            if UIImage(systemName: symbol) == nil {
+                document.targets[index].symbol = document.targets[index].kind.symbol
+            }
+        }
+    }
+
     private func syncLibraries() async {
         guard let store = SupabaseDrawingStore() else {
             cloudStatus = "Supabase is not configured"
@@ -1602,7 +1617,8 @@ struct ContentView: View {
             let conductors = try await store.loadConductorCatalog()
             let syncedTargets = targetTypes.compactMap { record -> TargetDefinition? in
                 guard let kind = TargetKind(rawValue: record.kind) else { return nil }
-                return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: record.symbol ?? kind.symbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
+                let validSymbol = record.symbol.flatMap { UIImage(systemName: $0) != nil ? $0 : nil } ?? kind.symbol
+                return TargetDefinition(kind: kind, name: record.name, maxConnections: record.maxConnections ?? 2, colorHex: record.colorHex, symbol: validSymbol, imageData: nil, connectionAngles: record.connectionAngles, scale: 1)
             }
             if !syncedTargets.isEmpty { document.targetDefinitions = syncedTargets }
             let syncedLines = conductors.compactMap { record -> LineDefinition? in
