@@ -110,6 +110,9 @@ struct ContentView: View {
     @State private var lineDefinitionVoltageDraft = ""
     @State private var lineDefinitionMiscDraft = ""
     @State private var lineDefinitionDescriptionDraft = ""
+    @State private var lineDefinitionUsesCustomSize = false
+    @State private var lineDefinitionUsesCustomType = false
+    @State private var lineDefinitionUsesCustomVoltage = false
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
     @State private var showNetlist = false
@@ -2099,18 +2102,57 @@ struct ContentView: View {
             Form {
                 Section("Wire") {
                     TextField("Name", text: $lineDefinitionNameDraft)
-                    Picker("Size", selection: $lineDefinitionSizeDraft) {
-                        ForEach(lineDefinitionSizeOptions, id: \.self) { Text($0).tag($0) }
+                    if lineDefinitionUsesCustomSize {
+                        HStack {
+                            TextField("New size", text: $lineDefinitionSizeDraft)
+                            Button("Use saved") { lineDefinitionUsesCustomSize = false }
+                        }
+                    } else {
+                        Picker("Size", selection: $lineDefinitionSizeDraft) {
+                            ForEach(lineDefinitionSizeOptions, id: \.self) { Text($0).tag($0) }
+                            Text("Add new…").tag("__new_size__")
+                        }
+                        .onChange(of: lineDefinitionSizeDraft) { _, value in
+                            if value == "__new_size__" {
+                                lineDefinitionSizeDraft = ""
+                                lineDefinitionUsesCustomSize = true
+                            }
+                        }
                     }
-                    TextField("Custom size", text: $lineDefinitionSizeDraft)
-                    Picker("Type", selection: $lineDefinitionTypeDraft) {
-                        ForEach(lineDefinitionTypeOptions, id: \.self) { Text($0).tag($0) }
+                    if lineDefinitionUsesCustomType {
+                        HStack {
+                            TextField("New type", text: $lineDefinitionTypeDraft)
+                            Button("Use saved") { lineDefinitionUsesCustomType = false }
+                        }
+                    } else {
+                        Picker("Type", selection: $lineDefinitionTypeDraft) {
+                            ForEach(lineDefinitionTypeOptions, id: \.self) { Text($0).tag($0) }
+                            Text("Add new…").tag("__new_type__")
+                        }
+                        .onChange(of: lineDefinitionTypeDraft) { _, value in
+                            if value == "__new_type__" {
+                                lineDefinitionTypeDraft = ""
+                                lineDefinitionUsesCustomType = true
+                            }
+                        }
                     }
-                    TextField("Custom type", text: $lineDefinitionTypeDraft)
-                    Picker("Voltage", selection: $lineDefinitionVoltageDraft) {
-                        ForEach(lineDefinitionVoltageOptions, id: \.self) { Text($0).tag($0) }
+                    if lineDefinitionUsesCustomVoltage {
+                        HStack {
+                            TextField("New voltage", text: $lineDefinitionVoltageDraft)
+                            Button("Use saved") { lineDefinitionUsesCustomVoltage = false }
+                        }
+                    } else {
+                        Picker("Voltage", selection: $lineDefinitionVoltageDraft) {
+                            ForEach(lineDefinitionVoltageOptions, id: \.self) { Text($0).tag($0) }
+                            Text("Add new…").tag("__new_voltage__")
+                        }
+                        .onChange(of: lineDefinitionVoltageDraft) { _, value in
+                            if value == "__new_voltage__" {
+                                lineDefinitionVoltageDraft = ""
+                                lineDefinitionUsesCustomVoltage = true
+                            }
+                        }
                     }
-                    TextField("Custom voltage", text: $lineDefinitionVoltageDraft)
                     TextField("Construction / use", text: $lineDefinitionMiscDraft)
                     TextField("Description", text: $lineDefinitionDescriptionDraft)
                 }
@@ -3767,6 +3809,9 @@ struct ContentView: View {
 
     private func beginNewLineDefinition() {
         editingLineDefinitionID = nil
+        lineDefinitionUsesCustomSize = false
+        lineDefinitionUsesCustomType = false
+        lineDefinitionUsesCustomVoltage = false
         lineDefinitionNameDraft = ""
         lineDefinitionSizeDraft = lineDefinitionSizeOptions.first ?? ""
         lineDefinitionTypeDraft = lineDefinitionTypeOptions.first ?? ""
@@ -3778,6 +3823,9 @@ struct ContentView: View {
 
     private func beginEditLineDefinition(_ line: LineDefinition) {
         editingLineDefinitionID = line.id
+        lineDefinitionUsesCustomSize = false
+        lineDefinitionUsesCustomType = false
+        lineDefinitionUsesCustomVoltage = false
         lineDefinitionNameDraft = line.name
         lineDefinitionSizeDraft = line.wireSize
         lineDefinitionTypeDraft = line.wireType
