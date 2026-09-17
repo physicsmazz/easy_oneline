@@ -2770,31 +2770,45 @@ struct ContentView: View {
     }
 
     private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("WIRE").font(.caption.weight(.bold)).foregroundStyle(.cyan)
-                Spacer()
-                Button("Choose wire from library") {
-                    showLineLibrary = true
-                }
+        let displayWidthBinding = Binding<Double>(
+            get: { segment(with: wire.id)?.displayWidth ?? wire.displayWidth },
+            set: { value in
+                guard let index = document.segments.firstIndex(where: { $0.id == wire.id }) else { return }
+                document.segments[index].displayWidth = value
+            }
+        )
+        let colorBinding = Binding<Color>(
+            get: { segment(with: wire.id)?.color ?? wire.color },
+            set: { value in
+                guard let index = document.segments.firstIndex(where: { $0.id == wire.id }) else { return }
+                document.segments[index].colorHex = value.hexString
+            }
+        )
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("WIRE").font(.caption2.weight(.bold)).foregroundStyle(.cyan)
+                Text(wire.name).font(.caption.weight(.semibold)).lineLimit(1)
+            }
+            readOnlyWireField("SIZE", wire.size)
+            readOnlyWireField("TYPE", wire.type)
+            readOnlyWireField("VOLTAGE", wire.voltage.isEmpty ? "Not specified" : wire.voltage)
+            readOnlyWireField("MISC", wire.misc)
+            Spacer(minLength: 4)
+            ColorPicker("", selection: colorBinding)
+                .labelsHidden()
+                .help("Wire drawing color")
+            Stepper("\(wire.displayWidth, specifier: "%.1f") pt", value: displayWidthBinding, in: 1...20, step: 0.5)
+                .labelsHidden()
+                .frame(width: 96)
+            RoundedRectangle(cornerRadius: 3)
+                .fill(wire.color)
+                .frame(width: 42, height: max(2, CGFloat(wire.displayWidth)))
+            Button("Library") { showLineLibrary = true }
                 .buttonStyle(.borderedProminent)
-            }
-            Text(wire.name).font(.headline)
-            HStack(spacing: 18) {
-                readOnlyWireField("SIZE", wire.size)
-                readOnlyWireField("TYPE", wire.type)
-                readOnlyWireField("VOLTAGE", wire.voltage.isEmpty ? "Not specified" : wire.voltage)
-                readOnlyWireField("MISC", wire.misc)
-                readOnlyWireField("NET", netName(for: wire))
-            }
-            HStack(spacing: 12) {
-                Text("Drawing").font(.caption).foregroundStyle(.white.opacity(0.5))
-                RoundedRectangle(cornerRadius: 3).fill(wire.color).frame(width: 56, height: max(2, CGFloat(wire.displayWidth)))
-                Text("Color and thickness are drawing properties").font(.caption2).foregroundStyle(.white.opacity(0.45))
-            }
+                .font(.caption)
         }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func readOnlyWireField(_ title: String, _ value: String) -> some View {
