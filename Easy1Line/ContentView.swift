@@ -3155,6 +3155,10 @@ struct ContentView: View {
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
         }
+        if points.count == 4 {
+            let interior = Array(points.dropFirst().dropLast())
+            return removeRouteBacktracks(orthogonalizedPoints([startPin] + interior + [endPin], alignmentTolerance: 0))
+        }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
         return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
     }
