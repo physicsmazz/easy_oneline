@@ -232,9 +232,8 @@ struct ContentView: View {
             
             if showBackgroundImagePanel {
                 backgroundImagePanel
-                    .padding(.top, 84)
-                    .padding(.trailing, 20)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.bottom, 20)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
@@ -642,8 +641,8 @@ struct ContentView: View {
                                  y: size.height / 2 + (backgroundImagePosition.y - 5000))
                         .gesture(
                             !backgroundImageLocked ? DragGesture().onChanged { value in
-                                backgroundImagePosition.x += value.translation.width / (canvasScale * 3)
-                                backgroundImagePosition.y += value.translation.height / (canvasScale * 3)
+                                backgroundImagePosition.x += value.translation.width / 10
+                                backgroundImagePosition.y += value.translation.height / 10
                             } : nil
                         )
                 }
@@ -1886,18 +1885,13 @@ struct ContentView: View {
     }
     
     private var backgroundImagePanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("BACKGROUND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
-                Spacer()
-                Button { showBackgroundImagePanel = false } label: { Image(systemName: "xmark") }
-                    .foregroundStyle(.white.opacity(0.65))
-            }
-            
+        VStack(spacing: 8) {
             if backgroundImage != nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Width").font(.caption)
+                HStack(spacing: 12) {
+                    Text("BACKGROUND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                    
+                    HStack(spacing: 4) {
+                        Text("W").font(.caption2).foregroundStyle(.white.opacity(0.65))
                         Slider(value: $backgroundImageSize.width, in: 50...2000)
                             .onChange(of: backgroundImageSize.width) { _, newWidth in
                                 if backgroundImageConstrainProportions, let bgImage = backgroundImage {
@@ -1905,11 +1899,12 @@ struct ContentView: View {
                                     backgroundImageSize.height = newWidth * aspectRatio
                                 }
                             }
-                        Text("\(Int(backgroundImageSize.width))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
+                            .frame(maxWidth: 80)
+                        Text("\(Int(backgroundImageSize.width))").font(.caption2).monospacedDigit().foregroundStyle(.white.opacity(0.65)).frame(width: 35)
                     }
                     
-                    HStack {
-                        Text("Height").font(.caption)
+                    HStack(spacing: 4) {
+                        Text("H").font(.caption2).foregroundStyle(.white.opacity(0.65))
                         Slider(value: $backgroundImageSize.height, in: 50...2000)
                             .onChange(of: backgroundImageSize.height) { _, newHeight in
                                 if backgroundImageConstrainProportions, let bgImage = backgroundImage {
@@ -1917,42 +1912,63 @@ struct ContentView: View {
                                     backgroundImageSize.width = newHeight * aspectRatio
                                 }
                             }
-                        Text("\(Int(backgroundImageSize.height))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
+                            .frame(maxWidth: 80)
+                        Text("\(Int(backgroundImageSize.height))").font(.caption2).monospacedDigit().foregroundStyle(.white.opacity(0.65)).frame(width: 35)
                     }
                     
-                    HStack {
-                        Text("Opacity").font(.caption)
+                    HStack(spacing: 4) {
+                        Image(systemName: "circle.fill").font(.caption2)
                         Slider(value: $backgroundImageOpacity, in: 0...1)
+                            .frame(maxWidth: 60)
                     }
                     
-                    HStack {
-                        Text("Constrain Proportions").font(.caption)
-                        Spacer()
-                        Toggle("", isOn: $backgroundImageConstrainProportions)
-                    }
+                    Toggle("", isOn: $backgroundImageConstrainProportions)
+                        .scaleEffect(0.8, anchor: .center)
                     
-                    HStack {
-                        Text("Locked").font(.caption)
-                        Spacer()
-                        Toggle("", isOn: $backgroundImageLocked)
-                    }
+                    Toggle("", isOn: $backgroundImageLocked)
+                        .scaleEffect(0.8, anchor: .center)
                     
                     Button(role: .destructive) {
                         clearBackgroundImage()
                     } label: {
-                        Label("Remove image", systemImage: "trash")
+                        Image(systemName: "trash")
                     }
-                    .frame(maxWidth: .infinity)
+                    .font(.caption)
+                    
+                    Button { showBackgroundImagePanel = false } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.65))
+                    
+                    Spacer()
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             } else {
-                PhotosPicker(selection: $backgroundImagePhotoItem, matching: .images) {
-                    Label("Choose image", systemImage: "photo.stack")
+                HStack(spacing: 12) {
+                    Text("BACKGROUND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                    
+                    PhotosPicker(selection: $backgroundImagePhotoItem, matching: .images) {
+                        Label("Add image", systemImage: "photo.stack")
+                    }
+                    .font(.caption)
+                    
+                    Spacer()
+                    
+                    Button { showBackgroundImagePanel = false } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.65))
+                    
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
         }
-        .padding(14)
-        .frame(width: 280)
+        .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
