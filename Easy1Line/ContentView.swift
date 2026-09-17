@@ -81,6 +81,7 @@ struct ContentView: View {
     @State private var selectedSegmentID: UUID?
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
+    @State private var wirePinMoveTargetID: UUID?
     @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("showWireLegend") private var showWireLegend = false
     @AppStorage("showWireLengths") private var showWireLengths = true
@@ -206,6 +207,19 @@ struct ContentView: View {
 
             header
                 .zIndex(1000)
+
+            if wirePinMoveTargetID != nil {
+                Text("Select target connection")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .padding(.top, 84)
+                    .allowsHitTesting(false)
+                    .zIndex(1100)
+            }
 
             if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!), showEditBoxOnSelection || forceEditBoxTargetID == target.id {
                 targetBottomPanel(target)
@@ -1381,6 +1395,7 @@ struct ContentView: View {
     }
 
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
+        wirePinMoveTargetID = nil
         selectedTargetIDs.removeAll()
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
@@ -1435,6 +1450,7 @@ struct ContentView: View {
             let currentSlot = wire.startID == targetID ? (wire.startSlot ?? 0) : (wire.endSlot ?? 0)
             if selectedConnectionSlots[targetID] == nil {
                 selectedConnectionSlots[targetID] = currentSlot
+                wirePinMoveTargetID = targetID
                 return
             }
             guard selectedConnectionSlots[targetID] != slot,
@@ -1442,6 +1458,7 @@ struct ContentView: View {
             if wire.startID == targetID { document.segments[index].startSlot = slot } else { document.segments[index].endSlot = slot }
             document.segments[index].routePoints.removeAll()
             selectedConnectionSlots[targetID] = slot
+            wirePinMoveTargetID = nil
             return
         }
         selectedSegmentID = nil
