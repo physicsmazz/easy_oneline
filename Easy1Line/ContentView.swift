@@ -105,6 +105,9 @@ struct ContentView: View {
     @State private var showCloudLibrary = false
     @State private var cloudDrawings: [CloudDrawingChoice] = []
     @State private var showLineLibrary = false
+    @State private var showColorLibrary = false
+    @State private var showVisualizationsPanel = false
+    @State private var showLabelsPanel = false
     @State private var showLineDefinitionEditor = false
     @State private var editingLineDefinitionID: UUID?
     @State private var lineDefinitionNameDraft = ""
@@ -112,8 +115,11 @@ struct ContentView: View {
     @State private var lineDefinitionTypeDraft = ""
     @State private var lineDefinitionMiscDraft = ""
     @State private var lineDefinitionDescriptionDraft = ""
-    @State private var lineDefinitionColorMeaningDraft = ""
     @State private var lineDefinitionColorHexDraft = "31D7E8"
+    @State private var colorLegendMeaningDraft = ""
+    @State private var colorLegendHexDraft = "31D7E8"
+    @State private var editingColorLegendID: UUID?
+    @State private var showColorLegendEditor = false
     @State private var lineDefinitionUsesCustomSize = false
     @State private var lineDefinitionUsesCustomType = false
     @State private var lineLibrarySearch = ""
@@ -261,6 +267,12 @@ struct ContentView: View {
 
             if showLineLibrary {
                 lineLibraryPanel
+                    .padding(.top, 84)
+                    .padding(.leading, 205)
+            }
+
+            if showColorLibrary {
+                colorLibraryPanel
                     .padding(.top, 84)
                     .padding(.leading, 205)
             }
@@ -471,6 +483,7 @@ struct ContentView: View {
 
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
+                Button("Colors") { showColorLibrary.toggle() }
                 Button("Targets") { showTargetLibrary.toggle() }
                 Button("Sync target library") { Task { await syncLibraries() } }
             }
@@ -486,59 +499,15 @@ struct ContentView: View {
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("Schematic tools")
 
-            Menu("Visualizations") {
-                Button { wireBridgesEnabled.toggle() } label: {
-                    Label("Wire bridges: \(wireBridgesEnabled ? "On" : "Off")", systemImage: wireBridgesEnabled ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showConnectionNames.toggle() } label: {
-                    Label("Connection names: \(showConnectionNames ? "On" : "Off")", systemImage: showConnectionNames ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireLegend.toggle() } label: {
-                    Label("Wire color legend: \(showWireLegend ? "On" : "Off")", systemImage: showWireLegend ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showEditBoxOnSelection.toggle() } label: {
-                    Label("Show edit box: \(showEditBoxOnSelection ? "On" : "Off")", systemImage: showEditBoxOnSelection ? "checkmark.circle.fill" : "circle")
-                }
-                Divider()
-                Button("Clear all") {
-                    wireBridgesEnabled = false
-                    showConnectionNames = false
-                }
-            }
+            Button("Visualizations") { showVisualizationsPanel.toggle() }
             .buttonStyle(EditorButtonStyle(isActive: snapToGrid || wireBridgesEnabled || showConnectionNames || showWireLegend))
             .accessibilityLabel("Toggle canvas visualizations")
+            .popover(isPresented: $showVisualizationsPanel) { visualizationsPanel }
 
-            Menu("Labels") {
-                Button { showWireNames.toggle() } label: {
-                    Label("Wire names: \(showWireNames ? "On" : "Off")", systemImage: showWireNames ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireLengths.toggle() } label: {
-                    Label("Lengths: \(showWireLengths ? "On" : "Off")", systemImage: showWireLengths ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireSizes.toggle() } label: {
-                    Label("Wire sizes: \(showWireSizes ? "On" : "Off")", systemImage: showWireSizes ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireMaterials.toggle() } label: {
-                    Label("Materials: \(showWireMaterials ? "On" : "Off")", systemImage: showWireMaterials ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireCoverings.toggle() } label: {
-                    Label("Coverings: \(showWireCoverings ? "On" : "Off")", systemImage: showWireCoverings ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showWireNetNames.toggle() } label: {
-                    Label("Net names: \(showWireNetNames ? "On" : "Off")", systemImage: showWireNetNames ? "checkmark.circle.fill" : "circle")
-                }
-                Divider()
-                Button("Clear all") {
-                    showWireNames = false
-                    showWireLengths = false
-                    showWireSizes = false
-                    showWireMaterials = false
-                    showWireCoverings = false
-                    showWireNetNames = false
-                }
-            }
+            Button("Labels") { showLabelsPanel.toggle() }
             .buttonStyle(EditorButtonStyle(isActive: showWireLabels))
             .accessibilityLabel("Configure wire labels")
+            .popover(isPresented: $showLabelsPanel) { labelsPanel }
 
             Menu("Settings") {
                 Button { snapToGrid.toggle() } label: {
@@ -1550,7 +1519,7 @@ struct ContentView: View {
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
-        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, colorMeaning: line.colorMeaning, size: line.wireSize, type: line.wireType, misc: line.misc, displayWidth: 3, description: line.description))
+        document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.wireType, misc: line.misc, displayWidth: 3, description: line.description))
         return true
     }
 
@@ -2151,7 +2120,7 @@ struct ContentView: View {
     }
 
     private var wireLegendPanel: some View {
-        let entries = Array(Set(document.segments.filter { !$0.colorMeaning.isEmpty }.map { "\($0.colorHex)|\($0.colorMeaning)" })).sorted()
+        let entries = document.colorLegend.sorted { $0.meaning.localizedCaseInsensitiveCompare($1.meaning) == .orderedAscending }
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("WIRE LEGEND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
@@ -2163,11 +2132,10 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.5))
             } else {
-                ForEach(entries, id: \.self) { entry in
-                    let parts = entry.split(separator: "|", maxSplits: 1).map(String.init)
+                ForEach(entries) { entry in
                     HStack(spacing: 10) {
-                        Circle().fill(Color(hex: parts.first ?? "31D7E8")).frame(width: 16, height: 16)
-                        Text(parts.count > 1 ? parts[1] : "-").font(.caption.weight(.semibold))
+                        Circle().fill(Color(hex: entry.colorHex)).frame(width: 16, height: 16)
+                        Text(entry.meaning).font(.caption.weight(.semibold))
                         Spacer()
                     }
                 }
@@ -2176,6 +2144,88 @@ struct ContentView: View {
         .padding(12)
         .frame(width: 250)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var visualizationsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("VISUALIZATIONS").inspectorLabel()
+            Toggle("Wire bridges", isOn: $wireBridgesEnabled).toggleStyle(.switch)
+            Toggle("Connection names", isOn: $showConnectionNames).toggleStyle(.switch)
+            Toggle("Wire color legend", isOn: $showWireLegend).toggleStyle(.switch)
+            Toggle("Show edit box", isOn: $showEditBoxOnSelection).toggleStyle(.switch)
+            Button("Clear visualization settings") {
+                wireBridgesEnabled = false
+                showConnectionNames = false
+                showWireLegend = false
+                showEditBoxOnSelection = false
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .frame(width: 260)
+    }
+
+    private var labelsPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("LABELS").inspectorLabel()
+            Toggle("Wire names", isOn: $showWireNames).toggleStyle(.switch)
+            Toggle("Lengths", isOn: $showWireLengths).toggleStyle(.switch)
+            Toggle("Wire sizes", isOn: $showWireSizes).toggleStyle(.switch)
+            Toggle("Materials", isOn: $showWireMaterials).toggleStyle(.switch)
+            Toggle("Coverings", isOn: $showWireCoverings).toggleStyle(.switch)
+            Toggle("Net names", isOn: $showWireNetNames).toggleStyle(.switch)
+            Button("Clear label settings") {
+                showWireNames = false
+                showWireLengths = false
+                showWireSizes = false
+                showWireMaterials = false
+                showWireCoverings = false
+                showWireNetNames = false
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(14)
+        .frame(width: 260)
+    }
+
+    private var colorLibraryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("COLOR LEGEND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { beginNewColorLegendEntry() } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
+                Button { showColorLibrary = false } label: { Image(systemName: "xmark") }.foregroundStyle(.white.opacity(0.65))
+            }
+            ForEach(document.colorLegend) { entry in
+                HStack {
+                    Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
+                    Text(entry.meaning).font(.caption.weight(.semibold))
+                    Spacer()
+                    Button { beginEditColorLegendEntry(entry) } label: { Image(systemName: "pencil") }.buttonStyle(.plain)
+                }
+                .padding(8)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+            }
+            if document.colorLegend.isEmpty { Text("No color meanings yet.").font(.caption).foregroundStyle(.white.opacity(0.5)) }
+        }
+        .padding(12)
+        .frame(width: 280)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .sheet(isPresented: $showColorLegendEditor) { colorLegendEditor }
+    }
+
+    private var colorLegendEditor: some View {
+        NavigationStack {
+            Form {
+                ColorPicker("Color", selection: Binding(get: { Color(hex: colorLegendHexDraft) }, set: { colorLegendHexDraft = $0.hexString }))
+                TextField("Meaning (for example, 120 V)", text: $colorLegendMeaningDraft)
+            }
+            .navigationTitle(editingColorLegendID == nil ? "New Color Meaning" : "Edit Color Meaning")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showColorLegendEditor = false } }
+                ToolbarItem(placement: .confirmationAction) { Button("Save") { saveColorLegendEntry() }.disabled(colorLegendMeaningDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+            }
+        }
     }
 
     private var netlistPanel: some View {
@@ -2248,7 +2298,6 @@ struct ContentView: View {
                         get: { Color(hex: lineDefinitionColorHexDraft) },
                         set: { lineDefinitionColorHexDraft = $0.hexString }
                     ))
-                    TextField("Color meaning", text: $lineDefinitionColorMeaningDraft)
                     TextField("Description", text: $lineDefinitionDescriptionDraft)
                 }
             }
@@ -3938,7 +3987,6 @@ struct ContentView: View {
         guard let index = document.segments.firstIndex(where: { $0.id == segmentID }) else { return }
         document.segments[index].name = line.name
         document.segments[index].colorHex = line.colorHex
-        document.segments[index].colorMeaning = line.colorMeaning
         document.segments[index].size = line.wireSize
         document.segments[index].type = line.wireType
         document.segments[index].misc = line.misc
@@ -3959,7 +4007,6 @@ struct ContentView: View {
         lineDefinitionSizeDraft = lineDefinitionSizeOptions.first ?? ""
         lineDefinitionTypeDraft = lineDefinitionTypeOptions.first ?? ""
         lineDefinitionMiscDraft = ""
-        lineDefinitionColorMeaningDraft = ""
         lineDefinitionColorHexDraft = "31D7E8"
         lineDefinitionDescriptionDraft = ""
         showLineDefinitionEditor = true
@@ -3973,7 +4020,6 @@ struct ContentView: View {
         lineDefinitionSizeDraft = line.wireSize
         lineDefinitionTypeDraft = line.wireType
         lineDefinitionMiscDraft = line.misc
-        lineDefinitionColorMeaningDraft = line.colorMeaning
         lineDefinitionColorHexDraft = line.colorHex
         lineDefinitionDescriptionDraft = line.description
         showLineDefinitionEditor = true
@@ -3985,7 +4031,6 @@ struct ContentView: View {
             id: editingLineDefinitionID ?? UUID(),
             name: lineDefinitionNameDraft.trimmingCharacters(in: .whitespacesAndNewlines),
             colorHex: lineDefinitionColorHexDraft,
-            colorMeaning: lineDefinitionColorMeaningDraft,
             wireSize: lineDefinitionSizeDraft,
             wireType: lineDefinitionTypeDraft,
             material: material,
@@ -3998,6 +4043,30 @@ struct ContentView: View {
             document.lineDefinitions.append(definition)
         }
         showLineDefinitionEditor = false
+    }
+
+    private func beginNewColorLegendEntry() {
+        editingColorLegendID = nil
+        colorLegendHexDraft = "31D7E8"
+        colorLegendMeaningDraft = ""
+        showColorLegendEditor = true
+    }
+
+    private func beginEditColorLegendEntry(_ entry: ColorLegendEntry) {
+        editingColorLegendID = entry.id
+        colorLegendHexDraft = entry.colorHex
+        colorLegendMeaningDraft = entry.meaning
+        showColorLegendEditor = true
+    }
+
+    private func saveColorLegendEntry() {
+        let entry = ColorLegendEntry(id: editingColorLegendID ?? UUID(), colorHex: colorLegendHexDraft, meaning: colorLegendMeaningDraft.trimmingCharacters(in: .whitespacesAndNewlines))
+        if let editingColorLegendID, let index = document.colorLegend.firstIndex(where: { $0.id == editingColorLegendID }) {
+            document.colorLegend[index] = entry
+        } else {
+            document.colorLegend.append(entry)
+        }
+        showColorLegendEditor = false
     }
 }
 
@@ -4033,12 +4102,30 @@ private struct ActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
+private struct ColorLegendEntry: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var colorHex: String
+    var meaning: String
+
+    init(id: UUID = UUID(), colorHex: String, meaning: String) {
+        self.id = id
+        self.colorHex = colorHex
+        self.meaning = meaning
+    }
+
+    static let defaults: [ColorLegendEntry] = [
+        ColorLegendEntry(colorHex: "D98B5F", meaning: "120 V"),
+        ColorLegendEntry(colorHex: "818CF8", meaning: "240 V")
+    ]
+}
+
 private struct SchematicDocument: Identifiable, Codable, Equatable {
     var id = UUID()
     var name: String
     var targets: [SchematicTarget] = []
     var segments: [SchematicSegment] = []
     var lineDefinitions: [LineDefinition] = LineDefinition.defaults
+    var colorLegend: [ColorLegendEntry] = ColorLegendEntry.defaults
     var targetDefinitions: [TargetDefinition] = []
     var backgroundImageBase64: String? = nil
     var backgroundImageSize: CGSize = CGSize(width: 200, height: 200)
@@ -4062,6 +4149,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         let savedLineDefinitions = try container.decodeIfPresent([LineDefinition].self, forKey: .lineDefinitions) ?? []
         let isLegacyBulkCatalog = savedLineDefinitions.count > 20 && savedLineDefinitions.allSatisfy { $0.description.contains("Common") || $0.name.contains(" ") }
         lineDefinitions = savedLineDefinitions.isEmpty || isLegacyBulkCatalog ? LineDefinition.defaults : savedLineDefinitions
+        colorLegend = try container.decodeIfPresent([ColorLegendEntry].self, forKey: .colorLegend) ?? ColorLegendEntry.defaults
         let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
         backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
