@@ -102,7 +102,6 @@ struct ContentView: View {
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
-    @AppStorage("showSelectionBoxNearItem") private var showSelectionBoxNearItem = true
     @AppStorage("showEditBoxOnSelection") private var showEditBoxOnSelection = true
     @State private var forceEditBoxTargetID: UUID?
     private let linePadding: CGFloat = 16
@@ -137,6 +136,7 @@ struct ContentView: View {
     @State private var connectionDragStartAngles: [String: Double] = [:]
     @State private var editingConnectionPoints = false
     @State private var cloudStatus = ""
+    @State private var errorLog = LocalErrorLog.load()
     @State private var saveNameDraft = ""
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
@@ -155,8 +155,11 @@ struct ContentView: View {
     @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
-    @State private var selectionBoxOffset = CGSize.zero
-    @State private var selectionBoxDragStart: CGSize?
+    @AppStorage("selectionToolbarOffsetX") private var selectionToolbarOffsetX: Double = 0
+    @AppStorage("selectionToolbarOffsetY") private var selectionToolbarOffsetY: Double = 0
+    @AppStorage("targetToolbarOffsetX") private var targetToolbarOffsetX: Double = 0
+    @AppStorage("targetToolbarOffsetY") private var targetToolbarOffsetY: Double = 0
+    @State private var toolbarDragStartOffset: CGSize?
     @State private var showDeleteWarning = false
     @State private var deleteWarningSourceFrame: CGRect = .zero
     @State private var wirePlacementMode: WirePlacementMode?
@@ -243,22 +246,8 @@ struct ContentView: View {
                     .padding(.bottom, 6)
                     .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            }
-
-            if showSelectionBoxNearItem, let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
-                selectionBox
-                    .position(selectionBoxPosition(near: selectionAnchor))
-                    .offset(selectionBoxOffset)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 4)
-                            .onChanged { value in
-                                if selectionBoxDragStart == nil { selectionBoxDragStart = selectionBoxOffset }
-                                let start = selectionBoxDragStart ?? selectionBoxOffset
-                                selectionBoxOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
-                            }
-                            .onEnded { _ in selectionBoxDragStart = nil }
-                    )
-                    .zIndex(900)
+                    .offset(x: targetToolbarOffsetX, y: targetToolbarOffsetY)
+                    .gesture(toolbarDragGesture(isTarget: true))
             }
 
             if showLibrary {
@@ -519,6 +508,10 @@ struct ContentView: View {
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
+                Button("Clear status") { cloudStatus = "" }
+                ShareLink(item: LocalErrorLog.text(errorLog), subject: Text("Easy1Line error log"), message: Text("Easy1Line diagnostics")) {
+                    Label("Share error log", systemImage: "square.and.arrow.up")
+                }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -553,9 +546,6 @@ struct ContentView: View {
             Menu("Settings") {
                 Button { snapToGrid.toggle() } label: {
                     Label("Snap to grid: \(snapToGrid ? "On" : "Off")", systemImage: snapToGrid ? "checkmark.circle.fill" : "circle")
-                }
-                Button { showSelectionBoxNearItem.toggle() } label: {
-                    Label("Selection popup near item: \(showSelectionBoxNearItem ? "On" : "Off")", systemImage: showSelectionBoxNearItem ? "checkmark.circle.fill" : "circle")
                 }
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
@@ -1049,9 +1039,9 @@ struct ContentView: View {
         })
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 8) {
-                if !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty {
-                    selectionBox
-                }
+                selectionBox
+                    .offset(x: selectionToolbarOffsetX, y: selectionToolbarOffsetY)
+                    .gesture(toolbarDragGesture(isTarget: false))
                 zoomControls
             }
             .padding(.top, 88)
@@ -1845,7 +1835,6 @@ struct ContentView: View {
         canvasOffset = .zero
         canvasScale = 1
         canvasRotation = .zero
-        selectionBoxOffset = .zero
     }
 
     private func saveCurrent() {
@@ -1903,7 +1892,7 @@ struct ContentView: View {
             try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
             cloudStatus = "Saved to cloud"
         } catch {
-            cloudStatus = "Cloud save failed: \(cloudErrorText(error))"
+            recordError("Cloud save failed: \(cloudErrorText(error))")
         }
     }
 
@@ -1921,7 +1910,7 @@ struct ContentView: View {
                 return
             }
         } catch {
-            cloudStatus = "Cloud list failed: \(cloudErrorText(error))"
+            recordError("Cloud list failed: \(cloudErrorText(error))")
         }
     }
 
@@ -1991,7 +1980,7 @@ struct ContentView: View {
             }
             cloudStatus = "Shared libraries synced"
         } catch {
-            cloudStatus = "Library sync failed: \(cloudErrorText(error))"
+            recordError("Library sync failed: \(cloudErrorText(error))")
         }
     }
 
@@ -2003,7 +1992,7 @@ struct ContentView: View {
             wireTypeOptions = try await store.loadWireTypes()
             wireMiscOptions = try await store.loadWireMiscOptions()
         } catch {
-            print("Failed to load wire library: \(error)")
+            recordError("Failed to load wire library: \(error.localizedDescription)")
         }
     }
 
@@ -2031,7 +2020,7 @@ struct ContentView: View {
             showWireLibraryPanel = false
             cloudStatus = "Wire library entry created"
         } catch {
-            cloudStatus = "Failed to create wire library entry: \(error.localizedDescription)"
+            recordError("Failed to create wire library entry: \(error.localizedDescription)")
         }
     }
 
@@ -2040,6 +2029,13 @@ struct ContentView: View {
             return "HTTP \(code) \(body.prefix(120))"
         }
         return error.localizedDescription
+    }
+
+    private func recordError(_ message: String) {
+        cloudStatus = message
+        errorLog.append(LocalErrorEntry(date: Date(), message: message))
+        if errorLog.count > 100 { errorLog.removeFirst(errorLog.count - 100) }
+        LocalErrorLog.save(errorLog)
     }
 
     private func newSchematic() {
@@ -2866,6 +2862,9 @@ struct ContentView: View {
     }
 
     private var selectionBoxSize: CGSize {
+        if selectedTargetIDs.isEmpty && selectedSegmentIDs.isEmpty {
+            return CGSize(width: 132, height: 44)
+        }
         if selectedTargetIDs.isEmpty && selectedSegmentIDs.count == 1 {
             return CGSize(width: 360, height: 44)
         }
@@ -2884,11 +2883,12 @@ struct ContentView: View {
 
     private var selectionBox: some View {
         HStack(spacing: 8) {
-            Text("\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count)")
+            Text(selectedTargetIDs.isEmpty && selectedSegmentIDs.isEmpty ? "NOTHING\nSELECTED" : "\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count)")
                 .font(.system(size: 12, weight: .bold, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
-                .frame(width: 16)
-                .accessibilityLabel("\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count) selected")
+                .multilineTextAlignment(.center)
+                .frame(width: selectedTargetIDs.isEmpty && selectedSegmentIDs.isEmpty ? 108 : 16)
+                .accessibilityLabel(selectedTargetIDs.isEmpty && selectedSegmentIDs.isEmpty ? "Nothing selected" : "\(selectedTargetIDs.isEmpty ? selectedSegmentIDs.count : selectedTargetIDs.count) selected")
             if !selectedTargetIDs.isEmpty {
                 Button { connectSelectedTargets() } label: { Image(systemName: "link") }
                     .buttonStyle(EditorButtonStyle())
@@ -2951,12 +2951,14 @@ struct ContentView: View {
                     .help(target.locked ? "Unlock selected item" : "Lock selected item")
                     .accessibilityLabel(target.locked ? "Unlock selected item" : "Lock selected item")
             }
-            Button(role: .destructive) {
-                showDeleteWarning = true
-            } label: { Image(systemName: "trash") }
-                .buttonStyle(EditorButtonStyle())
-                .help("Delete selected items")
-                .accessibilityLabel("Delete selected items")
+            if !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty {
+                Button(role: .destructive) {
+                    showDeleteWarning = true
+                } label: { Image(systemName: "trash") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Delete selected items")
+                    .accessibilityLabel("Delete selected items")
+            }
         }
         .padding(6)
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
@@ -2997,19 +2999,31 @@ struct ContentView: View {
         return CGPoint(x: rotated.x + viewportCenter.x + canvasOffset.width, y: rotated.y + viewportCenter.y + canvasOffset.height)
     }
 
-    private func selectionBoxPosition(near canvasPoint: CGPoint) -> CGPoint {
-        let anchor = screenPoint(forCanvas: canvasPoint)
-        let halfWidth = selectionBoxSize.width / 2, halfHeight = selectionBoxSize.height / 2
-        let proposed = CGPoint(x: anchor.x + 70 * canvasScale + halfWidth, y: anchor.y + 60 * canvasScale + halfHeight)
-        let minY = 84 + halfHeight + 8
-        return CGPoint(
-            x: min(max(proposed.x, halfWidth + 8), max(halfWidth + 8, editorSize.width - halfWidth - 8)),
-            y: min(max(proposed.y, minY), max(minY, editorSize.height - halfHeight - 8))
-        )
-    }
-
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
+
+    private func toolbarDragGesture(isTarget: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if toolbarDragStartOffset == nil {
+                    toolbarDragStartOffset = CGSize(
+                        width: isTarget ? targetToolbarOffsetX : selectionToolbarOffsetX,
+                        height: isTarget ? targetToolbarOffsetY : selectionToolbarOffsetY
+                    )
+                }
+                let start = toolbarDragStartOffset ?? .zero
+                let offset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                if isTarget {
+                    targetToolbarOffsetX = offset.width
+                    targetToolbarOffsetY = offset.height
+                } else {
+                    selectionToolbarOffsetX = offset.width
+                    selectionToolbarOffsetY = offset.height
+                }
+            }
+            .onEnded { _ in toolbarDragStartOffset = nil }
+    }
+
     private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
 
     private func connectionNameBinding(_ target: SchematicTarget, slot: Int) -> Binding<String> {
@@ -4252,6 +4266,32 @@ private struct CloudDrawingChoice: Identifiable {
     let id: UUID
     let name: String
     let data: Data
+}
+
+private struct LocalErrorEntry: Codable {
+    let date: Date
+    let message: String
+}
+
+private enum LocalErrorLog {
+    private static let key = "easy1line.errorLog"
+
+    static func load() -> [LocalErrorEntry] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let entries = try? JSONDecoder().decode([LocalErrorEntry].self, from: data) else { return [] }
+        return entries
+    }
+
+    static func save(_ entries: [LocalErrorEntry]) {
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    static func text(_ entries: [LocalErrorEntry]) -> String {
+        guard !entries.isEmpty else { return "Easy1Line error log is empty." }
+        let formatter = ISO8601DateFormatter()
+        return entries.map { "[\(formatter.string(from: $0.date))] \($0.message)" }.joined(separator: "\n")
+    }
 }
 
 private enum WirePlacementMode {
