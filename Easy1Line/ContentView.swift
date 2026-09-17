@@ -380,6 +380,7 @@ struct ContentView: View {
             do {
                 let url = try result.get()
                 document = try SchematicFileDocument.load(from: url).document
+                autoZoomAfterLoad()
                 cloudStatus = "Imported schematic"
             } catch {
                 let errorMsg = error.localizedDescription
@@ -1715,10 +1716,17 @@ struct ContentView: View {
     private func loadCloudDrawing(_ drawing: CloudDrawingChoice) {
         do {
             document = try JSONDecoder().decode(SchematicDocument.self, from: drawing.data)
+            autoZoomAfterLoad()
             showCloudLibrary = false
             cloudStatus = "Loaded from cloud: \(drawing.name)"
         } catch {
             cloudStatus = "Cloud drawing invalid: \(error.localizedDescription)"
+        }
+    }
+
+    private func autoZoomAfterLoad() {
+        DispatchQueue.main.async {
+            zoomToExtents()
         }
     }
 
@@ -1821,6 +1829,7 @@ struct ContentView: View {
 
     private func load(_ saved: SchematicDocument) {
         document = saved
+        autoZoomAfterLoad()
         selectedTargetIDs.removeAll()
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
