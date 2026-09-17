@@ -104,7 +104,7 @@ struct SupabaseDrawingStore {
     }
 
     func loadWireLibrary() async throws -> [SupabaseWireLibraryRecord] {
-        var request = URLRequest(url: endpoint("/rest/v1/wire_library?select=id,size,type,misc,description&order=size.asc,type.asc,misc.asc"))
+        var request = URLRequest(url: endpoint("/rest/v1/wire_library?select=id,size_id,type_id,misc_id,description,wire_sizes(size_value),wire_types(type_name,color_hex),wire_misc(misc_value)&order=id.asc"))
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -112,13 +112,13 @@ struct SupabaseDrawingStore {
         return try JSONDecoder().decode([SupabaseWireLibraryRecord].self, from: data)
     }
 
-    func createWireLibraryEntry(size: String, type: String, misc: String, description: String = "") async throws -> SupabaseWireLibraryRecord {
+    func createWireLibraryEntry(sizeID: Int, typeID: Int, miscID: Int, description: String = "") async throws -> SupabaseWireLibraryRecord {
         var request = URLRequest(url: endpoint("/rest/v1/wire_library"))
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "size": size,
-            "type": type,
-            "misc": misc,
+            "size_id": sizeID,
+            "type_id": typeID,
+            "misc_id": miscID,
             "description": description
         ])
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
@@ -221,10 +221,43 @@ struct SupabaseWireMiscRecord: Codable, Identifiable {
 
 struct SupabaseWireLibraryRecord: Codable, Identifiable {
     let id: Int
-    let size: String
-    let type: String
-    let misc: String
+    let sizeID: Int
+    let typeID: Int
+    let miscID: Int
     let description: String
+    let wireSizes: [SizeDetail]?
+    let wireTypes: [TypeDetail]?
+    let wireMisc: [MiscDetail]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, description
+        case sizeID = "size_id"
+        case typeID = "type_id"
+        case miscID = "misc_id"
+        case wireSizes = "wire_sizes"
+        case wireTypes = "wire_types"
+        case wireMisc = "wire_misc"
+    }
+    
+    struct SizeDetail: Codable {
+        let sizeValue: String
+        enum CodingKeys: String, CodingKey { case sizeValue = "size_value" }
+    }
+    
+    struct TypeDetail: Codable {
+        let typeName: String
+        let colorHex: String
+        enum CodingKeys: String, CodingKey { case typeName = "type_name", colorHex = "color_hex" }
+    }
+    
+    struct MiscDetail: Codable {
+        let miscValue: String
+        enum CodingKeys: String, CodingKey { case miscValue = "misc_value" }
+    }
+    
+    var size: String { wireSizes?.first?.sizeValue ?? "Unknown" }
+    var type: String { wireTypes?.first?.typeName ?? "Unknown" }
+    var misc: String { wireMisc?.first?.miscValue ?? "Unknown" }
 }
 
 enum JSONValue: Codable {

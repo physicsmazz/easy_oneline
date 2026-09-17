@@ -197,3 +197,115 @@ create policy "anonymous can delete drawings" on public.drawings for delete usin
 
 -- Create an image bucket in the Supabase dashboard named target-icons.
 -- Image paths should be stored in drawing data, not embedded as base64 long-term.
+
+-- Wire catalog: normalized wire sizes, types, and misc items
+create table if not exists public.wire_sizes (
+    id serial primary key,
+    size_value text not null unique,
+    description text not null default '',
+    created_at timestamptz not null default now()
+);
+
+insert into public.wire_sizes (size_value, description)
+select * from (values
+    ('14 AWG', 'American Wire Gauge 14'),
+    ('12 AWG', 'American Wire Gauge 12'),
+    ('10 AWG', 'American Wire Gauge 10'),
+    ('8 AWG', 'American Wire Gauge 8'),
+    ('6 AWG', 'American Wire Gauge 6'),
+    ('4 AWG', 'American Wire Gauge 4'),
+    ('2 AWG', 'American Wire Gauge 2'),
+    ('1/0', 'One-aught'),
+    ('2/0', 'Two-aught'),
+    ('3/0', 'Three-aught'),
+    ('4/0', 'Four-aught'),
+    ('250', '250 kcmil'),
+    ('300', '300 kcmil'),
+    ('336', '336 kcmil'),
+    ('350', '350 kcmil'),
+    ('500', '500 kcmil'),
+    ('600', '600 kcmil'),
+    ('750', '750 kcmil'),
+    ('1000', '1000 kcmil')
+) as sizes(size_value, description)
+on conflict (size_value) do nothing;
+
+create table if not exists public.wire_types (
+    id serial primary key,
+    type_name text not null unique,
+    color_hex text not null default '31D7E8',
+    description text not null default '',
+    created_at timestamptz not null default now()
+);
+
+insert into public.wire_types (type_name, color_hex, description)
+select * from (values
+    ('Copper', 'B87333', 'Solid or stranded copper conductor'),
+    ('ACSR', 'A9A9A9', 'Aluminum Conductor Steel Reinforced'),
+    ('AAC', 'C0C0C0', 'All Aluminum Conductor'),
+    ('AAAC', 'E8E8E8', 'All Aluminum Alloy Conductor'),
+    ('Aluminum', 'E8E8E8', 'Aluminum conductor'),
+    ('CU', 'B87333', 'Copper'),
+    ('AL', 'C0C0C0', 'Aluminum')
+) as types(type_name, color_hex, description)
+on conflict (type_name) do nothing;
+
+create table if not exists public.wire_misc (
+    id serial primary key,
+    misc_value text not null unique,
+    description text not null default '',
+    category text not null default 'insulation',
+    created_at timestamptz not null default now()
+);
+
+insert into public.wire_misc (misc_value, category, description)
+select * from (values
+    ('BARE', 'insulation', 'Bare, uninsulated'),
+    ('INSULATED', 'insulation', 'Insulated'),
+    ('POLYETHYLENE', 'insulation', 'Polyethylene insulation'),
+    ('RUBBER', 'insulation', 'Rubber insulation'),
+    ('PTFE', 'insulation', 'PTFE insulation'),
+    ('PVC', 'insulation', 'Polyvinyl chloride insulation'),
+    ('EPR', 'insulation', 'Ethylene propylene rubber'),
+    ('Prysmyan', 'manufacturer', 'Prysmyan cable manufacturer'),
+    ('Southwire', 'manufacturer', 'Southwire cable manufacturer'),
+    ('Nexans', 'manufacturer', 'Nexans cable manufacturer'),
+    ('General Cable', 'manufacturer', 'General Cable manufacturer'),
+    ('Corning', 'manufacturer', 'Corning cable manufacturer')
+) as misc_items(misc_value, category, description)
+on conflict (misc_value) do nothing;
+
+-- Wire library: combination of size, type, and misc for standard wire configurations
+create table if not exists public.wire_library (
+    id serial primary key,
+    size_id integer not null references public.wire_sizes(id) on delete restrict,
+    type_id integer not null references public.wire_types(id) on delete restrict,
+    misc_id integer not null references public.wire_misc(id) on delete restrict,
+    description text not null default '',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique(size_id, type_id, misc_id)
+);
+
+-- Add RLS policies for wire catalog tables
+alter table public.wire_sizes enable row level security;
+alter table public.wire_types enable row level security;
+alter table public.wire_misc enable row level security;
+alter table public.wire_library enable row level security;
+
+drop policy if exists "anonymous can read wire sizes" on public.wire_sizes;
+drop policy if exists "anonymous can read wire types" on public.wire_types;
+drop policy if exists "anonymous can read wire misc" on public.wire_misc;
+drop policy if exists "anonymous can read wire library" on public.wire_library;
+drop policy if exists "anonymous can manage wire library" on public.wire_library;
+
+create policy "anonymous can read wire sizes" on public.wire_sizes for select using (true);
+create policy "anonymous can read wire types" on public.wire_types for select using (true);
+create policy "anonymous can read wire misc" on public.wire_misc for select using (true);
+create policy "anonymous can read wire library" on public.wire_library for select using (true);
+create policy "anonymous can manage wire library" on public.wire_library for all using (true) with check (true);
+
+-- Indexes for better query performance
+create index if not exists wire_library_size_id_idx on public.wire_library(size_id);
+create index if not exists wire_library_type_id_idx on public.wire_library(type_id);
+create index if not exists wire_library_misc_id_idx on public.wire_library(misc_id);

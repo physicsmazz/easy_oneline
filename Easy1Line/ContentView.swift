@@ -124,6 +124,9 @@ struct ContentView: View {
     @State private var newWireLibraryType = ""
     @State private var newWireLibraryMisc = ""
     @State private var newWireLibraryDescription = ""
+    @State private var newWireLibrarySizeID: Int?
+    @State private var newWireLibraryTypeID: Int?
+    @State private var newWireLibraryMiscID: Int?
     @State private var selectedWireLibraryID: Int?
     @State private var wireLibraryAction: String? // "change", "changeAll", or nil for discard
     @State private var wireSizeOptions: [SupabaseWireSizeRecord] = []
@@ -1440,18 +1443,21 @@ struct ContentView: View {
     }
 
     private func createWireLibraryEntry() async {
-        guard let store = SupabaseDrawingStore() else { return }
+        guard let store = SupabaseDrawingStore(),
+              let sizeID = newWireLibrarySizeID,
+              let typeID = newWireLibraryTypeID,
+              let miscID = newWireLibraryMiscID else { return }
         do {
             let newEntry = try await store.createWireLibraryEntry(
-                size: newWireLibrarySize,
-                type: newWireLibraryType,
-                misc: newWireLibraryMisc,
+                sizeID: sizeID,
+                typeID: typeID,
+                miscID: miscID,
                 description: newWireLibraryDescription
             )
             wireLibraryEntries.append(newEntry)
-            newWireLibrarySize = ""
-            newWireLibraryType = ""
-            newWireLibraryMisc = ""
+            newWireLibrarySizeID = nil
+            newWireLibraryTypeID = nil
+            newWireLibraryMiscID = nil
             newWireLibraryDescription = ""
             showWireLibraryPanel = false
             cloudStatus = "Wire library entry created"
@@ -1741,10 +1747,10 @@ struct ContentView: View {
                 // Size Picker
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Size").font(.caption.weight(.semibold))
-                    Picker("", selection: $newWireLibrarySize) {
-                        Text("Select size").tag("")
+                    Picker("", selection: $newWireLibrarySizeID) {
+                        Text("Select size").tag(nil as Int?)
                         ForEach(wireSizeOptions) { size in
-                            Text(size.sizeValue).tag(size.sizeValue)
+                            Text(size.sizeValue).tag(size.id as Int?)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -1753,10 +1759,10 @@ struct ContentView: View {
                 // Type Picker
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Type").font(.caption.weight(.semibold))
-                    Picker("", selection: $newWireLibraryType) {
-                        Text("Select type").tag("")
+                    Picker("", selection: $newWireLibraryTypeID) {
+                        Text("Select type").tag(nil as Int?)
                         ForEach(wireTypeOptions) { type in
-                            Text(type.typeName).tag(type.typeName)
+                            Text(type.typeName).tag(type.id as Int?)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -1765,10 +1771,10 @@ struct ContentView: View {
                 // Misc Picker
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Misc").font(.caption.weight(.semibold))
-                    Picker("", selection: $newWireLibraryMisc) {
-                        Text("Select misc").tag("")
+                    Picker("", selection: $newWireLibraryMiscID) {
+                        Text("Select misc").tag(nil as Int?)
                         ForEach(wireMiscOptions) { misc in
-                            Text(misc.miscValue).tag(misc.miscValue)
+                            Text(misc.miscValue).tag(misc.id as Int?)
                         }
                     }
                     .frame(maxWidth: .infinity)
@@ -1786,9 +1792,9 @@ struct ContentView: View {
                 // Create Button
                 HStack(spacing: 12) {
                     Button(action: {
-                        newWireLibrarySize = ""
-                        newWireLibraryType = ""
-                        newWireLibraryMisc = ""
+                        newWireLibrarySizeID = nil
+                        newWireLibraryTypeID = nil
+                        newWireLibraryMiscID = nil
                         newWireLibraryDescription = ""
                         showWireLibraryPanel = false
                     }) {
@@ -1807,7 +1813,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.green)
-                    .disabled(newWireLibrarySize.isEmpty || newWireLibraryType.isEmpty || newWireLibraryMisc.isEmpty)
+                    .disabled(newWireLibrarySizeID == nil || newWireLibraryTypeID == nil || newWireLibraryMiscID == nil)
                 }
             }
             .padding()
