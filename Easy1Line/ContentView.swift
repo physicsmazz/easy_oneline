@@ -148,9 +148,13 @@ struct ContentView: View {
     @State private var dockDragLocation = CGPoint.zero
     @AppStorage("targetsPanelListHeight") private var targetsPanelListHeight: Double = 460
     @AppStorage("targetsPanelWidth") private var targetsPanelWidth: Double = 250
+    @AppStorage("itemsPanelOffsetX") private var itemsPanelOffsetX: Double = 0
+    @AppStorage("itemsPanelOffsetY") private var itemsPanelOffsetY: Double = 0
     @AppStorage("canvasLocked") private var canvasLocked = false
     @State private var targetsPanelResizeStart: Double?
     @State private var targetsPanelWidthResizeStart: Double?
+    @State private var itemsPanelDragStartOffset: CGSize?
+    @State private var itemsPanelHeight: CGFloat = 44
     @State private var splitCandidateSegmentID: UUID?
     @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
     @State private var targetNameDraft = ""
@@ -159,7 +163,10 @@ struct ContentView: View {
     @AppStorage("selectionToolbarOffsetY") private var selectionToolbarOffsetY: Double = 0
     @AppStorage("targetToolbarOffsetX") private var targetToolbarOffsetX: Double = 0
     @AppStorage("targetToolbarOffsetY") private var targetToolbarOffsetY: Double = 0
+    @AppStorage("zoomToolbarOffsetX") private var zoomToolbarOffsetX: Double = 0
+    @AppStorage("zoomToolbarOffsetY") private var zoomToolbarOffsetY: Double = 0
     @State private var toolbarDragStartOffset: CGSize?
+    @State private var targetToolbarHeight: CGFloat = 0
     @State private var showDeleteWarning = false
     @State private var deleteWarningSourceFrame: CGRect = .zero
     @State private var wirePlacementMode: WirePlacementMode?
@@ -205,6 +212,8 @@ struct ContentView: View {
             palette
                 .padding(.leading, 20)
                 .padding(.top, 84)
+                .offset(x: itemsPanelOffsetX, y: itemsPanelOffsetY)
+                .gesture(itemsPanelDragGesture)
 
             if let dockDragKind {
                 ZStack {
@@ -241,8 +250,21 @@ struct ContentView: View {
                     .zIndex(1100)
             }
 
-            if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!), showEditBoxOnSelection || forceEditBoxTargetID == target.id {
+            if selectedTargetIDs.count == 1, !connectionMode, showEditBoxOnSelection, let target = target(with: selectedTargetIDs.first!) {
                 targetBottomPanel(target)
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear {
+                                    targetToolbarHeight = proxy.size.height
+                                    recoverToolbarOffsetsIfNeeded()
+                                }
+                                .onChange(of: proxy.size.height) { _, newHeight in
+                                    targetToolbarHeight = newHeight
+                                    recoverToolbarOffsetsIfNeeded()
+                                }
+                        }
+                    }
                     .padding(.bottom, 6)
                     .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -328,6 +350,9 @@ struct ContentView: View {
         }
         .onChange(of: wireBridgesEnabled) { _, _ in
             recomputeWireGeometry()
+        }
+        .onChange(of: editorSize.height) { _, _ in
+            recoverToolbarOffsetsIfNeeded()
         }
         .onAppear {
             multipeerSession.onReceiveData = { data in
@@ -620,7 +645,7 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    Text("TARGETS")
+                    Text("ITEMS")
                         .font(.system(size: 10, weight: .bold))
                         .tracking(1.4)
                         .foregroundStyle(.white.opacity(0.45))
@@ -631,7 +656,7 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(targetsPanelExpanded ? "Collapse targets" : "Expand targets")
+            .accessibilityLabel(targetsPanelExpanded ? "Collapse items" : "Expand items")
 
             if targetsPanelExpanded {
                 ScrollView {
@@ -687,9 +712,17 @@ struct ContentView: View {
                     .accessibilityLabel("Resize targets panel")
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, targetsPanelExpanded ? 14 : 10)
         .frame(width: targetsPanelWidth)
-        .background(Color(red: 0.10, green: 0.13, blue: 0.155), in: RoundedRectangle(cornerRadius: 12))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { itemsPanelHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, newHeight in itemsPanelHeight = newHeight }
+            }
+        }
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
         .overlay(alignment: .trailing) {
             Capsule()
@@ -1043,6 +1076,8 @@ struct ContentView: View {
                     .offset(x: selectionToolbarOffsetX, y: selectionToolbarOffsetY)
                     .gesture(toolbarDragGesture(isTarget: false))
                 zoomControls
+                    .offset(x: zoomToolbarOffsetX, y: zoomToolbarOffsetY)
+                    .gesture(toolbarDragGesture(isTarget: false, isZoom: true))
             }
             .padding(.top, 88)
             .padding(.trailing, 24)
@@ -3002,26 +3037,150 @@ struct ContentView: View {
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
 
-    private func toolbarDragGesture(isTarget: Bool) -> some Gesture {
+    private var itemsPanelDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if itemsPanelDragStartOffset == nil {
+                    itemsPanelDragStartOffset = CGSize(width: itemsPanelOffsetX, height: itemsPanelOffsetY)
+                }
+                let start = itemsPanelDragStartOffset ?? .zero
+                let proposed = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                itemsPanelOffsetX = proposed.width
+                itemsPanelOffsetY = clampedItemsPanelOffset(proposed).height
+            }
+            .onEnded { value in
+                let start = itemsPanelDragStartOffset ?? .zero
+                let proposed = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                let topOffset: CGFloat = 0
+                let bottomOffset = max(0, editorSize.height - 84 - itemsPanelHeight - 20)
+                let nearest = [topOffset, bottomOffset].min { abs(proposed.height - $0) < abs(proposed.height - $1) } ?? proposed.height
+                let snappedHeight = abs(proposed.height - nearest) <= 48 ? nearest : proposed.height
+                let snapped = clampedItemsPanelOffset(CGSize(width: proposed.width, height: snappedHeight))
+                itemsPanelOffsetX = snapped.width
+                itemsPanelOffsetY = snapped.height
+                itemsPanelDragStartOffset = nil
+            }
+    }
+
+    private func clampedItemsPanelOffset(_ proposed: CGSize) -> CGSize {
+        let bottomOffset = max(0, editorSize.height - 84 - itemsPanelHeight - 20)
+        return CGSize(width: proposed.width, height: min(max(proposed.height, 0), bottomOffset))
+    }
+
+    private func toolbarOffsetX(isTarget: Bool, isZoom: Bool) -> CGFloat {
+        if isTarget { return targetToolbarOffsetX }
+        return isZoom ? zoomToolbarOffsetX : selectionToolbarOffsetX
+    }
+
+    private func toolbarOffsetY(isTarget: Bool, isZoom: Bool) -> CGFloat {
+        if isTarget { return targetToolbarOffsetY }
+        return isZoom ? zoomToolbarOffsetY : selectionToolbarOffsetY
+    }
+
+    private func toolbarDragGesture(isTarget: Bool, isZoom: Bool = false) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
                 if toolbarDragStartOffset == nil {
                     toolbarDragStartOffset = CGSize(
-                        width: isTarget ? targetToolbarOffsetX : selectionToolbarOffsetX,
-                        height: isTarget ? targetToolbarOffsetY : selectionToolbarOffsetY
+                        width: toolbarOffsetX(isTarget: isTarget, isZoom: isZoom),
+                        height: toolbarOffsetY(isTarget: isTarget, isZoom: isZoom)
                     )
                 }
                 let start = toolbarDragStartOffset ?? .zero
-                let offset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                let proposed = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                let offset = clampedToolbarOffset(proposed, isTarget: isTarget, isZoom: isZoom)
                 if isTarget {
                     targetToolbarOffsetX = offset.width
                     targetToolbarOffsetY = offset.height
+                } else if isZoom {
+                    zoomToolbarOffsetX = offset.width
+                    zoomToolbarOffsetY = offset.height
                 } else {
                     selectionToolbarOffsetX = offset.width
                     selectionToolbarOffsetY = offset.height
                 }
             }
-            .onEnded { _ in toolbarDragStartOffset = nil }
+            .onEnded { value in
+                let start = toolbarDragStartOffset ?? .zero
+                let proposed = CGSize(
+                    width: start.width + value.translation.width,
+                    height: start.height + value.translation.height
+                )
+                let snapped = snappedToolbarOffset(isTarget: isTarget, proposed: proposed, isZoom: isZoom)
+                if isTarget {
+                    targetToolbarOffsetX = snapped.width
+                    targetToolbarOffsetY = snapped.height
+                } else if isZoom {
+                    zoomToolbarOffsetX = snapped.width
+                    zoomToolbarOffsetY = snapped.height
+                } else {
+                    selectionToolbarOffsetX = snapped.width
+                    selectionToolbarOffsetY = snapped.height
+                }
+                toolbarDragStartOffset = nil
+            }
+    }
+
+    private func snappedToolbarOffset(isTarget: Bool, proposed: CGSize, isZoom: Bool) -> CGSize {
+        let topOffset: CGFloat
+        let bottomOffset: CGFloat
+        if isTarget {
+            topOffset = targetToolbarTopOffset
+            bottomOffset = 0
+        } else if isZoom {
+            topOffset = 0
+            bottomOffset = max(0, editorSize.height - 112 - 44)
+        } else {
+            topOffset = 0
+            bottomOffset = max(0, editorSize.height - 112 - selectionBoxSize.height)
+        }
+        let snapDistance: CGFloat = 48
+        let nearest = [topOffset, bottomOffset].min { abs(proposed.height - $0) < abs(proposed.height - $1) } ?? proposed.height
+        let snappedHeight = abs(proposed.height - nearest) <= snapDistance ? nearest : proposed.height
+        let snapped = CGSize(width: proposed.width, height: snappedHeight)
+        return clampedToolbarOffset(snapped, isTarget: isTarget, isZoom: isZoom)
+    }
+
+    private func clampedToolbarOffset(_ proposed: CGSize, isTarget: Bool, isZoom: Bool) -> CGSize {
+        let topOffset: CGFloat
+        let bottomOffset: CGFloat
+        if isTarget {
+            topOffset = targetToolbarTopOffset
+            bottomOffset = 0
+        } else {
+            let toolbarHeight = isZoom ? CGFloat(44) : selectionBoxSize.height
+            topOffset = 0
+            bottomOffset = max(0, editorSize.height - 112 - toolbarHeight)
+        }
+        return CGSize(
+            width: proposed.width,
+            height: min(max(proposed.height, topOffset), bottomOffset)
+        )
+    }
+
+    private let toolbarTopSafeInset: CGFloat = 120
+
+    private var targetToolbarTopOffset: CGFloat {
+        targetToolbarHeight + toolbarTopSafeInset + 6 - editorSize.height
+    }
+
+    private func recoverToolbarOffsetsIfNeeded() {
+        guard editorSize.height > 0 else { return }
+        targetToolbarOffsetY = clampedToolbarOffset(
+            CGSize(width: targetToolbarOffsetX, height: targetToolbarOffsetY),
+            isTarget: true,
+            isZoom: false
+        ).height
+        selectionToolbarOffsetY = clampedToolbarOffset(
+            CGSize(width: selectionToolbarOffsetX, height: selectionToolbarOffsetY),
+            isTarget: false,
+            isZoom: false
+        ).height
+        zoomToolbarOffsetY = clampedToolbarOffset(
+            CGSize(width: zoomToolbarOffsetX, height: zoomToolbarOffsetY),
+            isTarget: false,
+            isZoom: true
+        ).height
     }
 
     private func defaultConnectionName(for slot: Int) -> String { String(UnicodeScalar(65 + min(slot, 25))!) }
