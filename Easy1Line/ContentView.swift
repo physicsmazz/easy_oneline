@@ -4611,7 +4611,7 @@ private struct TargetView: View {
     private func connectionPoint(slot: Int) -> some View {
         let connectionCount = connectionCounts[slot] ?? 0
         let point = Circle()
-            .fill(selectedSlots.contains(slot) ? Color.cyan : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
+            .fill(selectedSlots.contains(slot) ? Color.cyan : Color(hex: target.colorHex))
             .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
             .overlay {
@@ -4661,13 +4661,7 @@ private struct TargetView: View {
     }
 
     private var borderStyle: AnyShapeStyle {
-        if isSelected || isConnectionStart {
-            return AnyShapeStyle(Color(hex: target.colorHex))
-        }
-        if connectedColors.count > 1 {
-            return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
-        }
-        return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
+        AnyShapeStyle(Color(hex: target.colorHex))
     }
 
     private var targetHitShape: AnyShape {
