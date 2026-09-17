@@ -76,6 +76,70 @@ struct SupabaseDrawingStore {
         return try JSONDecoder().decode([SupabaseConductorRecord].self, from: data)
     }
 
+    func loadWireSizes() async throws -> [SupabaseWireSizeRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_sizes?select=id,size_value&order=size_value.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseWireSizeRecord].self, from: data)
+    }
+
+    func loadWireTypes() async throws -> [SupabaseWireTypeRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_types?select=id,type_name,color_hex&order=type_name.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseWireTypeRecord].self, from: data)
+    }
+
+    func loadWireMiscOptions() async throws -> [SupabaseWireMiscRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_misc?select=id,misc_value&order=misc_value.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseWireMiscRecord].self, from: data)
+    }
+
+    func loadWireLibrary() async throws -> [SupabaseWireLibraryRecord] {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_library?select=id,size,type,misc,description&order=size.asc,type.asc,misc.asc"))
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        return try JSONDecoder().decode([SupabaseWireLibraryRecord].self, from: data)
+    }
+
+    func createWireLibraryEntry(size: String, type: String, misc: String, description: String = "") async throws -> SupabaseWireLibraryRecord {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_library"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "size": size,
+            "type": type,
+            "misc": misc,
+            "description": description
+        ])
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("return=representation", forHTTPHeaderField: "Prefer")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        let results = try JSONDecoder().decode([SupabaseWireLibraryRecord].self, from: data)
+        guard let result = results.first else { throw StoreError.invalidResponse }
+        return result
+    }
+
+    func deleteWireLibraryEntry(id: Int) async throws {
+        var request = URLRequest(url: endpoint("/rest/v1/wire_library?id=eq.\(id)"))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        try await perform(request)
+    }
+
     func loadDrawingData() async throws -> [(id: UUID, name: String, data: Data)] {
         var request = URLRequest(url: endpoint("/rest/v1/drawings?select=id,name,data&order=updated_at.desc"))
         request.httpMethod = "GET"
@@ -134,6 +198,33 @@ struct SupabaseConductorRecord: Codable {
     let material: String
     let wireSize: String
     enum CodingKeys: String, CodingKey { case material, wireSize = "wire_size" }
+}
+
+struct SupabaseWireSizeRecord: Codable {
+    let id: Int
+    let sizeValue: String
+    enum CodingKeys: String, CodingKey { case id, sizeValue = "size_value" }
+}
+
+struct SupabaseWireTypeRecord: Codable {
+    let id: Int
+    let typeName: String
+    let colorHex: String
+    enum CodingKeys: String, CodingKey { case id, typeName = "type_name", colorHex = "color_hex" }
+}
+
+struct SupabaseWireMiscRecord: Codable {
+    let id: Int
+    let miscValue: String
+    enum CodingKeys: String, CodingKey { case id, miscValue = "misc_value" }
+}
+
+struct SupabaseWireLibraryRecord: Codable, Identifiable {
+    let id: Int
+    let size: String
+    let type: String
+    let misc: String
+    let description: String
 }
 
 enum JSONValue: Codable {
