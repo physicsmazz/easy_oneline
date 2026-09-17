@@ -2203,8 +2203,7 @@ struct ContentView: View {
             return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
-        let route = removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
-        return routeAvoidsTargetConnections(route, targets: [startTarget, endTarget]) ? route : orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0)
+        return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
     }
 
     private func needsStubTurn(from escape: CGPoint, stub pin: CGPoint, next: CGPoint) -> Bool {
@@ -2455,18 +2454,6 @@ struct ContentView: View {
             let start = points[index]
             let end = points[index + 1]
             for rectangle in rectangles where segmentIntersects(rectangle, from: start, to: end) { return false }
-        }
-        return true
-    }
-
-    private func routeAvoidsTargetConnections(_ points: [CGPoint], targets: [SchematicTarget]) -> Bool {
-        for target in targets {
-            let body = obstacleRect(for: target).insetBy(dx: -12, dy: -12)
-            if !pointsAreClear(points, from: [body]) { return false }
-            for slot in 0..<target.maxConnections {
-                let pin = connectionPoint(for: target, slot: slot)
-                if points.dropFirst().dropLast().contains(where: { hypot($0.x - pin.x, $0.y - pin.y) < 6 }) { return false }
-            }
         }
         return true
     }
