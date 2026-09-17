@@ -536,9 +536,6 @@ struct ContentView: View {
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
                     }
-                    if wireAlignmentPreviewSegmentID == segment.id {
-                        context.stroke(path, with: .color(.yellow.opacity(0.8)), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 5]))
-                    }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
                 }
