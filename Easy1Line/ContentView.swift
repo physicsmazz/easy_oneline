@@ -203,6 +203,13 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
+            if selectedSegmentIDs.count == 1, !connectionMode, let segment = selectedSegment {
+                wireBottomPanel(segment)
+                    .padding(.bottom, 20)
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            }
+
             if connectionMode {
                 Rectangle()
                     .stroke(.yellow, lineWidth: 4)
@@ -1940,6 +1947,69 @@ struct ContentView: View {
         .padding(10)
         .background(.white.opacity(compact ? 0.05 : 0.03), in: RoundedRectangle(cornerRadius: 8))
     }
+
+    private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
+        let binding = segmentBinding(wire)
+        return HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("WIRE ID").font(.caption).foregroundStyle(.white.opacity(0.5))
+                Text(wire.id.uuidString.prefix(8)).font(.caption.monospaced()).foregroundStyle(.cyan)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                TextField("Wire name", text: binding.name)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+            }
+            .frame(maxWidth: 120)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SIZE").font(.caption).foregroundStyle(.white.opacity(0.5))
+                TextField("Size", text: binding.wireSize)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+            }
+            .frame(maxWidth: 80)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("MATERIAL").font(.caption).foregroundStyle(.white.opacity(0.5))
+                Picker("", selection: binding.material) {
+                    ForEach(ConductorMaterial.allCases) { material in
+                        Text(material.title).tag(material)
+                    }
+                }
+                .frame(maxWidth: 100)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("COVERING").font(.caption).foregroundStyle(.white.opacity(0.5))
+                TextField("Covering", text: binding.covering)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+            }
+            .frame(maxWidth: 90)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("NET NAME").font(.caption).foregroundStyle(.white.opacity(0.5))
+                TextField("Net name", text: binding.netName)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+            }
+            .frame(maxWidth: 100)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("SIZE (PT)").font(.caption).foregroundStyle(.white.opacity(0.5))
+                Stepper("", value: binding.displayWidth, in: 1...20, step: 0.5)
+                    .labelsHidden()
+            }
+            
+            Spacer()
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private func target(with id: UUID) -> SchematicTarget? { document.targets.first { $0.id == id } }
     private func connectionCount(for id: UUID) -> Int { document.segments.filter { $0.startID == id || $0.endID == id }.count }
     private func connectedColor(for id: UUID) -> Color { document.segments.first(where: { $0.startID == id || $0.endID == id }).map { $0.color } ?? .cyan }
