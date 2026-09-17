@@ -1802,6 +1802,18 @@ struct ContentView: View {
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1) }
+        .overlay(alignment: .bottom) {
+            if let wirePlacementMode {
+                Text(wirePlacementMode == .connection ? "Click a point to add Junction" : "Click a point to add Bend")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(.black.opacity(0.78), in: Capsule())
+                    .offset(y: 34)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 
     private var selectionBoxAnchor: CGPoint? {
