@@ -64,6 +64,7 @@ struct ContentView: View {
     @State private var cachedConnectedColor: [UUID: Color] = [:]
     @State private var cachedConnectedColors: [UUID: [Color]] = [:]
     @State private var cachedOccupiedSlots: [UUID: Set<Int>] = [:]
+        @State private var cachedConnectionCounts: [UUID: [Int: Int]] = [:]
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
@@ -312,7 +313,6 @@ struct ContentView: View {
             Task { await loadBackgroundImage(item) }
         }
         .onAppear {
-            if snapToGrid { snapAllTargets() }
             restoreBackgroundImage()
             recomputeWireGeometry()
             sanitizeTargetDefinitionSymbols()
@@ -320,7 +320,6 @@ struct ContentView: View {
         .task {
             await loadWireLibrary()
         }
-        .onChange(of: snapToGrid) { _, enabled in if enabled { snapAllTargets() } }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
@@ -381,6 +380,7 @@ struct ContentView: View {
             do {
                 let url = try result.get()
                 document = try SchematicFileDocument.load(from: url).document
+                autoZoomAfterLoad()
                 cloudStatus = "Imported schematic"
             } catch {
                 let errorMsg = error.localizedDescription
@@ -444,13 +444,21 @@ struct ContentView: View {
             }
             .buttonStyle(EditorButtonStyle())
 
+            Menu("Tools") {
+                Button {
+                    fixAllWires()
+                } label: {
+                    Label("Fix all wires", systemImage: "cross.case")
+                }
+            }
+            .buttonStyle(EditorButtonStyle())
+            .accessibilityLabel("Schematic tools")
+
             Menu("Visualizations") {
-                Toggle("Snap to grid", isOn: $snapToGrid)
                 Toggle("Wire bridges", isOn: $wireBridgesEnabled)
                 Toggle("Connection names", isOn: $showConnectionNames)
                 Divider()
                 Button("Clear all") {
-                    snapToGrid = false
                     wireBridgesEnabled = false
                     showConnectionNames = false
                 }
@@ -479,6 +487,7 @@ struct ContentView: View {
             .accessibilityLabel("Configure wire labels")
 
             Menu("Settings") {
+                Toggle("Snap to grid", isOn: $snapToGrid)
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 Button("Background color") { showBackgroundColorPicker = true }
@@ -731,6 +740,7 @@ struct ContentView: View {
                         connectedColor: connectedColor(for: target.id),
                         connectedColors: connectedColors(for: target.id),
                         occupiedSlots: occupiedSlots(for: target.id),
+                        connectionCounts: [:],
                         selectedSlots: [],
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
@@ -809,7 +819,7 @@ struct ContentView: View {
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                         if sectionIndex > 0 && sectionIndex + 1 < points.count - 1 {
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
-                                moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                                moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: canvasDelta(for: translation))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
                                 finalizeWireSectionDrag(segment.id)
@@ -833,7 +843,7 @@ struct ContentView: View {
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
                             let movableSectionIndex = sectionIndex == 0 ? 1 : max(1, points.count - 3)
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 4), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
-                                moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                                moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: canvasDelta(for: translation))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
                                 finalizeWireSectionDrag(segment.id)
@@ -861,6 +871,7 @@ struct ContentView: View {
                     connectedColor: cachedConnectedColor[target.id] ?? .cyan,
                     connectedColors: cachedConnectedColors[target.id] ?? [],
                     occupiedSlots: cachedOccupiedSlots[target.id] ?? [],
+                                        connectionCounts: cachedConnectionCounts[target.id] ?? [:],
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
@@ -1164,7 +1175,11 @@ struct ContentView: View {
                     }
                 }
                 for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
-                    fixWire(segment)
+                    let attachedJunction = activeTargetDragIDs.contains(where: { self.target(with: $0)?.kind == .junction }) &&
+                        (activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID))
+                    if !attachedJunction {
+                        fixWire(segment)
+                    }
                 }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
@@ -1216,25 +1231,37 @@ struct ContentView: View {
         var connColor: [UUID: Color] = [:]
         var connColors: [UUID: [Color]] = [:]
         var occSlots: [UUID: Set<Int>] = [:]
+        var connectionCounts: [UUID: [Int: Int]] = [:]
         for docTarget in document.targets {
             connColor[docTarget.id] = document.segments.first(where: { $0.startID == docTarget.id || $0.endID == docTarget.id }).map { $0.color } ?? .cyan
             var colorsList: [Color] = []
             var slots = Set<Int>()
+            var counts: [Int: Int] = [:]
             for segment in document.segments {
                 if segment.startID == docTarget.id || segment.endID == docTarget.id {
                     if !colorsList.contains(where: { $0.hexString == segment.color.hexString }) {
                         colorsList.append(segment.color)
                     }
                 }
-                if segment.startID == docTarget.id { slots.insert(segment.startSlot ?? 0) }
-                if segment.endID == docTarget.id { slots.insert(segment.endSlot ?? 0) }
+                if segment.startID == docTarget.id {
+                    let slot = segment.startSlot ?? 0
+                    slots.insert(slot)
+                    counts[slot, default: 0] += 1
+                }
+                if segment.endID == docTarget.id {
+                    let slot = segment.endSlot ?? 0
+                    slots.insert(slot)
+                    counts[slot, default: 0] += 1
+                }
             }
             connColors[docTarget.id] = colorsList
             occSlots[docTarget.id] = slots
+            connectionCounts[docTarget.id] = counts
         }
         cachedConnectedColor = connColor
         cachedConnectedColors = connColors
         cachedOccupiedSlots = occSlots
+        cachedConnectionCounts = connectionCounts
 
         guard wireBridgesEnabled else {
             cachedBridgeStrokes = []
@@ -1361,7 +1388,7 @@ struct ContentView: View {
     }
 
     private func handleConnectionModeConnectionPoint(targetID: UUID, slot: Int) {
-        guard !occupiedSlots(for: targetID).contains(slot) || target(with: targetID)?.kind == .junction else { return }
+        guard let target = target(with: targetID), slot >= 0, slot < target.maxConnections else { return }
         
         // Toggle: clicking selected pin deselects it
         if selectedConnectionSlots[targetID] == slot {
@@ -1402,15 +1429,27 @@ struct ContentView: View {
 
     @discardableResult
     private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
-        guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
-              let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
-              (target(with: startID)?.kind == .junction || !occupiedSlots(for: startID).contains(resolvedStartSlot)),
-              (target(with: endID)?.kind == .junction || !occupiedSlots(for: endID).contains(resolvedEndSlot)),
+          guard let resolvedStartSlot = resolvedConnectionSlot(for: startID, requestedSlot: startSlot, toward: endID),
+              let resolvedEndSlot = resolvedConnectionSlot(for: endID, requestedSlot: endSlot, toward: startID),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
         return true
+    }
+
+    private func resolvedConnectionSlot(for targetID: UUID, requestedSlot: Int?, toward otherID: UUID) -> Int? {
+        guard let target = target(with: targetID) else { return nil }
+        guard target.kind == .junction else { return requestedSlot ?? closestAvailableSlot(for: targetID, to: otherID) }
+        let occupied = occupiedSlots(for: targetID)
+        if occupied.count == 1, let existingSlot = occupied.first {
+            let oppositeSlot = [1, 0, 3, 2, 5, 4, 7, 6][min(existingSlot, 7)]
+            if !occupied.contains(oppositeSlot) { return oppositeSlot }
+        }
+        if let requestedSlot, requestedSlot >= 0, requestedSlot < target.maxConnections, !occupied.contains(requestedSlot) {
+            return requestedSlot
+        }
+        return closestAvailableSlot(for: targetID, to: otherID)
     }
 
     private var canConnectSelection: Bool {
@@ -1695,10 +1734,17 @@ struct ContentView: View {
     private func loadCloudDrawing(_ drawing: CloudDrawingChoice) {
         do {
             document = try JSONDecoder().decode(SchematicDocument.self, from: drawing.data)
+            autoZoomAfterLoad()
             showCloudLibrary = false
             cloudStatus = "Loaded from cloud: \(drawing.name)"
         } catch {
             cloudStatus = "Cloud drawing invalid: \(error.localizedDescription)"
+        }
+    }
+
+    private func autoZoomAfterLoad() {
+        DispatchQueue.main.async {
+            zoomToExtents()
         }
     }
 
@@ -1801,6 +1847,7 @@ struct ContentView: View {
 
     private func load(_ saved: SchematicDocument) {
         document = saved
+        autoZoomAfterLoad()
         selectedTargetIDs.removeAll()
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -2419,10 +2466,6 @@ struct ContentView: View {
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
-                Button { fixWire(segment) } label: { Image(systemName: "arrow.triangle.merge") }
-                    .buttonStyle(EditorButtonStyle())
-                    .help("Fix wire (straighten and remove loops)")
-                    .accessibilityLabel("Fix wire")
             }
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
@@ -2857,9 +2900,8 @@ struct ContentView: View {
     private func firstEmptySlot(for id: UUID) -> Int? {
         guard let target = target(with: id) else { return nil }
         if target.kind == .junction {
-            return document.segments.reduce(into: 0) { nextSlot, segment in
-                if segment.startID == id || segment.endID == id { nextSlot += 1 }
-            }
+            let occupied = occupiedSlots(for: id)
+            return (0..<target.maxConnections).first { !occupied.contains($0) }
         }
         let occupied = occupiedSlots(for: id)
         return (0..<target.maxConnections).first { !occupied.contains($0) }
@@ -2867,10 +2909,17 @@ struct ContentView: View {
 
     private func closestAvailableSlot(for id: UUID, to otherID: UUID) -> Int? {
         guard let sourceTarget = target(with: id), let otherTarget = target(with: otherID) else { return nil }
-        guard sourceTarget.kind != .junction else { return firstEmptySlot(for: id) }
         let occupied = occupiedSlots(for: id)
-        return (0..<sourceTarget.maxConnections)
-            .filter { !occupied.contains($0) }
+        let availableSlots = (0..<sourceTarget.maxConnections).filter { !occupied.contains($0) }
+        guard sourceTarget.kind != .junction else {
+            let desiredAngle = atan2(otherTarget.position.y - sourceTarget.position.y, otherTarget.position.x - sourceTarget.position.x) * 180 / Double.pi
+            return availableSlots.min { lhs, rhs in
+                let lhsDistance = angularDistance(connectionAngle(for: sourceTarget, slot: lhs), desiredAngle)
+                let rhsDistance = angularDistance(connectionAngle(for: sourceTarget, slot: rhs), desiredAngle)
+                return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
+            }
+        }
+        return availableSlots
             .min { lhs, rhs in
                 let lhsPoint = connectionPoint(for: sourceTarget, slot: lhs)
                 let rhsPoint = connectionPoint(for: sourceTarget, slot: rhs)
@@ -2889,7 +2938,18 @@ struct ContentView: View {
 
     private func connectionAngle(for target: SchematicTarget, slot: Int) -> Double {
         if target.connectionAngles.indices.contains(slot) { return target.connectionAngles[slot] }
+        if target.kind == .junction {
+            let connectionCount = max(1, connectionCount(for: target.id))
+            let slotCount = connectionCount > 4 ? 8 : 4
+            let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
+            return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
+        }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func angularDistance(_ first: Double, _ second: Double) -> Double {
+        let difference = abs(first - second).truncatingRemainder(dividingBy: 360)
+        return min(difference, 360 - difference)
     }
 
     private func connectionDragKey(_ targetID: UUID, slot: Int) -> String { "\(targetID.uuidString)-\(slot)" }
@@ -2931,12 +2991,6 @@ struct ContentView: View {
                 document.segments[segmentIndex].routePoints[last - 1].x += delta.width
                 document.segments[segmentIndex].routePoints[last - 1].y += delta.height
             }
-        }
-    }
-
-    private func snapAllTargets() {
-        for index in document.targets.indices {
-            document.targets[index].position = snappedPosition(document.targets[index].position)
         }
     }
 
@@ -3011,7 +3065,7 @@ struct ContentView: View {
                     }
                 }
             }
-            if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+            if let start = target(with: segment.startID), let end = target(with: segment.endID), target(with: targetID)?.kind != .junction {
                 let rectangles = routingObstacles(excluding: start.id, end.id)
                     .filter { $0.kind != .junction }
                     .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
@@ -3019,7 +3073,7 @@ struct ContentView: View {
                     points = orthogonalRoute(from: points[0], to: points[points.count - 1], avoiding: rectangles)
                 }
             }
-            document.segments[index].routePoints = points
+            document.segments[index].routePoints = normalizedRoute(points)
         }
     }
 
@@ -3053,7 +3107,13 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+        var dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
+        let obstacles = routingObstacles(excluding: start.id, end.id)
+            .filter { $0.kind != .junction }
+            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        if !obstacles.isEmpty, !pointsAreClear(dragRoute, from: obstacles), let first = dragRoute.first, let last = dragRoute.last {
+            dragRoute = normalizedRoute(orthogonalRoute(from: first, to: last, avoiding: obstacles))
+        }
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
@@ -3065,18 +3125,23 @@ struct ContentView: View {
     private func finalizeWireSectionDrag(_ id: UUID) {
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
-        if let segment = document.segments.first(where: { $0.id == id }) {
-            fixWire(segment)
-        }
     }
 
     /// "Fix wire": simplifies collinear bend points AND collapses unnecessary out-and-back loops
     /// (e.g. horizontal-vertical-horizontal where the two horizontal legs reverse direction) into a single clean turn.
+    private func fixAllWires() {
+        guard !document.segments.isEmpty else { return }
+        captureForUndo()
+        for segment in document.segments {
+            fixWire(segment)
+        }
+    }
+
     private func fixWire(_ segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
         let delooped = removeRouteLoops(route)
-        let simplified = simplifyOrthogonalPoints(delooped, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+        let simplified = normalizedRoute(delooped, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
@@ -3106,6 +3171,16 @@ struct ContentView: View {
                 continue
             }
             i += 1
+        }
+        return result
+    }
+
+    private func normalizedRoute(_ points: [CGPoint], alignmentTolerance: CGFloat = 0.5) -> [CGPoint] {
+        var result = points
+        for _ in 0..<max(points.count, 1) {
+            let previous = result
+            result = simplifyOrthogonalPoints(removeRouteLoops(result), alignmentTolerance: alignmentTolerance)
+            if result == previous { break }
         }
         return result
     }
@@ -3426,7 +3501,7 @@ struct ContentView: View {
             }
             result.append(point)
         }
-        return simplifyOrthogonalPoints(result, alignmentTolerance: alignmentTolerance)
+        return normalizedRoute(result, alignmentTolerance: alignmentTolerance)
     }
 
     private func simplifyOrthogonalPoints(_ points: [CGPoint], alignmentTolerance: CGFloat = 4) -> [CGPoint] {
@@ -3460,15 +3535,10 @@ struct ContentView: View {
     private func escapePoint(for target: SchematicTarget, slot: Int, toward other: SchematicTarget) -> CGPoint {
         let point = connectionPoint(for: target, slot: slot)
         let angle = target.kind == .junction
-            ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
+            ? connectionAngle(for: target, slot: slot) * Double.pi / 180
             : atan2(point.y - target.position.y, point.x - target.position.x)
         let distance = max(15, CGFloat(connectionStubLength))
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
-    }
-
-    private func quantizedAngle(_ angle: Double) -> Double {
-        let increment = Double.pi / 12
-        return (angle / increment).rounded() * increment
     }
 
     private func startTargetSlot(_ target: SchematicTarget, point: CGPoint) -> Int {
@@ -4208,6 +4278,7 @@ private struct TargetView: View {
     let connectedColor: Color
     let connectedColors: [Color]
     let occupiedSlots: Set<Int>
+    let connectionCounts: [Int: Int]
     let selectedSlots: Set<Int>
     let connectionNames: [String]
     let showConnectionNames: Bool
@@ -4286,12 +4357,7 @@ private struct TargetView: View {
             }
         }
         .overlay {
-            if target.kind == .junction {
-                Circle()
-                    .fill(connectedColor)
-                    .frame(width: 10, height: 10)
-                    .overlay { Circle().stroke(.black.opacity(0.65), lineWidth: 1) }
-            } else {
+            if target.kind != .junction {
                 ForEach(0..<target.maxConnections, id: \.self) { slot in
                     connectionPoint(slot: slot)
                 }
@@ -4315,10 +4381,16 @@ private struct TargetView: View {
 
     @ViewBuilder
     private func connectionPoint(slot: Int) -> some View {
+        let connectionCount = connectionCounts[slot] ?? 0
         let point = Circle()
             .fill(selectedSlots.contains(slot) ? Color.cyan : occupiedSlots.contains(slot) ? connectedColor : Color.white.opacity(0.35))
             .frame(width: selectedSlots.contains(slot) ? 14 : 9, height: selectedSlots.contains(slot) ? 14 : 9)
             .overlay { Circle().stroke(selectedSlots.contains(slot) ? Color.white : .black.opacity(0.65), lineWidth: selectedSlots.contains(slot) ? 2 : 1) }
+            .overlay {
+                if connectionCount > 1 {
+                    Circle().stroke(.white, lineWidth: 2).frame(width: 17, height: 17)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if showConnectionNames {
                 let labelAngle = (target.connectionAngles.indices.contains(slot) ? target.connectionAngles[slot] : (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90) * Double.pi / 180
