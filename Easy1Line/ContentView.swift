@@ -445,6 +445,12 @@ struct ContentView: View {
                 Toggle("Snap to grid", isOn: $snapToGrid)
                 Toggle("Wire bridges", isOn: $wireBridgesEnabled)
                 Toggle("Connection names", isOn: $showConnectionNames)
+                Divider()
+                Button("Clear all") {
+                    snapToGrid = false
+                    wireBridgesEnabled = false
+                    showConnectionNames = false
+                }
             }
             .buttonStyle(EditorButtonStyle(isActive: snapToGrid || wireBridgesEnabled || showConnectionNames))
             .accessibilityLabel("Toggle canvas visualizations")
@@ -457,10 +463,23 @@ struct ContentView: View {
                 Toggle("Coverings", isOn: $showWireCoverings)
                 Toggle("Net names", isOn: $showWireNetNames)
                 Divider()
-                Stepper("Alignment: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
+                Button("Clear all") {
+                    showWireNames = false
+                    showWireLengths = false
+                    showWireSizes = false
+                    showWireMaterials = false
+                    showWireCoverings = false
+                    showWireNetNames = false
+                }
             }
             .buttonStyle(EditorButtonStyle(isActive: showWireLabels))
             .accessibilityLabel("Configure wire labels")
+
+            Menu("Settings") {
+                Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
+            }
+            .buttonStyle(EditorButtonStyle())
+            .accessibilityLabel("App settings")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
