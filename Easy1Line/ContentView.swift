@@ -2189,8 +2189,8 @@ struct ContentView: View {
         let endPin = connectionPoint(for: endTarget, slot: endSlot)
         let startFallback = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
         let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
-        let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
-        let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
+        let startEscape = startFallback
+        let endEscape = endFallback
         let startNext = points.count > 2 ? points[2] : endTarget.position
         let endNext = points.count > 2 ? points[points.count - 3] : startTarget.position
         let startTurn = needsStubTurn(from: startEscape, stub: startPin, next: startNext)
