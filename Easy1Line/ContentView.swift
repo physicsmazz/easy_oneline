@@ -3078,9 +3078,6 @@ struct ContentView: View {
     private func finalizeWireSectionDrag(_ id: UUID) {
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
-        if let segment = document.segments.first(where: { $0.id == id }) {
-            fixWire(segment)
-        }
     }
 
     /// "Fix wire": simplifies collinear bend points AND collapses unnecessary out-and-back loops
