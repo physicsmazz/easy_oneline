@@ -3135,7 +3135,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(targetHitShape)
+        .contentShape(connectionMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
         .scaleEffect(target.scale)
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
