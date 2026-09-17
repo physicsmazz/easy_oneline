@@ -2156,14 +2156,24 @@ struct ContentView: View {
         let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
         let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
         let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
+        let startTurn = stubTurnPoint(from: startEscape, stub: startPin, toward: endTarget.position, target: startTarget)
+        let endTurn = stubTurnPoint(from: endEscape, stub: endPin, toward: startTarget.position, target: endTarget)
         if points.count == 2 {
-            return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0)
+            return orthogonalizedPoints([startPin, startEscape, startTurn, endTurn, endEscape, endPin], alignmentTolerance: 0)
         }
-        points[0] = startPin
-        points[1] = startEscape
-        points[points.count - 1] = endPin
-        points[points.count - 2] = endEscape
-        return removeRouteBacktracks(points)
+        let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
+        return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape, startTurn] + middle + [endTurn, endEscape, endPin], alignmentTolerance: 0))
+    }
+
+    private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint, target: SchematicTarget) -> CGPoint {
+        let turnDistance: CGFloat = target.kind == .junction ? 15 : target.isCompact ? 26 : 44
+        let stubIsVertical = abs(escape.x - pin.x) < abs(escape.y - pin.y)
+        if stubIsVertical {
+            let direction: CGFloat = other.x >= escape.x ? 1 : -1
+            return CGPoint(x: escape.x + direction * turnDistance, y: escape.y)
+        }
+        let direction: CGFloat = other.y >= escape.y ? 1 : -1
+        return CGPoint(x: escape.x, y: escape.y + direction * turnDistance)
     }
 
     private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
