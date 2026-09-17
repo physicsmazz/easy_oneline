@@ -1404,8 +1404,8 @@ struct ContentView: View {
     private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
         guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
               let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
-              !occupiedSlots(for: startID).contains(resolvedStartSlot),
-              !occupiedSlots(for: endID).contains(resolvedEndSlot),
+              (target(with: startID)?.kind == .junction || !occupiedSlots(for: startID).contains(resolvedStartSlot)),
+              (target(with: endID)?.kind == .junction || !occupiedSlots(for: endID).contains(resolvedEndSlot)),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
