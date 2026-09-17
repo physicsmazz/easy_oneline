@@ -2931,6 +2931,14 @@ struct ContentView: View {
                     }
                 }
             }
+            if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+                let rectangles = routingObstacles(excluding: start.id, end.id)
+                    .filter { $0.kind != .junction }
+                    .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+                if !rectangles.isEmpty, !pointsAreClear(points, from: rectangles) {
+                    points = orthogonalRoute(from: points[0], to: points[points.count - 1], avoiding: rectangles)
+                }
+            }
             document.segments[index].routePoints = points
         }
     }
@@ -3144,27 +3152,103 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
-        // Simple direct orthogonal path (no obstacle-avoidance detours) - wires may cross behind items, which is preferred over odd extra jogs.
-        var adjustedPath = [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
-        if abs(adjustedPath[1].x - adjustedPath[2].x) < 0.5 {
-            adjustedPath[1].x += segment.bendOffset
-            adjustedPath[2].x += segment.bendOffset
+
+        var directPath = [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
+        if abs(directPath[1].x - directPath[2].x) < 0.5 {
+            directPath[1].x += segment.bendOffset
+            directPath[2].x += segment.bendOffset
             if snapToGrid {
-                let snappedX = snappedCoordinate(adjustedPath[1].x)
-                adjustedPath[1].x = snappedX
-                adjustedPath[2].x = snappedX
+                let snappedX = snappedCoordinate(directPath[1].x)
+                directPath[1].x = snappedX
+                directPath[2].x = snappedX
             }
         } else {
-            adjustedPath[1].y += segment.bendOffset
-            adjustedPath[2].y += segment.bendOffset
+            directPath[1].y += segment.bendOffset
+            directPath[2].y += segment.bendOffset
             if snapToGrid {
-                let snappedY = snappedCoordinate(adjustedPath[1].y)
-                adjustedPath[1].y = snappedY
-                adjustedPath[2].y = snappedY
+                let snappedY = snappedCoordinate(directPath[1].y)
+                directPath[1].y = snappedY
+                directPath[2].y = snappedY
             }
         }
-        let routePoints = simplifyOrthogonalPoints([start, escapeStart] + adjustedPath.dropFirst() + [end])
-        return routePoints
+
+        let rectangles = obstacles
+            .filter { $0.kind != .junction }
+            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        let middlePath = (rectangles.isEmpty || pointsAreClear(directPath, from: rectangles))
+            ? directPath
+            : orthogonalRoute(from: escapeStart, to: escapeEnd, avoiding: rectangles)
+
+        return simplifyOrthogonalPoints([start] + middlePath + [end])
+    }
+
+    /// Grid-based orthogonal pathfinder: builds a Manhattan grid from the start/end points plus every
+    /// obstacle rectangle's edges, then finds the shortest all-right-angle path that doesn't cross any
+    /// obstacle - routing AROUND items rather than behind them. Falls back to a direct 2-turn path if no
+    /// obstacle blocks it, or if no clear route can be found at all.
+    private func orthogonalRoute(from start: CGPoint, to end: CGPoint, avoiding obstacles: [CGRect]) -> [CGPoint] {
+        let directFallback = [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
+        guard !obstacles.isEmpty else { return directFallback }
+
+        var xs = Set([start.x, end.x])
+        var ys = Set([start.y, end.y])
+        for rect in obstacles {
+            xs.insert(rect.minX); xs.insert(rect.maxX)
+            ys.insert(rect.minY); ys.insert(rect.maxY)
+        }
+        let sortedX = xs.sorted()
+        let sortedY = ys.sorted()
+
+        func nearestIndex(_ value: CGFloat, in array: [CGFloat]) -> Int {
+            array.enumerated().min(by: { abs($0.element - value) < abs($1.element - value) })?.offset ?? 0
+        }
+        func blocked(_ p1: CGPoint, _ p2: CGPoint) -> Bool {
+            let mid = CGPoint(x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2)
+            return obstacles.contains { $0.contains(mid) }
+        }
+
+        struct Node: Hashable { let x: Int; let y: Int }
+        let startNode = Node(x: nearestIndex(start.x, in: sortedX), y: nearestIndex(start.y, in: sortedY))
+        let endNode = Node(x: nearestIndex(end.x, in: sortedX), y: nearestIndex(end.y, in: sortedY))
+
+        var costSoFar: [Node: CGFloat] = [startNode: 0]
+        var cameFrom: [Node: Node] = [:]
+        var frontier: [(Node, CGFloat)] = [(startNode, 0)]
+        var visited = Set<Node>()
+
+        while !frontier.isEmpty {
+            frontier.sort { $0.1 < $1.1 }
+            let (current, currentCost) = frontier.removeFirst()
+            if visited.contains(current) { continue }
+            visited.insert(current)
+            if current == endNode { break }
+            let neighbors = [Node(x: current.x - 1, y: current.y), Node(x: current.x + 1, y: current.y), Node(x: current.x, y: current.y - 1), Node(x: current.x, y: current.y + 1)]
+            let p1 = CGPoint(x: sortedX[current.x], y: sortedY[current.y])
+            for neighbor in neighbors {
+                guard sortedX.indices.contains(neighbor.x), sortedY.indices.contains(neighbor.y), !visited.contains(neighbor) else { continue }
+                let p2 = CGPoint(x: sortedX[neighbor.x], y: sortedY[neighbor.y])
+                guard !blocked(p1, p2) else { continue }
+                let newCost = currentCost + abs(p1.x - p2.x) + abs(p1.y - p2.y)
+                if newCost < (costSoFar[neighbor] ?? .greatestFiniteMagnitude) {
+                    costSoFar[neighbor] = newCost
+                    cameFrom[neighbor] = current
+                    frontier.append((neighbor, newCost))
+                }
+            }
+        }
+
+        guard cameFrom[endNode] != nil else { return directFallback }
+        var path = [endNode]
+        var node = endNode
+        while node != startNode, let prev = cameFrom[node] {
+            path.append(prev)
+            node = prev
+        }
+        path.reverse()
+        var points = path.map { CGPoint(x: sortedX[$0.x], y: sortedY[$0.y]) }
+        points[0] = start
+        points[points.count - 1] = end
+        return simplifyOrthogonalPoints(points)
     }
 
     private func sectionPath(from start: CGPoint, to end: CGPoint) -> Path {
