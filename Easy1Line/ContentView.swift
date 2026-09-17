@@ -263,7 +263,10 @@ struct ContentView: View {
             guard let item else { return }
             Task { await loadBackgroundImage(item) }
         }
-        .onAppear { if snapToGrid { snapAllTargets() } }
+        .onAppear {
+            if snapToGrid { snapAllTargets() }
+            restoreBackgroundImage()
+        }
         .task {
             await loadWireLibrary()
         }
@@ -3335,11 +3338,41 @@ struct ContentView: View {
         backgroundImage = uiImage
         backgroundImageSize = CGSize(width: 200, height: 200)
         backgroundImagePhotoItem = nil
+        updateBackgroundImageInDocument()
     }
     
     private func clearBackgroundImage() {
         backgroundImage = nil
         backgroundImagePhotoItem = nil
+        document.backgroundImageBase64 = nil
+        SchematicDocument.saveLast(document)
+    }
+    
+    private func restoreBackgroundImage() {
+        if let base64String = document.backgroundImageBase64, 
+           let imageData = Data(base64Encoded: base64String),
+           let uiImage = UIImage(data: imageData) {
+            backgroundImage = uiImage
+            backgroundImageSize = document.backgroundImageSize
+            backgroundImagePosition = document.backgroundImagePosition
+            backgroundImageOpacity = document.backgroundImageOpacity
+            backgroundImageLocked = document.backgroundImageLocked
+            backgroundImageConstrainProportions = document.backgroundImageConstrainProportions
+        }
+    }
+    
+    private func updateBackgroundImageInDocument() {
+        if let bgImage = backgroundImage, let imageData = bgImage.pngData() {
+            document.backgroundImageBase64 = imageData.base64EncodedString()
+        } else {
+            document.backgroundImageBase64 = nil
+        }
+        document.backgroundImageSize = backgroundImageSize
+        document.backgroundImagePosition = backgroundImagePosition
+        document.backgroundImageOpacity = backgroundImageOpacity
+        document.backgroundImageLocked = backgroundImageLocked
+        document.backgroundImageConstrainProportions = backgroundImageConstrainProportions
+        SchematicDocument.saveLast(document)
     }
 
     private func rotateTarget(_ target: SchematicTarget, by degrees: Double) {
@@ -3423,6 +3456,12 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var segments: [SchematicSegment] = []
     var lineDefinitions: [LineDefinition] = LineDefinition.defaults
     var targetDefinitions: [TargetDefinition] = []
+    var backgroundImageBase64: String? = nil
+    var backgroundImageSize: CGSize = CGSize(width: 200, height: 200)
+    var backgroundImagePosition: CGPoint = CGPoint(x: 5000, y: 5000)
+    var backgroundImageOpacity: Double = 1.0
+    var backgroundImageLocked: Bool = false
+    var backgroundImageConstrainProportions: Bool = false
 
     init(name: String, targets: [SchematicTarget] = [], segments: [SchematicSegment] = [], lineDefinitions: [LineDefinition] = LineDefinition.defaults, targetDefinitions: [TargetDefinition] = TargetDefinition.defaults) {
         self.name = name; self.targets = targets; self.segments = segments; self.lineDefinitions = lineDefinitions; self.targetDefinitions = targetDefinitions
@@ -3438,6 +3477,12 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         lineDefinitions = savedLineDefinitions.isEmpty ? LineDefinition.defaults : savedLineDefinitions
         let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
+        backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
+        backgroundImageSize = try container.decodeIfPresent(CGSize.self, forKey: .backgroundImageSize) ?? CGSize(width: 200, height: 200)
+        backgroundImagePosition = try container.decodeIfPresent(CGPoint.self, forKey: .backgroundImagePosition) ?? CGPoint(x: 5000, y: 5000)
+        backgroundImageOpacity = try container.decodeIfPresent(Double.self, forKey: .backgroundImageOpacity) ?? 1.0
+        backgroundImageLocked = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageLocked) ?? false
+        backgroundImageConstrainProportions = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageConstrainProportions) ?? false
     }
 
     static func loadLast() -> SchematicDocument {
