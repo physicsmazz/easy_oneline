@@ -3,6 +3,7 @@ import Foundation
 import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
+import MultipeerConnectivity
 
 private extension UTType {
     static let line = UTType(exportedAs: "com.mazzwebdesign.easy1line.line", conformingTo: .data)
@@ -43,6 +44,9 @@ struct ContentView: View {
     @State private var savedDocuments = SchematicDocument.loadAll()
     @State private var undoStack: [SchematicDocument] = []
     @State private var redoStack: [SchematicDocument] = []
+    @StateObject private var multipeerSession = MultipeerSession()
+    @State private var showMultiuserSheet = false
+    @State private var lastRemoteDocumentData: Data?
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -254,9 +258,27 @@ struct ContentView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onChange(of: document) { _, _ in
+        .onChange(of: document) { _, newValue in
             SchematicDocument.saveLast(document)
             restoreBackgroundImage()
+            broadcastDocumentIfNeeded(newValue)
+        }
+        .onAppear {
+            multipeerSession.onReceiveData = { data in
+                applyRemoteDocument(data)
+            }
+        }
+        .sheet(isPresented: $showMultiuserSheet) {
+            MultiuserSessionView(session: multipeerSession)
+        }
+        .alert("Invitation from \(multipeerSession.pendingInvite?.peerID.displayName ?? "")", isPresented: Binding(
+            get: { multipeerSession.pendingInvite != nil },
+            set: { if !$0 { multipeerSession.respondToPendingInvite(accept: false) } }
+        )) {
+            Button("Accept") { multipeerSession.respondToPendingInvite(accept: true) }
+            Button("Decline", role: .cancel) { multipeerSession.respondToPendingInvite(accept: false) }
+        } message: {
+            Text("Join their Easy1Line session? Your current drawing will be replaced.")
         }
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item, let targetID = selectedTargetIDs.first else { return }
@@ -456,6 +478,13 @@ struct ContentView: View {
                 }
                 .buttonStyle(EditorButtonStyle(isActive: connectionMode))
                 .accessibilityLabel(connectionMode ? "Exit Connect mode" : "Enter Connect mode")
+
+                Button(action: { showMultiuserSheet = true }) {
+                    Image(systemName: multipeerSession.connectedPeers.isEmpty ? "person.2.wave.2" : "person.2.wave.2.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle(isActive: !multipeerSession.connectedPeers.isEmpty))
+                .accessibilityLabel("Multiuser session")
             }
         }
 
@@ -1464,6 +1493,17 @@ struct ContentView: View {
         document = redoStack.removeLast()
         SchematicDocument.saveLast(document)
         restoreBackgroundImage()
+    }
+
+    private func broadcastDocumentIfNeeded(_ newValue: SchematicDocument) {
+        guard let encoded = try? JSONEncoder().encode(newValue), encoded != lastRemoteDocumentData else { return }
+        multipeerSession.send(encoded)
+    }
+
+    private func applyRemoteDocument(_ data: Data) {
+        guard let decoded = try? JSONDecoder().decode(SchematicDocument.self, from: data) else { return }
+        lastRemoteDocumentData = data
+        document = decoded
     }
 
     private func saveToCloud() async {
@@ -3794,6 +3834,57 @@ private enum TargetKind: String, CaseIterable, Identifiable, Codable {
     var defaultColorHex: String {
         switch self {
         case .source, .utilitySource: return "FF9F43"; case .transformer: return "F59E0B"; case .breaker, .fuse, .disconnect: return "F87171"; case .switchTarget: return "6EE7B7"; case .panel, .bus: return "60A5FA"; case .meter: return "A78BFA"; case .generator: return "FB923C"; case .motor: return "34D399"; case .receptacle, .load: return "FFD166"; case .ground: return "94A3B8"; case .capacitor: return "F472B6"; case .junction: return "31D7E8"
+        }
+    }
+}
+
+private struct MultiuserSessionView: View {
+    @ObservedObject var session: MultipeerSession
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Status") {
+                    if session.connectedPeers.isEmpty {
+                        Text("Not connected").foregroundStyle(.secondary)
+                    } else {
+                        Text("Connected: \(session.connectedPeers.map(\.displayName).joined(separator: ", "))")
+                            .foregroundStyle(.green)
+                    }
+                }
+                Section("Nearby Devices") {
+                    if session.availablePeers.isEmpty {
+                        Text("Searching for nearby devices…").foregroundStyle(.secondary)
+                    }
+                    ForEach(session.availablePeers, id: \.self) { peer in
+                        let isConnected = session.connectedPeers.contains(peer)
+                        Button {
+                            session.invite(peer)
+                        } label: {
+                            HStack {
+                                Text(peer.displayName)
+                                Spacer()
+                                if isConnected {
+                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                }
+                            }
+                        }
+                        .disabled(isConnected)
+                    }
+                }
+            }
+            .navigationTitle("Multiuser Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .destructiveAction) {
+                    Button("Disconnect", role: .destructive) { session.disconnect() }
+                }
+            }
+            .onAppear { session.start() }
         }
     }
 }
