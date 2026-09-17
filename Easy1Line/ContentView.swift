@@ -901,6 +901,7 @@ struct ContentView: View {
             }
             .allowsHitTesting(false)
 
+            if !wireConnectionMoveMode {
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
                     let points = cachedWirePoints[segment.id] ?? orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
@@ -948,6 +949,7 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
             }
 
             ForEach(document.targets) { target in
@@ -1376,7 +1378,7 @@ struct ContentView: View {
     }
 
     private func targetTapped(_ target: SchematicTarget) {
-        if connectionMode {
+        if connectionMode || wireConnectionMoveMode {
             return
         }
         if selectedTargetIDs.contains(target.id) {
