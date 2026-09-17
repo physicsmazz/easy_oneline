@@ -111,6 +111,7 @@ struct ContentView: View {
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
     @State private var wireLabelDragStartPoints: [UUID: CGPoint] = [:]
+    @State private var wireLabelRouteAnchorPoints: [UUID: CGPoint] = [:]
     @State private var showNewDrawingWarning = false
     @State private var pendingNewDrawingAfterSave = false
 
@@ -2045,6 +2046,8 @@ struct ContentView: View {
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
             segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
+            let initialRoute = segmentDragStartPoints[id] ?? []
+            wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
         guard var points = segmentDragStartPoints[id], sectionIndex + 1 < points.count else { return }
         guard sectionIndex > 0, sectionIndex + 1 < points.count - 1 else { return }
@@ -2064,11 +2067,15 @@ struct ContentView: View {
         let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0)
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
+        if let labelAnchor = wireLabelRouteAnchorPoints[id] {
+            updateWireLabelPosition(id, route: dragRoute, near: labelAnchor)
+        }
         selectedTargetIDs.removeAll()
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
         wireAlignmentPreviewSegmentIDs.removeAll()
+        wireLabelRouteAnchorPoints.removeValue(forKey: id)
     }
 
     private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
