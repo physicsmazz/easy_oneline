@@ -695,7 +695,7 @@ struct ContentView: View {
         ZStack {
             GridBackground()
                 .contentShape(Rectangle())
-                .gesture(panGesture)
+                .simultaneousGesture(panGesture)
                 .onTapGesture {
                     guard !connectionMode else { return }
                     selectedTargetIDs.removeAll()
