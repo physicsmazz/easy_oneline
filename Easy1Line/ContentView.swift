@@ -64,6 +64,8 @@ struct ContentView: View {
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("showWireLengths") private var showWireLengths = true
+    @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
+    @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     private let linePadding: CGFloat = 16
@@ -1955,8 +1957,9 @@ struct ContentView: View {
             let before = points[index - 1]
             let current = points[index]
             let after = points[index + 1]
-            let vertical = abs(before.x - current.x) < 4 && abs(current.x - after.x) < 4
-            let horizontal = abs(before.y - current.y) < 4 && abs(current.y - after.y) < 4
+            let tolerance = CGFloat(wireAlignmentTolerance)
+            let vertical = abs(before.x - current.x) < tolerance && abs(current.x - after.x) < tolerance
+            let horizontal = abs(before.y - current.y) < tolerance && abs(current.y - after.y) < tolerance
             if vertical || horizontal { return true }
         }
         return false
@@ -2166,7 +2169,7 @@ struct ContentView: View {
         let angle = target.kind == .junction
             ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
             : atan2(point.y - target.position.y, point.x - target.position.x)
-        let distance: CGFloat = 15
+        let distance = max(15, CGFloat(connectionStubLength))
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
     }
 
