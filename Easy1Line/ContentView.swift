@@ -1429,6 +1429,8 @@ struct ContentView: View {
               let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
+        orientJunctionIfNeeded(startID, toward: endID)
+        orientJunctionIfNeeded(endID, toward: startID)
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
         return true
@@ -1462,6 +1464,7 @@ struct ContentView: View {
         let nearest = nearestPoint(on: route, to: document.targets[targetIndex].position).point
         let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: nearest, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
+        orientJunctionIfNeeded(junction.id, toward: segment.startID)
         document.segments.remove(at: segmentIndex)
         document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex)
         document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, displayWidth: segment.displayWidth, description: segment.description), at: segmentIndex + 1)
@@ -2916,9 +2919,20 @@ struct ContentView: View {
         if target.kind == .junction {
             let connectionCount = max(1, connectionCount(for: target.id))
             let slotCount = connectionCount > 4 ? 8 : 4
-            return (360 * Double(slot) / Double(slotCount)) - 90
+            let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
+            return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) + target.connectionAngle - 90
         }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func orientJunctionIfNeeded(_ targetID: UUID, toward otherID: UUID) {
+        guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }),
+              document.targets[targetIndex].kind == .junction,
+              connectionCount(for: targetID) == 0,
+              let other = target(with: otherID) else { return }
+        let target = document.targets[targetIndex]
+        let angle = atan2(other.position.y - target.position.y, other.position.x - target.position.x) * 180 / Double.pi
+        document.targets[targetIndex].connectionAngle = (angle / 90).rounded() * 90 + 90
     }
 
     private func connectionDragKey(_ targetID: UUID, slot: Int) -> String { "\(targetID.uuidString)-\(slot)" }
@@ -3564,6 +3578,7 @@ struct ContentView: View {
         let junctionPosition = hit.point
         // Sit the dropped item on the wire so both halves terminate at its pins.
         document.targets[targetIndex].position = junctionPosition
+        orientJunctionIfNeeded(targetID, toward: segment.startID)
         let splitRoutes = splitRoutePoints(hit.route, at: junctionPosition)
         document.segments.remove(at: hit.index)
         let startSlot = segment.startSlot ?? 0
@@ -3619,6 +3634,7 @@ struct ContentView: View {
         let splitRoutes = splitRoutePoints(route, at: junctionPosition)
         let junction = SchematicTarget(identifier: nextTargetIdentifier(for: .junction), kind: .junction, name: "Junction", position: junctionPosition, maxConnections: 8, colorHex: TargetKind.junction.defaultColorHex)
         document.targets.append(junction)
+        orientJunctionIfNeeded(junction.id, toward: segment.startID)
         document.segments.remove(at: index)
         document.segments.insert(SchematicSegment(startID: segment.startID, endID: junction.id, startSlot: segment.startSlot, endSlot: 0, name: segment.name + " A", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.first), at: index)
         document.segments.insert(SchematicSegment(startID: junction.id, endID: segment.endID, startSlot: 1, endSlot: segment.endSlot, name: segment.name + " B", colorHex: segment.colorHex, size: segment.size, type: segment.type, misc: segment.misc, netName: segment.netName, displayWidth: segment.displayWidth, description: segment.description, routePoints: splitRoutes.second), at: index + 1)
