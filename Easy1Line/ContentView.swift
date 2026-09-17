@@ -2957,8 +2957,7 @@ struct ContentView: View {
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
             captureForUndo()
-            let rawPoints = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
-            segmentDragStartPoints[id] = simplifyOrthogonalPoints(rawPoints, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
@@ -2977,7 +2976,7 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0)
+        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
