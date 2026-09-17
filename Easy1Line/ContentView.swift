@@ -94,6 +94,7 @@ struct ContentView: View {
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
+    @AppStorage("showSelectionBoxNearItem") private var showSelectionBoxNearItem = true
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showCloudLibrary = false
@@ -199,7 +200,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
 
-            if let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
+            if showSelectionBoxNearItem, let selectionAnchor = selectionBoxAnchor, editorSize != .zero {
                 selectionBox
                     .position(selectionBoxPosition(near: selectionAnchor))
                     .offset(selectionBoxOffset)
@@ -488,6 +489,7 @@ struct ContentView: View {
 
             Menu("Settings") {
                 Toggle("Snap to grid", isOn: $snapToGrid)
+                Toggle("Selection popup near item", isOn: $showSelectionBoxNearItem)
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 Button("Background color") { showBackgroundColorPicker = true }
@@ -947,9 +949,14 @@ struct ContentView: View {
             isPinchingOrRotating = false
         })
         .overlay(alignment: .topTrailing) {
-            zoomControls
-                .padding(.top, 88)
-                .padding(.trailing, 24)
+            HStack(spacing: 8) {
+                if !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty {
+                    selectionBox
+                }
+                zoomControls
+            }
+            .padding(.top, 88)
+            .padding(.trailing, 24)
         }
     }
 
