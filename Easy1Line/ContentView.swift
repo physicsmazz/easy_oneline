@@ -2917,7 +2917,7 @@ private struct SegmentHitArea: View {
     let onTap: () -> Void
     let onDoubleTap: () -> Void
     var body: some View {
-        path.stroke(isSectionSelected ? Color.yellow.opacity(0.85) : isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: isSectionSelected ? 12 : 24, lineCap: .round, lineJoin: .round))
+        path.stroke(isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
             .contentShape((hitPath ?? path).strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
             .onTapGesture(count: 2, perform: onDoubleTap)
