@@ -1076,7 +1076,6 @@ struct ContentView: View {
             connectionModeTargetIDs = [targetID]
             selectedConnectionSlots = [targetID: slot]
         }
-        selectedTargetIDs = [targetID]
     }
 
     private func connectSelectedTargets() {
