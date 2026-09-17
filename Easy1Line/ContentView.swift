@@ -232,8 +232,8 @@ struct ContentView: View {
             
             if showBackgroundImagePanel {
                 backgroundImagePanel
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .padding(.bottom, 20)
-                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
