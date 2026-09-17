@@ -4524,13 +4524,13 @@ private struct TargetView: View {
         } else {
             ZStack {
                 point
-                Circle().fill(.clear).frame(width: 28, height: 28)
+                Circle().fill(.clear).frame(width: 40, height: 40)
             }
                 .contentShape(Circle())
                 .offset(connectionPointOffset(for: slot))
                 .highPriorityGesture(
                     TapGesture().onEnded { onSelectConnectionPoint(slot) },
-                    including: connectionMode ? .all : .gesture
+                    including: .all
                 )
         }
     }
