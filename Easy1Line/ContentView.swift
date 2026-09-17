@@ -2820,12 +2820,21 @@ struct ContentView: View {
     private func connectionAngle(for target: SchematicTarget, slot: Int) -> Double {
         if target.connectionAngles.indices.contains(slot) { return target.connectionAngles[slot] }
         if target.kind == .junction {
-            let connectionCount = max(1, connectionCount(for: target.id))
+            let occupied = occupiedSlots(for: target.id).sorted()
+            if occupied.count == 2, let firstSlot = occupied.first, let secondSlot = occupied.last {
+                let firstAngle = junctionSlotAngle(slot: firstSlot, slotCount: 4)
+                return slot == secondSlot ? firstAngle + 180 : firstAngle
+            }
+            let connectionCount = max(1, occupied.count)
             let slotCount = connectionCount > 4 ? 8 : 4
-            let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
-            return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
+            return junctionSlotAngle(slot: slot, slotCount: slotCount)
         }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
+    }
+
+    private func junctionSlotAngle(slot: Int, slotCount: Int) -> Double {
+        let directionIndex: [Int] = slotCount == 8 ? [0, 4, 2, 6, 1, 3, 5, 7] : [0, 2, 1, 3]
+        return (360 * Double(directionIndex[min(slot, directionIndex.count - 1)]) / Double(slotCount)) - 90
     }
 
     private func angularDistance(_ first: Double, _ second: Double) -> Double {
