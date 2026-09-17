@@ -2882,9 +2882,8 @@ struct ContentView: View {
     private func firstEmptySlot(for id: UUID) -> Int? {
         guard let target = target(with: id) else { return nil }
         if target.kind == .junction {
-            return document.segments.reduce(into: 0) { nextSlot, segment in
-                if segment.startID == id || segment.endID == id { nextSlot += 1 }
-            }
+            let occupied = occupiedSlots(for: id)
+            return (0..<target.maxConnections).first { !occupied.contains($0) }
         }
         let occupied = occupiedSlots(for: id)
         return (0..<target.maxConnections).first { !occupied.contains($0) }
@@ -2914,6 +2913,11 @@ struct ContentView: View {
 
     private func connectionAngle(for target: SchematicTarget, slot: Int) -> Double {
         if target.connectionAngles.indices.contains(slot) { return target.connectionAngles[slot] }
+        if target.kind == .junction {
+            let connectionCount = max(1, connectionCount(for: target.id))
+            let slotCount = connectionCount > 4 ? 8 : 4
+            return (360 * Double(slot) / Double(slotCount)) - 90
+        }
         return (360 * Double(slot) / Double(max(target.maxConnections, 1))) + target.connectionAngle - 90
     }
 
@@ -3484,15 +3488,10 @@ struct ContentView: View {
     private func escapePoint(for target: SchematicTarget, slot: Int, toward other: SchematicTarget) -> CGPoint {
         let point = connectionPoint(for: target, slot: slot)
         let angle = target.kind == .junction
-            ? quantizedAngle(atan2(other.position.y - target.position.y, other.position.x - target.position.x))
+            ? connectionAngle(for: target, slot: slot) * Double.pi / 180
             : atan2(point.y - target.position.y, point.x - target.position.x)
         let distance = max(15, CGFloat(connectionStubLength))
         return CGPoint(x: point.x + distance * CGFloat(cos(angle)), y: point.y + distance * CGFloat(sin(angle)))
-    }
-
-    private func quantizedAngle(_ angle: Double) -> Double {
-        let increment = Double.pi / 12
-        return (angle / increment).rounded() * increment
     }
 
     private func startTargetSlot(_ target: SchematicTarget, point: CGPoint) -> Int {
