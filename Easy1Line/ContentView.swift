@@ -1647,6 +1647,16 @@ struct ContentView: View {
 
     private func removeTargetFromWire(_ target: SchematicTarget) {
         let attached = document.segments.filter { $0.startID == target.id || $0.endID == target.id }
+        guard !attached.isEmpty else { return }
+        if attached.count == 1 {
+            captureForUndo()
+            document.segments.removeAll { $0.id == attached[0].id }
+            selectedTargetIDs = [target.id]
+            selectedSegmentID = nil
+            selectedSegmentIDs.removeAll()
+            selectedConnectionSlots.removeAll()
+            return
+        }
         guard attached.count == 2 else { return }
         let first = attached[0]
         let route = orthogonalPoints(for: first, from: self.target(with: first.startID) ?? target, to: self.target(with: first.endID) ?? target, avoiding: [])
@@ -1667,7 +1677,7 @@ struct ContentView: View {
     }
 
     private func canRemoveTargetFromWire(_ target: SchematicTarget) -> Bool {
-        document.segments.filter { $0.startID == target.id || $0.endID == target.id }.count == 2
+        !document.segments.filter { $0.startID == target.id || $0.endID == target.id }.isEmpty
     }
 
     private func mergeWireAroundTarget(_ target: SchematicTarget) -> Bool {
