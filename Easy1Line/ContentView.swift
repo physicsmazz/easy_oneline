@@ -2106,7 +2106,7 @@ struct ContentView: View {
     private func removeStraightBends(from segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
-        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: 25)
+        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: 5)
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
