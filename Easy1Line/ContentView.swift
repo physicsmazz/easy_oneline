@@ -100,7 +100,6 @@ struct ContentView: View {
     @State private var targetsPanelWidthResizeStart: Double?
     @State private var splitCandidateSegmentID: UUID?
     @State private var wireAlignmentPreviewSegmentID: UUID?
-    @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
     @State private var targetNameDraft = ""
     @State private var targetNameEditingID: UUID?
     @State private var selectionBoxOffset = CGSize.zero
@@ -533,9 +532,6 @@ struct ContentView: View {
                     let path = orthogonalPath(for: segment, from: start, to: end, avoiding: document.targets.filter { $0.id != start.id && $0.id != end.id })
                     if selectedSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
-                    }
-                    if wireAlignmentPreviewSegmentIDs.contains(segment.id) {
-                        context.stroke(path, with: .color(.orange.opacity(0.75)), style: StrokeStyle(lineWidth: segment.displayWidth + 8, lineCap: .round, lineJoin: .round))
                     }
                     context.stroke(path, with: .color(.white.opacity(0.12)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     context.stroke(path, with: .color(segment.color), style: StrokeStyle(lineWidth: segment.displayWidth, lineCap: .round, lineJoin: .round))
@@ -1942,51 +1938,11 @@ struct ContentView: View {
         let dragRoute = orthogonalizedPoints(points, alignmentTolerance: 0.5)
         wireAlignmentPreviewSegmentID = hasNearAlignment(in: dragRoute) ? id : nil
         document.segments[index].routePoints = dragRoute
-        updateWireAlignmentPreview(for: id)
         selectedTargetIDs.removeAll()
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
         wireAlignmentPreviewSegmentID = nil
-        wireAlignmentPreviewSegmentIDs.removeAll()
-    }
-
-    private func updateWireAlignmentPreview(for segmentID: UUID) {
-        guard let segment = document.segments.first(where: { $0.id == segmentID }),
-              let start = target(with: segment.startID),
-              let end = target(with: segment.endID) else { return }
-        let currentPoints = orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
-        var alignedIDs: Set<UUID> = [segmentID]
-        for other in document.segments where other.id != segmentID {
-            guard let otherStart = target(with: other.startID), let otherEnd = target(with: other.endID) else { continue }
-            let otherPoints = orthogonalPoints(for: other, from: otherStart, to: otherEnd, avoiding: [])
-            if routesHaveAlignedLegs(currentPoints, otherPoints, tolerance: CGFloat(wireAlignmentTolerance)) {
-                alignedIDs.insert(other.id)
-            }
-        }
-        wireAlignmentPreviewSegmentIDs = alignedIDs.count > 1 ? alignedIDs : []
-    }
-
-    private func routesHaveAlignedLegs(_ first: [CGPoint], _ second: [CGPoint], tolerance: CGFloat) -> Bool {
-        for firstIndex in 0..<(first.count - 1) {
-            let firstStart = first[firstIndex], firstEnd = first[firstIndex + 1]
-            let firstHorizontal = abs(firstStart.y - firstEnd.y) < 0.5
-            for secondIndex in 0..<(second.count - 1) {
-                let secondStart = second[secondIndex], secondEnd = second[secondIndex + 1]
-                let secondHorizontal = abs(secondStart.y - secondEnd.y) < 0.5
-                guard firstHorizontal == secondHorizontal else { continue }
-                if firstHorizontal {
-                    let yClose = abs(firstStart.y - secondStart.y) <= tolerance
-                    let overlap = min(max(firstStart.x, firstEnd.x), max(secondStart.x, secondEnd.x)) - max(min(firstStart.x, firstEnd.x), min(secondStart.x, secondEnd.x))
-                    if yClose && overlap > 0 { return true }
-                } else {
-                    let xClose = abs(firstStart.x - secondStart.x) <= tolerance
-                    let overlap = min(max(firstStart.y, firstEnd.y), max(secondStart.y, secondEnd.y)) - max(min(firstStart.y, firstEnd.y), min(secondStart.y, secondEnd.y))
-                    if xClose && overlap > 0 { return true }
-                }
-            }
-        }
-        return false
     }
 
     private func hasNearAlignment(in points: [CGPoint]) -> Bool {
@@ -1996,8 +1952,8 @@ struct ContentView: View {
             let current = points[index]
             let after = points[index + 1]
             let tolerance = CGFloat(wireAlignmentTolerance)
-            let vertical = abs(before.x - current.x) <= tolerance && abs(current.x - after.x) <= tolerance
-            let horizontal = abs(before.y - current.y) <= tolerance && abs(current.y - after.y) <= tolerance
+            let vertical = abs(before.x - current.x) < tolerance && abs(current.x - after.x) < tolerance
+            let horizontal = abs(before.y - current.y) < tolerance && abs(current.y - after.y) < tolerance
             if vertical || horizontal { return true }
         }
         return false
