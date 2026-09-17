@@ -2145,8 +2145,10 @@ struct ContentView: View {
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
         let startPin = connectionPoint(for: startTarget, slot: startSlot)
         let endPin = connectionPoint(for: endTarget, slot: endSlot)
-        let startEscape = preservedStub(from: points[0], to: points[1], minimumLength: 15, fallback: escapePoint(for: startTarget, slot: startSlot, toward: endTarget))
-        let endEscape = preservedStub(from: points[points.count - 1], to: points[points.count - 2], minimumLength: 15, fallback: escapePoint(for: endTarget, slot: endSlot, toward: startTarget))
+        let startFallback = escapePoint(for: startTarget, slot: startSlot, toward: endTarget)
+        let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
+        let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
+        let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0)
         }
@@ -2154,14 +2156,37 @@ struct ContentView: View {
         points[1] = startEscape
         points[points.count - 1] = endPin
         points[points.count - 2] = endEscape
-        return points
+        return removeRouteBacktracks(points)
     }
 
-    private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint) -> CGPoint {
+    private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
+        guard points.count > 3 else { return points }
+        var result = points
+        var index = 2
+        while index < result.count - 2 {
+            let before = result[index - 1]
+            let current = result[index]
+            let after = result[index + 1]
+            let sameVertical = abs(before.x - current.x) < 4 && abs(current.x - after.x) < 4
+            let sameHorizontal = abs(before.y - current.y) < 4 && abs(current.y - after.y) < 4
+            if sameVertical || sameHorizontal {
+                result.remove(at: index)
+            } else {
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint, matching expected: CGPoint) -> CGPoint {
         let dx = existingPoint.x - pin.x
         let dy = existingPoint.y - pin.y
+        let expectedDX = expected.x - pin.x
+        let expectedDY = expected.y - pin.y
         let length = hypot(dx, dy)
-        guard length > 0.5 else { return fallback }
+        let expectedLength = max(hypot(expectedDX, expectedDY), 1)
+        let directionMatches = (dx * expectedDX + dy * expectedDY) / max(length * expectedLength, 1) > 0.7
+        guard length > 0.5, directionMatches else { return fallback }
         let actualLength = max(minimumLength, length)
         return CGPoint(x: pin.x + dx / length * actualLength, y: pin.y + dy / length * actualLength)
     }
