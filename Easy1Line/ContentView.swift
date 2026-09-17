@@ -2957,7 +2957,8 @@ struct ContentView: View {
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
             captureForUndo()
-            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            let rawPoints = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            segmentDragStartPoints[id] = simplifyOrthogonalPoints(rawPoints, alignmentTolerance: CGFloat(wireAlignmentTolerance))
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
