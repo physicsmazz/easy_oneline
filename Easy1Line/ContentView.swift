@@ -1075,7 +1075,9 @@ struct ContentView: View {
     }
 
     private var panGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
+        // .global is required: this gesture is attached inside the scaled/rotated content subtree, so
+        // the default .local coordinate space would report translation already distorted by canvasScale.
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { value in
                 guard !canvasLocked, !isPinchingOrRotating else { return }
                 canvasOffset = CGSize(width: panStart.width + value.translation.width, height: panStart.height + value.translation.height)
@@ -4276,7 +4278,7 @@ private struct TargetView: View {
                 .offset(connectionPointOffset(for: slot))
                 .onTapGesture { onSelectConnectionPoint(slot) }
                 .gesture(
-                    DragGesture()
+                    DragGesture(coordinateSpace: .global)
                         .onChanged { value in onMoveConnectionPoint(slot, value.translation) }
                         .onEnded { _ in onEndConnectionPointMove(slot) }
                 )
@@ -4356,7 +4358,7 @@ private struct SegmentHitArea: View {
             .onTapGesture(perform: onTap)
             .onTapGesture(count: 2, perform: onDoubleTap)
             .simultaneousGesture(SpatialTapGesture(coordinateSpace: .global).onEnded { value in onTapAt?(value.location) })
-            .simultaneousGesture(DragGesture(minimumDistance: 4).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
+            .simultaneousGesture(DragGesture(minimumDistance: 4, coordinateSpace: .global).onChanged { value in onDrag(value.translation) }.onEnded { _ in onEndDrag() })
     }
 }
 
