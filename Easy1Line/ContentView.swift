@@ -2216,7 +2216,7 @@ struct ContentView: View {
     }
 
     private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint, target: SchematicTarget) -> CGPoint {
-        let turnDistance: CGFloat = target.kind == .junction ? 25 : target.isCompact ? 36 : 54
+        let turnDistance: CGFloat = target.kind == .junction ? 0 : target.isCompact ? 36 : 54
         let stubIsVertical = abs(escape.x - pin.x) < abs(escape.y - pin.y)
         if stubIsVertical {
             let direction: CGFloat = other.x >= escape.x ? 1 : -1
@@ -2268,7 +2268,9 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
-        let rectangles = obstacles.map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        let rectangles = obstacles
+            .filter { $0.kind != .junction }
+            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
         var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
         var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
         for rectangle in rectangles {
