@@ -3108,17 +3108,11 @@ struct ContentView: View {
             points[sectionIndex + 1].y = alignedCoordinate
         }
         var dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
-        let obstacles = document.targets
+        let obstacles = routingObstacles(excluding: start.id, end.id)
             .filter { $0.kind != .junction }
             .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        let interiorRoute = dragRoute.count > 2 ? Array(dragRoute.dropFirst().dropLast()) : dragRoute
-        if !obstacles.isEmpty, !pointsAreClear(interiorRoute, from: obstacles),
-           let startSlot = document.segments[index].startSlot,
-           let endSlot = document.segments[index].endSlot {
-            let startEscape = escapePoint(for: start, slot: startSlot, toward: end)
-            let endEscape = escapePoint(for: end, slot: endSlot, toward: start)
-            let rerouted = orthogonalRoute(from: startEscape, to: endEscape, avoiding: obstacles)
-            dragRoute = normalizedRoute([connectionPoint(for: start, slot: startSlot)] + rerouted + [connectionPoint(for: end, slot: endSlot)])
+        if !obstacles.isEmpty, !pointsAreClear(dragRoute, from: obstacles), let first = dragRoute.first, let last = dragRoute.last {
+            dragRoute = normalizedRoute(orthogonalRoute(from: first, to: last, avoiding: obstacles))
         }
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
