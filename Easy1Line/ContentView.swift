@@ -3788,7 +3788,7 @@ private enum TargetKind: String, CaseIterable, Identifiable, Codable {
     }
     var symbol: String {
         switch self {
-        case .source: return "bolt.fill"; case .utilitySource: return "powerplug.fill"; case .transformer: return "arrow.left.arrow.right"; case .breaker: return "bolt.shield.fill"; case .fuse: return "battery.100percent"; case .disconnect: return "poweroff"; case .switchTarget: return "switch.2"; case .panel: return "rectangle.split.3x1"; case .bus: return "line.3.horizontal"; case .meter: return "gauge.with.dots.needle.bottom.50percent"; case .generator: return "engine.combustion.fill"; case .motor: return "fanblades.fill"; case .receptacle: return "rectangle.grid.2x2"; case .ground: return "arrow.down.to.line"; case .capacitor: return "minus.plus.batteryblock"; case .load: return "lightbulb.fill"; case .junction: return "circle.fill"
+        case .source: return "bolt.fill"; case .utilitySource: return "powerplug.fill"; case .transformer: return "arrow.left.arrow.right"; case .breaker: return "bolt.shield.fill"; case .fuse: return "circle.slash.fill"; case .disconnect: return "poweroff"; case .switchTarget: return "switch.2"; case .panel: return "rectangle.split.3x1"; case .bus: return "line.3.horizontal"; case .meter: return "gauge.with.dots.needle.bottom.50percent"; case .generator: return "engine.combustion.fill"; case .motor: return "fanblades.fill"; case .receptacle: return "rectangle.grid.2x2"; case .ground: return "arrow.down.to.line"; case .capacitor: return "minus.plus.batteryblock"; case .load: return "lightbulb.fill"; case .junction: return "circle.fill"
         }
     }
     var defaultColorHex: String {
