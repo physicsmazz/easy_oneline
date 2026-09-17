@@ -222,8 +222,8 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
-            if selectedSegmentIDs.count == 1, !connectionMode, let segment = selectedSegment {
-                wireBottomPanel(segment)
+            if (selectedSegmentIDs.count == 1 || selectedSegmentIDs.count == 2), !connectionMode, let segment = selectedSegment {
+                wireBottomPanel(segment, applyToAll: selectedSegmentIDs.count == 2)
                     .padding(.bottom, 20)
                     .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -2148,7 +2148,7 @@ struct ContentView: View {
         .background(.white.opacity(compact ? 0.05 : 0.03), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private func wireBottomPanel(_ wire: SchematicSegment) -> some View {
+    private func wireBottomPanel(_ wire: SchematicSegment, applyToAll: Bool = false) -> some View {
         let draft = editingWireDraft ?? wire
         let draftBinding = segmentBinding(draft)
         let hasChanges = editingWireDraft != nil && editingWireDraft != wire
@@ -2170,10 +2170,18 @@ struct ContentView: View {
                     // When a library entry is selected, show action buttons
                     if let selectedID = selectedWireLibraryID, let selectedEntry = wireLibraryEntries.first(where: { $0.id == selectedID }) {
                         Button("Apply") {
-                            editingWireDraft = draft
-                            editingWireDraft?.size = selectedEntry.size
-                            editingWireDraft?.type = selectedEntry.type
-                            editingWireDraft?.misc = selectedEntry.misc
+                            if applyToAll {
+                                for i in document.segments.indices where selectedSegmentIDs.contains(document.segments[i].id) {
+                                    document.segments[i].size = selectedEntry.size
+                                    document.segments[i].type = selectedEntry.type
+                                    document.segments[i].misc = selectedEntry.misc
+                                }
+                            } else {
+                                editingWireDraft = draft
+                                editingWireDraft?.size = selectedEntry.size
+                                editingWireDraft?.type = selectedEntry.type
+                                editingWireDraft?.misc = selectedEntry.misc
+                            }
                             selectedWireLibraryID = nil
                         }
                         .buttonStyle(.bordered)
@@ -2292,7 +2300,15 @@ struct ContentView: View {
                 // Save/Discard buttons (only show if changed)
                 if hasChanges {
                     HStack(spacing: 8) {
-                        Button(action: saveWireChanges) {
+                        Button(action: {
+                            if applyToAll {
+                                for i in document.segments.indices where selectedSegmentIDs.contains(document.segments[i].id) {
+                                    document.segments[i] = draft
+                                }
+                            } else {
+                                saveWireChanges()
+                            }
+                        }) {
                             Label("Save", systemImage: "checkmark.circle.fill")
                                 .font(.caption)
                         }
