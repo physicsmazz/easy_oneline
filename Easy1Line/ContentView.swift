@@ -1970,7 +1970,7 @@ struct ContentView: View {
                     otherCoordinate = otherStart.x
                 }
                 let distance = abs(coordinate - otherCoordinate)
-                guard overlap > 0, distance <= tolerance else { continue }
+                    guard overlap >= -tolerance, distance <= tolerance else { continue }
                 if best == nil || distance < best!.distance {
                     best = (other.id, otherCoordinate, distance)
                 }
