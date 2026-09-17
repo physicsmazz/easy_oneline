@@ -821,7 +821,7 @@ struct ContentView: View {
                     ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                         if sectionIndex > 0 && sectionIndex + 1 < points.count - 1 {
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: selectedSegmentID == segment.id && selectedSegmentSectionIndex == sectionIndex, onDrag: { translation in
-                                moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                                moveSegmentSection(segment.id, sectionIndex: sectionIndex, translation: canvasDelta(for: translation))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
                                 finalizeWireSectionDrag(segment.id)
@@ -845,7 +845,7 @@ struct ContentView: View {
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
                             let movableSectionIndex = sectionIndex == 0 ? 1 : max(1, points.count - 3)
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 4), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
-                                moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: CGSize(width: translation.width / canvasScale, height: translation.height / canvasScale))
+                                moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: canvasDelta(for: translation))
                             }, onEndDrag: {
                                 segmentDragStartPoints.removeValue(forKey: segment.id)
                                 finalizeWireSectionDrag(segment.id)
