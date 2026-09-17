@@ -1175,7 +1175,11 @@ struct ContentView: View {
                     }
                 }
                 for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
-                    fixWire(segment)
+                    let attachedJunction = activeTargetDragIDs.contains(where: { self.target(with: $0)?.kind == .junction }) &&
+                        (activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID))
+                    if !attachedJunction {
+                        fixWire(segment)
+                    }
                 }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
@@ -3061,7 +3065,7 @@ struct ContentView: View {
                     }
                 }
             }
-            if let start = target(with: segment.startID), let end = target(with: segment.endID) {
+            if let start = target(with: segment.startID), let end = target(with: segment.endID), target(with: targetID)?.kind != .junction {
                 let rectangles = routingObstacles(excluding: start.id, end.id)
                     .filter { $0.kind != .junction }
                     .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
@@ -3069,7 +3073,7 @@ struct ContentView: View {
                     points = orthogonalRoute(from: points[0], to: points[points.count - 1], avoiding: rectangles)
                 }
             }
-            document.segments[index].routePoints = points
+            document.segments[index].routePoints = normalizedRoute(points)
         }
     }
 
@@ -3103,7 +3107,7 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        let dragRoute = orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+        let dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
@@ -3131,7 +3135,7 @@ struct ContentView: View {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
         let delooped = removeRouteLoops(route)
-        let simplified = simplifyOrthogonalPoints(delooped, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+        let simplified = normalizedRoute(delooped, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
@@ -3161,6 +3165,16 @@ struct ContentView: View {
                 continue
             }
             i += 1
+        }
+        return result
+    }
+
+    private func normalizedRoute(_ points: [CGPoint], alignmentTolerance: CGFloat = 0.5) -> [CGPoint] {
+        var result = points
+        for _ in 0..<max(points.count, 1) {
+            let previous = result
+            result = simplifyOrthogonalPoints(removeRouteLoops(result), alignmentTolerance: alignmentTolerance)
+            if result == previous { break }
         }
         return result
     }
@@ -3481,7 +3495,7 @@ struct ContentView: View {
             }
             result.append(point)
         }
-        return simplifyOrthogonalPoints(result, alignmentTolerance: alignmentTolerance)
+        return normalizedRoute(result, alignmentTolerance: alignmentTolerance)
     }
 
     private func simplifyOrthogonalPoints(_ points: [CGPoint], alignmentTolerance: CGFloat = 4) -> [CGPoint] {
