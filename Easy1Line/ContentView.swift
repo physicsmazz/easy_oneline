@@ -2179,8 +2179,9 @@ struct ContentView: View {
     private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
         guard points.count > 3 else { return points }
         var result = points
-        var index = 2
-        while index < result.count - 2 {
+        // Keep index 2: it is the deliberate turn immediately after the start stub.
+        var index = 3
+        while index < result.count - 3 {
             let before = result[index - 1]
             let current = result[index]
             let after = result[index + 1]
