@@ -105,6 +105,8 @@ struct ContentView: View {
     @State private var selectionBoxOffset = CGSize.zero
     @State private var selectionBoxDragStart: CGSize?
     @State private var showDeleteWarning = false
+    @State private var showNewDrawingWarning = false
+    @State private var pendingNewDrawingAfterSave = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -220,6 +222,14 @@ struct ContentView: View {
             Button("Delete", role: .destructive) { deleteSelectedContent() }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog("New drawing will clear everything currently on screen.", isPresented: $showNewDrawingWarning, titleVisibility: .visible) {
+            Button("Save First") {
+                pendingNewDrawingAfterSave = true
+                promptForSaveName(toCloud: false)
+            }
+            Button("Discard", role: .destructive) { startNewDrawing() }
+            Button("Cancel", role: .cancel) {}
+        }
         .fileExporter(
             isPresented: $showFileExporter,
             document: SchematicFileDocument(document: document),
@@ -273,6 +283,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
             Menu("File") {
                 Button("Drawings") { showLibrary.toggle() }
+                Button("New Drawing") { showNewDrawingWarning = true }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
                 Button("Export .line") { showFileExporter = true }
                 Button("Export PDF") { preparePDFShare() }
@@ -1124,6 +1135,23 @@ struct ContentView: View {
         } else {
             saveCurrent()
         }
+        if pendingNewDrawingAfterSave {
+            pendingNewDrawingAfterSave = false
+            startNewDrawing()
+        }
+    }
+
+    private func startNewDrawing() {
+        document = SchematicDocument(name: "Untitled schematic")
+        selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        selectedSegmentIDs.removeAll()
+        selectedSegmentID = nil
+        selectedSegmentSectionIndex = nil
+        canvasOffset = .zero
+        canvasScale = 1
+        canvasRotation = .zero
+        selectionBoxOffset = .zero
     }
 
     private func saveCurrent() {
@@ -2785,8 +2813,6 @@ private struct TargetView: View {
                 VStack(spacing: 5) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2)
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
                             Image(uiImage: uiImage)
                                 .resizable()
@@ -2800,7 +2826,10 @@ private struct TargetView: View {
                         }
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
-                }.frame(width: 108, height: 76)
+                }
+                .frame(width: 108, height: 76)
+                .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2) }
             }
         }
         .overlay {
@@ -2812,8 +2841,7 @@ private struct TargetView: View {
                 } else {
                     RoundedRectangle(cornerRadius: 13)
                         .stroke(lockedBorderStyle, lineWidth: 1.5)
-                        .frame(width: 72, height: 62)
-                        .offset(y: -9)
+                        .frame(width: 108, height: 76)
                 }
             }
         }
