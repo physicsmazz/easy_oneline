@@ -97,6 +97,7 @@ struct ContentView: View {
     @State private var showTargetLibrary = false
     @State private var showNetlist = false
     @State private var showBackgroundImagePanel = false
+    @State private var showBackgroundColorPicker = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var connectionDragStartAngles: [String: Double] = [:]
@@ -430,7 +431,6 @@ struct ContentView: View {
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
-                Button("Background") { showBackgroundImagePanel.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -479,13 +479,20 @@ struct ContentView: View {
             Menu("Settings") {
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
+                Button("Background color") { showBackgroundColorPicker = true }
+                Divider()
+                Button("Background image") { showBackgroundImagePanel.toggle() }
+            }
+            .buttonStyle(EditorButtonStyle())
+            .accessibilityLabel("App settings")
+            .popover(isPresented: $showBackgroundColorPicker) {
                 ColorPicker("Background color", selection: Binding(
                     get: { Color(hex: canvasBackgroundColorHex) },
                     set: { canvasBackgroundColorHex = $0.hexString }
                 ))
+                .padding()
+                .frame(width: 260)
             }
-            .buttonStyle(EditorButtonStyle())
-            .accessibilityLabel("App settings")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
