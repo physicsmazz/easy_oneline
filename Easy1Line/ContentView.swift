@@ -579,7 +579,7 @@ struct ContentView: View {
         }
         .padding(14)
         .frame(width: targetsPanelWidth)
-        .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(red: 0.10, green: 0.13, blue: 0.155), in: RoundedRectangle(cornerRadius: 12))
         .overlay { RoundedRectangle(cornerRadius: 12).stroke(.white.opacity(0.1), lineWidth: 1) }
         .overlay(alignment: .trailing) {
             Capsule()
