@@ -1425,13 +1425,27 @@ struct ContentView: View {
 
     @discardableResult
     private func connectTargets(_ startID: UUID, _ endID: UUID, startSlot: Int? = nil, endSlot: Int? = nil) -> Bool {
-        guard let resolvedStartSlot = startSlot ?? closestAvailableSlot(for: startID, to: endID),
-              let resolvedEndSlot = endSlot ?? closestAvailableSlot(for: endID, to: startID),
+          guard let resolvedStartSlot = resolvedConnectionSlot(for: startID, requestedSlot: startSlot, toward: endID),
+              let resolvedEndSlot = resolvedConnectionSlot(for: endID, requestedSlot: endSlot, toward: startID),
               !document.segments.contains(where: { ($0.startID == startID && $0.endID == endID) || ($0.startID == endID && $0.endID == startID) }) else { return false }
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.material.rawValue.capitalized, misc: "BARE", displayWidth: line.displayWidth, description: line.description))
         return true
+    }
+
+    private func resolvedConnectionSlot(for targetID: UUID, requestedSlot: Int?, toward otherID: UUID) -> Int? {
+        guard let target = target(with: targetID) else { return nil }
+        guard target.kind == .junction else { return requestedSlot ?? closestAvailableSlot(for: targetID, to: otherID) }
+        let occupied = occupiedSlots(for: targetID)
+        if occupied.count == 1, let existingSlot = occupied.first {
+            let oppositeSlot = [1, 0, 3, 2, 5, 4, 7, 6][min(existingSlot, 7)]
+            if !occupied.contains(oppositeSlot) { return oppositeSlot }
+        }
+        if let requestedSlot, requestedSlot >= 0, requestedSlot < target.maxConnections, !occupied.contains(requestedSlot) {
+            return requestedSlot
+        }
+        return closestAvailableSlot(for: targetID, to: otherID)
     }
 
     private var canConnectSelection: Bool {
