@@ -3182,8 +3182,9 @@ struct ContentView: View {
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
-        guard var points = segmentDragStartPoints[id], sectionIndex + 1 < points.count else { return }
-        guard sectionIndex > 0, sectionIndex + 1 < points.count - 1 else { return }
+        guard var points = segmentDragStartPoints[id], sectionIndex >= 0, sectionIndex + 1 < points.count else { return }
+        let isEndpointStub = sectionIndex == 0 || sectionIndex + 1 == points.count - 1
+        guard !isEndpointStub || points.count <= 3 || sectionIndex > 0 else { return }
         let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
         let delta = isVertical ? translation.width : translation.height
         let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
