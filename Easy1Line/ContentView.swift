@@ -3144,32 +3144,8 @@ struct ContentView: View {
         let end = offsetConnectionPoint(for: endTarget, slot: segment.endSlot, toward: startTarget, by: laneOffset)
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
-        let rectangles = obstacles
-            .filter { $0.kind != .junction }
-            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        var xCandidates = [escapeStart.x, escapeEnd.x, (escapeStart.x + escapeEnd.x) / 2]
-        var yCandidates = [escapeStart.y, escapeEnd.y, (escapeStart.y + escapeEnd.y) / 2]
-        for rectangle in rectangles {
-            xCandidates.append(contentsOf: [rectangle.minX, rectangle.maxX])
-            yCandidates.append(contentsOf: [rectangle.minY, rectangle.maxY])
-        }
-        let uniqueX = Array(Set(xCandidates)).sorted { lhs, rhs in
-            let lhsDistance = abs(lhs - start.x)
-            let rhsDistance = abs(rhs - start.x)
-            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
-        }
-        let uniqueY = Array(Set(yCandidates)).sorted { lhs, rhs in
-            let lhsDistance = abs(lhs - start.y)
-            let rhsDistance = abs(rhs - start.y)
-            return lhsDistance == rhsDistance ? lhs < rhs : lhsDistance < rhsDistance
-        }
-        let candidates = uniqueX.map { [escapeStart, CGPoint(x: $0, y: escapeStart.y), CGPoint(x: $0, y: escapeEnd.y), escapeEnd] }
-            + uniqueY.map { [escapeStart, CGPoint(x: escapeStart.x, y: $0), CGPoint(x: escapeEnd.x, y: $0), escapeEnd] }
-        let safePath = candidates
-            .filter { pointsAreClear($0, from: rectangles) }
-            .min { pathLength($0) < pathLength($1) }
-            ?? [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
-        var adjustedPath = safePath
+        // Simple direct orthogonal path (no obstacle-avoidance detours) - wires may cross behind items, which is preferred over odd extra jogs.
+        var adjustedPath = [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
         if abs(adjustedPath[1].x - adjustedPath[2].x) < 0.5 {
             adjustedPath[1].x += segment.bendOffset
             adjustedPath[2].x += segment.bendOffset
