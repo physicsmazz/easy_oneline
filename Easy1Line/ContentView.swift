@@ -437,6 +437,9 @@ struct ContentView: View {
             lineDefinitionEditor
         }
         .onChange(of: selectedTargetIDs) { _, ids in
+            if ids.count != 1 {
+                forceEditBoxTargetID = nil
+            }
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
                 targetNameDraft = ""
@@ -2955,58 +2958,71 @@ struct ContentView: View {
                 document.segments[index].colorHex = value.hexString
             }
         )
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("WIRE").font(.caption2.weight(.bold)).foregroundStyle(.cyan)
-                Text(wire.name).font(.caption.weight(.semibold)).lineLimit(1)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                readOnlyWireField("NAME", wire.name).frame(width: 130, alignment: .leading)
+                readOnlyWireField("SIZE", wire.size).frame(width: 55, alignment: .leading)
+                readOnlyWireField("TYPE", wire.type).frame(width: 90, alignment: .leading)
+                readOnlyWireField("MISC", wire.misc).frame(width: 200, alignment: .leading)
             }
-            readOnlyWireField("SIZE", wire.size)
-            readOnlyWireField("TYPE", wire.type)
-            readOnlyWireField("MISC", wire.misc)
-            Spacer(minLength: 4)
-            ColorPicker("", selection: colorBinding)
-                .labelsHidden()
-                .help("Wire drawing color")
-            ForEach(document.colorLegend) { entry in
-                Button {
-                    colorBinding.wrappedValue = Color(hex: entry.colorHex)
-                } label: {
-                    HStack(spacing: 4) {
-                        Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
-                        Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
+            HStack(spacing: 10) {
+                Text("ITEM COLOR").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 6) {
+                    ColorPicker("", selection: colorBinding)
+                        .labelsHidden()
+                        .help("Custom item color")
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(document.colorLegend) { entry in
+                                Button {
+                                    colorBinding.wrappedValue = Color(hex: entry.colorHex)
+                                } label: {
+                                    HStack(spacing: 3) {
+                                        Circle().fill(Color(hex: entry.colorHex)).frame(width: 22, height: 22)
+                                        Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption.weight(.semibold))
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .help(entry.meaning.isEmpty ? "Use custom item color" : entry.meaning)
+                            }
+                        }
                     }
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(wire.color)
+                        .frame(width: 64, height: max(2, CGFloat(wire.displayWidth)))
+                    Stepper("\(wire.displayWidth, specifier: "%.1f") pt", value: displayWidthBinding, in: 1...20, step: 0.5)
+                        .labelsHidden()
+                        .frame(width: 92)
                 }
-                .buttonStyle(.plain)
-                .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
-            }
-            Stepper("\(wire.displayWidth, specifier: "%.1f") pt", value: displayWidthBinding, in: 1...20, step: 0.5)
-                .labelsHidden()
-                .frame(width: 96)
-            RoundedRectangle(cornerRadius: 3)
-                .fill(wire.color)
-                .frame(width: 42, height: max(2, CGFloat(wire.displayWidth)))
-            Button { selectSimilarWires(to: wire) } label: {
-                Label("Select similar wires", systemImage: "line.3.horizontal.decrease.circle")
-            }
-            .buttonStyle(.bordered)
-            .help("Select similar wires")
-            Button { selectWiresWithSameColor(as: wire) } label: {
-                Label("Select same-color wires", systemImage: "paintpalette")
-            }
-            .buttonStyle(.bordered)
-            .help("Select wires with the same color")
-            Button("Library") { showLineLibrary = true }
+                VStack(spacing: 4) {
+                    Button { selectSimilarWires(to: wire) } label: {
+                        Label("Similar Wires", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Similar Wires")
+                    .frame(height: 24)
+                    Button { selectWiresWithSameColor(as: wire) } label: {
+                        Label("Same Colors", systemImage: "paintpalette")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Same Colors")
+                    .frame(height: 24)
+                }
+                Button { showLineLibrary = true } label: {
+                    Label("Library", systemImage: "books.vertical")
+                }
                 .buttonStyle(.borderedProminent)
-                .font(.caption)
+                .help("Open wire library")
+            }
         }
-        .padding(10)
+        .padding(6)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func readOnlyWireField(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.caption2).foregroundStyle(.white.opacity(0.5))
-            Text(value.isEmpty ? "-" : value).font(.caption.weight(.semibold))
+            Text(title).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.55))
+            Text(value.isEmpty ? "-" : value).font(.callout.weight(.semibold))
         }
     }
 
