@@ -1725,7 +1725,7 @@ struct ContentView: View {
         if !selectedTargetIDs.isEmpty {
             actionCount = selectedTargetIDs.count == 1 ? 6 : 3
         } else {
-            actionCount = selectedSegmentIDs.count == 1 ? 3 : 1
+            actionCount = selectedSegmentIDs.count == 1 ? 4 : 1
         }
         let buttonWidth: CGFloat = 40
         let countWidth: CGFloat = 16
@@ -1758,6 +1758,10 @@ struct ContentView: View {
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
+                Button { removeStraightBends(from: segment) } label: { Image(systemName: "arrow.triangle.merge") }
+                    .buttonStyle(EditorButtonStyle())
+                    .help("Remove straight bend points")
+                    .accessibilityLabel("Remove straight bend points")
             }
             Button(role: .destructive) {
                 showDeleteWarning = true
@@ -2083,17 +2087,18 @@ struct ContentView: View {
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
-        if wireAlignmentPreviewSegmentIDs.contains(id),
-           let index = document.segments.firstIndex(where: { $0.id == id }) {
-            let route = document.segments[index].routePoints
-            let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: CGFloat(wireAlignmentTolerance))
-            document.segments[index].routePoints = simplified
-            if let labelAnchor = wireLabelRouteAnchorPoints[id] {
-                updateWireLabelPosition(id, route: simplified, near: labelAnchor)
-            }
-        }
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
+    }
+
+    private func removeStraightBends(from segment: SchematicSegment) {
+        guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
+        let route = document.segments[index].routePoints
+        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: 0.5)
+        document.segments[index].routePoints = simplified
+        if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
+            updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
+        }
     }
 
     private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
