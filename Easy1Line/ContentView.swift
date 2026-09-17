@@ -853,6 +853,7 @@ struct ContentView: View {
             }
 
             }
+        }
         .offset(canvasOffset)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
@@ -880,7 +881,6 @@ struct ContentView: View {
             zoomControls
                 .padding(.top, 88)
                 .padding(.trailing, 24)
-        }
         }
     }
 
