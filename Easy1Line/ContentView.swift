@@ -2076,6 +2076,20 @@ struct ContentView: View {
                     }
                 }
             }
+            if startMoved, let movedTarget = target(with: segment.startID), points.count > 1 {
+                let slot = segment.startSlot ?? startTargetSlot(movedTarget, point: points[0])
+                points[0] = connectionPoint(for: movedTarget, slot: slot)
+                if let otherTarget = target(with: segment.endID) {
+                    points[1] = escapePoint(for: movedTarget, slot: slot, toward: otherTarget)
+                }
+            }
+            if endMoved, let movedTarget = target(with: segment.endID), points.count > 1 {
+                let slot = segment.endSlot ?? endTargetSlot(movedTarget, point: points[points.count - 1])
+                points[points.count - 1] = connectionPoint(for: movedTarget, slot: slot)
+                if let otherTarget = target(with: segment.startID) {
+                    points[points.count - 2] = escapePoint(for: movedTarget, slot: slot, toward: otherTarget)
+                }
+            }
             document.segments[index].routePoints = points
         }
     }
