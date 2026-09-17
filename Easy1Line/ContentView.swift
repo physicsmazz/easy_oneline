@@ -2691,7 +2691,7 @@ struct ContentView: View {
 
     private var selectionBoxSize: CGSize {
         if selectedTargetIDs.isEmpty && selectedSegmentIDs.count == 1 {
-            return CGSize(width: 360, height: 60)
+            return CGSize(width: 360, height: 44)
         }
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
@@ -2703,7 +2703,7 @@ struct ContentView: View {
         let countWidth: CGFloat = 16
         let spacing = CGFloat(actionCount) * 8
         let horizontalPadding: CGFloat = 24
-        return CGSize(width: countWidth + CGFloat(actionCount) * buttonWidth + spacing + horizontalPadding, height: 60)
+        return CGSize(width: countWidth + CGFloat(actionCount) * buttonWidth + spacing + horizontalPadding, height: 44)
     }
 
     private var selectionBox: some View {
@@ -2782,7 +2782,7 @@ struct ContentView: View {
                 .help("Delete selected items")
                 .accessibilityLabel("Delete selected items")
         }
-        .padding(12)
+        .padding(6)
         .frame(width: selectionBoxSize.width, height: selectionBoxSize.height)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.12), lineWidth: 1) }
