@@ -3107,7 +3107,13 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        let dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
+        var dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
+        let obstacles = routingObstacles(excluding: start.id, end.id)
+            .filter { $0.kind != .junction }
+            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        if !obstacles.isEmpty, !pointsAreClear(dragRoute, from: obstacles), let first = dragRoute.first, let last = dragRoute.last {
+            dragRoute = normalizedRoute(orthogonalRoute(from: first, to: last, avoiding: obstacles))
+        }
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
