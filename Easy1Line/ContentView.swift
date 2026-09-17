@@ -265,6 +265,7 @@ struct ContentView: View {
             SchematicDocument.saveLast(document)
             restoreBackgroundImage()
             recomputeWireGeometry()
+            sanitizeTargetDefinitionSymbols()
             if !isApplyingRemoteDocument {
                 broadcastDocumentIfNeeded(newValue)
             }
