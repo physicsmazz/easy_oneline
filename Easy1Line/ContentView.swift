@@ -49,6 +49,7 @@ struct ContentView: View {
     @State private var panStart = CGSize.zero
     @State private var dragStartPositions: [UUID: CGPoint] = [:]
     @State private var targetDragStartCanvasOffset: CGSize?
+    @State private var targetDragStartLocation: CGPoint?
     @State private var activeTargetDragIDs: [UUID] = []
     @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
     @State private var draggingTargetID: UUID?
@@ -867,6 +868,7 @@ struct ContentView: View {
                 if dragStartPositions[target.id] == nil {
                     activeTargetDragIDs = selectedTargetIDs.contains(target.id) ? selectedTargetIDs : [target.id]
                     targetDragStartCanvasOffset = canvasOffset
+                    targetDragStartLocation = value.startLocation
                     if !selectedTargetIDs.contains(target.id) {
                         selectedTargetIDs = [target.id]
                     }
@@ -879,7 +881,7 @@ struct ContentView: View {
                 }
                 guard let start = dragStartPositions[target.id] else { return }
                 autoPanCanvasIfNeeded(for: document.targets[index].position)
-                let delta = canvasDelta(for: value.translation)
+                let delta = canvasDeltaBetweenScreens(value.startLocation, value.location, canvasOffset: targetDragStartCanvasOffset ?? canvasOffset)
                 let canvasPan = CGSize(
                     width: (targetDragStartCanvasOffset?.width ?? canvasOffset.width) - canvasOffset.width,
                     height: (targetDragStartCanvasOffset?.height ?? canvasOffset.height) - canvasOffset.height
@@ -902,6 +904,7 @@ struct ContentView: View {
                 guard !target.locked else { return }
                 dragStartPositions.removeValue(forKey: target.id)
                 targetDragStartCanvasOffset = nil
+                targetDragStartLocation = nil
                 targetDragStartRoutes.removeAll()
                 for targetID in activeTargetDragIDs {
                     snapTarget(targetID, canvasSize: canvasSize)
@@ -938,6 +941,23 @@ struct ContentView: View {
             height: translation.width * CGFloat(sin(angle)) + translation.height * CGFloat(cos(angle))
         )
         return CGSize(width: rotated.width / canvasScale, height: rotated.height / canvasScale)
+    }
+
+    private func canvasDeltaBetweenScreens(_ start: CGPoint, _ end: CGPoint, canvasOffset: CGSize) -> CGSize {
+        let startPoint = canvasPoint(forScreen: start, canvasOffset: canvasOffset)
+        let endPoint = canvasPoint(forScreen: end, canvasOffset: canvasOffset)
+        return CGSize(width: endPoint.x - startPoint.x, height: endPoint.y - startPoint.y)
+    }
+
+    private func canvasPoint(forScreen point: CGPoint, canvasOffset: CGSize) -> CGPoint {
+        let center = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
+        let translated = CGPoint(x: point.x - center.x - canvasOffset.width, y: point.y - center.y - canvasOffset.height)
+        let inverseAngle = -canvasRotation.radians
+        let rotated = CGPoint(
+            x: translated.x * CGFloat(cos(inverseAngle)) - translated.y * CGFloat(sin(inverseAngle)),
+            y: translated.x * CGFloat(sin(inverseAngle)) + translated.y * CGFloat(cos(inverseAngle))
+        )
+        return CGPoint(x: rotated.x / canvasScale + center.x, y: rotated.y / canvasScale + center.y)
     }
 
     private func targetTapped(_ target: SchematicTarget) {
