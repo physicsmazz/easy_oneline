@@ -946,7 +946,7 @@ struct ContentView: View {
 
     private func targetTapped(_ target: SchematicTarget) {
         if connectionMode {
-            handleConnectionModeTap(target)
+            selectTarget(target)
             return
         }
         if selectedTargetIDs.contains(target.id) {
