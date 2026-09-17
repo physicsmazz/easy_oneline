@@ -2194,10 +2194,10 @@ struct ContentView: View {
         let startNext = points.count > 2 ? points[2] : endTarget.position
         let endNext = points.count > 2 ? points[points.count - 3] : startTarget.position
         let startTurn = needsStubTurn(from: startEscape, stub: startPin, next: startNext)
-            ? stubTurnPoint(from: startEscape, stub: startPin, toward: endTarget.position, target: startTarget)
+            ? stubTurnPoint(from: startEscape, stub: startPin, toward: endTarget.position)
             : nil
         let endTurn = needsStubTurn(from: endEscape, stub: endPin, next: endNext)
-            ? stubTurnPoint(from: endEscape, stub: endPin, toward: startTarget.position, target: endTarget)
+            ? stubTurnPoint(from: endEscape, stub: endPin, toward: startTarget.position)
             : nil
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
@@ -2215,15 +2215,12 @@ struct ContentView: View {
         return dy < 0 ? next.y > escape.y : next.y < escape.y
     }
 
-    private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint, target: SchematicTarget) -> CGPoint {
-        let turnDistance: CGFloat = target.kind == .junction ? 0 : target.isCompact ? 36 : 54
+    private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint) -> CGPoint {
         let stubIsVertical = abs(escape.x - pin.x) < abs(escape.y - pin.y)
         if stubIsVertical {
-            let direction: CGFloat = other.x >= escape.x ? 1 : -1
-            return CGPoint(x: escape.x + direction * turnDistance, y: escape.y)
+            return CGPoint(x: other.x, y: escape.y)
         }
-        let direction: CGFloat = other.y >= escape.y ? 1 : -1
-        return CGPoint(x: escape.x, y: escape.y + direction * turnDistance)
+        return CGPoint(x: escape.x, y: other.y)
     }
 
     private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
