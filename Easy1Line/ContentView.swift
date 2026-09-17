@@ -633,53 +633,18 @@ struct ContentView: View {
 
             ZStack {
                 if let bgImage = backgroundImage {
-                    ZStack {
-                        Image(uiImage: bgImage)
-                            .resizable()
-                            .opacity(backgroundImageOpacity)
-                            .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
-                        
-                        if !backgroundImageLocked {
-                            RoundedRectangle(cornerRadius: 2)
-                                .stroke(Color.orange, lineWidth: 1.5)
-                            
-                            HStack(spacing: 0) {
-                                VStack(spacing: 0) {
-                                    ZStack {
-                                        Circle().fill(Color.orange).frame(width: 16, height: 16)
-                                    }
-                                    .contentShape(Circle())
-                                    .gesture(DragGesture().onChanged { value in
-                                        backgroundImageSize.width = max(50, backgroundImageSize.width - value.translation.width / canvasScale)
-                                        backgroundImageSize.height = max(50, backgroundImageSize.height - value.translation.height / canvasScale)
-                                    })
-                                    Spacer()
-                                }
-                                Spacer()
-                                VStack(spacing: 0) {
-                                    Spacer()
-                                    ZStack {
-                                        Circle().fill(Color.orange).frame(width: 16, height: 16)
-                                    }
-                                    .contentShape(Circle())
-                                    .gesture(DragGesture().onChanged { value in
-                                        backgroundImageSize.width = max(50, backgroundImageSize.width + value.translation.width / canvasScale)
-                                        backgroundImageSize.height = max(50, backgroundImageSize.height + value.translation.height / canvasScale)
-                                    })
-                                }
-                            }
-                            .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
-                        }
-                    }
-                    .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
-                    .position(x: size.width / 2 + (backgroundImagePosition.x - 5000),
-                             y: size.height / 2 + (backgroundImagePosition.y - 5000))
-                    .gesture(
-                        !backgroundImageLocked ? DragGesture().onChanged { value in
-                            backgroundImagePosition.x += value.translation.width / canvasScale
-                            backgroundImagePosition.y += value.translation.height / canvasScale
-                        } : nil
-                    )
+                    Image(uiImage: bgImage)
+                        .resizable()
+                        .opacity(backgroundImageOpacity)
+                        .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
+                        .position(x: size.width / 2 + (backgroundImagePosition.x - 5000),
+                                 y: size.height / 2 + (backgroundImagePosition.y - 5000))
+                        .gesture(
+                            !backgroundImageLocked ? DragGesture().onChanged { value in
+                                backgroundImagePosition.x += value.translation.width / canvasScale
+                                backgroundImagePosition.y += value.translation.height / canvasScale
+                            } : nil
+                        )
                 }
             
             Canvas { context, _ in
@@ -1930,6 +1895,18 @@ struct ContentView: View {
             
             if backgroundImage != nil {
                 VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Width").font(.caption)
+                        Slider(value: $backgroundImageSize.width, in: 50...800)
+                        Text("\(Int(backgroundImageSize.width))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
+                    }
+                    
+                    HStack {
+                        Text("Height").font(.caption)
+                        Slider(value: $backgroundImageSize.height, in: 50...800)
+                        Text("\(Int(backgroundImageSize.height))").font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.65))
+                    }
+                    
                     HStack {
                         Text("Opacity").font(.caption)
                         Slider(value: $backgroundImageOpacity, in: 0...1)
@@ -3321,7 +3298,7 @@ struct ContentView: View {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
         guard let uiImage = UIImage(data: data) else { return }
         backgroundImage = uiImage
-        backgroundImageSize = CGSize(width: uiImage.size.width / 2, height: uiImage.size.height / 2)
+        backgroundImageSize = CGSize(width: 200, height: 200)
         backgroundImagePhotoItem = nil
     }
     
