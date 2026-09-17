@@ -83,6 +83,7 @@ struct ContentView: View {
     @AppStorage("showWireCoverings") private var showWireCoverings = false
     @AppStorage("showWireNetNames") private var showWireNetNames = false
     @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
+    @AppStorage("canvasFieldSize") private var canvasFieldSize: Double = 4000
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
@@ -135,7 +136,7 @@ struct ContentView: View {
     @State private var editingWireDraft: SchematicSegment?
     @State private var backgroundImage: UIImage?
     @State private var backgroundImageSize = CGSize(width: 500, height: 500)
-    @State private var backgroundImagePosition = CGPoint(x: 5000, y: 5000)
+    @State private var backgroundImagePosition = CGPoint(x: 2000, y: 2000)
     @State private var backgroundImageOpacity: Double = 1.0
     @State private var backgroundImageLocked = false
     @State private var backgroundImageConstrainProportions = false
@@ -478,6 +479,7 @@ struct ContentView: View {
 
             Menu("Settings") {
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
+                Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
                 ColorPicker("Background color", selection: Binding(
                     get: { Color(hex: canvasBackgroundColorHex) },
                     set: { canvasBackgroundColorHex = $0.hexString }
@@ -696,10 +698,10 @@ struct ContentView: View {
         let scaleY = editorSize.height / bounds.height
         let newScale = min(max(min(scaleX, scaleY) * 0.85, 0.25), 4)
         let boundsCenter = CGPoint(x: bounds.midX, y: bounds.midY)
-        let viewportCenter = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
+        let canvasCenter = CGPoint(x: canvasFieldSize / 2, y: canvasFieldSize / 2)
         canvasRotation = .zero
         canvasScale = newScale
-        canvasOffset = CGSize(width: (viewportCenter.x - boundsCenter.x) * newScale, height: (viewportCenter.y - boundsCenter.y) * newScale)
+        canvasOffset = CGSize(width: (canvasCenter.x - boundsCenter.x) * newScale, height: (canvasCenter.y - boundsCenter.y) * newScale)
     }
 
     private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
@@ -761,8 +763,7 @@ struct ContentView: View {
                         .resizable()
                         .opacity(backgroundImageOpacity)
                         .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
-                        .position(x: size.width / 2 + (backgroundImagePosition.x - 5000),
-                                 y: size.height / 2 + (backgroundImagePosition.y - 5000))
+                        .position(backgroundImagePosition)
                         .gesture(
                             !backgroundImageLocked ? DragGesture()
                                 .onChanged { value in
@@ -776,8 +777,6 @@ struct ContentView: View {
                 }
             
             Canvas { context, _ in
-                context.translateBy(x: 5000 - size.width / 2, y: 5000 - size.height / 2)
-                
                 for segment in document.segments {
                     guard let points = cachedWirePoints[segment.id], !points.isEmpty else { continue }
                     var path = Path()
@@ -798,8 +797,6 @@ struct ContentView: View {
                 }
             }
             .allowsHitTesting(false)
-            .frame(width: 10000, height: 10000)
-            .position(x: size.width / 2, y: size.height / 2)
 
             ForEach(document.segments) { segment in
                 if let start = target(with: segment.startID), let end = target(with: segment.endID) {
@@ -893,9 +890,11 @@ struct ContentView: View {
 
             }
         }
+        .frame(width: canvasFieldSize, height: canvasFieldSize)
         .scaleEffect(canvasScale, anchor: .center)
         .rotationEffect(canvasRotation)
         .offset(canvasOffset)
+        .frame(width: size.width, height: size.height)
         .ignoresSafeArea(edges: .bottom)
         .onAppear { editorSize = size }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
@@ -1025,15 +1024,16 @@ struct ContentView: View {
         splitSegmentIfNeeded(for: id)
     }
 
-    private func canvasDropPoint(_ location: CGPoint, canvasSize: CGSize) -> CGPoint {
-        let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-        let translated = CGPoint(x: location.x - center.x - canvasOffset.width, y: location.y - center.y - canvasOffset.height)
+    private func canvasDropPoint(_ location: CGPoint, canvasSize viewportSize: CGSize) -> CGPoint {
+        let viewportCenter = CGPoint(x: viewportSize.width / 2, y: viewportSize.height / 2)
+        let canvasCenter = CGPoint(x: canvasFieldSize / 2, y: canvasFieldSize / 2)
+        let translated = CGPoint(x: location.x - viewportCenter.x - canvasOffset.width, y: location.y - viewportCenter.y - canvasOffset.height)
         let inverseAngle = -canvasRotation.radians
         let rotated = CGPoint(
             x: translated.x * CGFloat(cos(inverseAngle)) - translated.y * CGFloat(sin(inverseAngle)),
             y: translated.x * CGFloat(sin(inverseAngle)) + translated.y * CGFloat(cos(inverseAngle))
         )
-        return CGPoint(x: rotated.x / canvasScale + center.x, y: rotated.y / canvasScale + center.y)
+        return CGPoint(x: rotated.x / canvasScale + canvasCenter.x, y: rotated.y / canvasScale + canvasCenter.y)
     }
 
     private var zoomControls: some View {
@@ -1462,7 +1462,9 @@ struct ContentView: View {
         let step: CGFloat = 44
         let cascade = CGFloat(quickAddCascadeIndex % 8)
         quickAddCascadeIndex += 1
-        return CGPoint(x: 480 - canvasOffset.width + cascade * step, y: 330 - canvasOffset.height + cascade * step)
+        let viewportCenter = editorSize == .zero ? CGPoint(x: 480, y: 330) : CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
+        let center = canvasDropPoint(viewportCenter, canvasSize: editorSize == .zero ? CGSize(width: 960, height: 660) : editorSize)
+        return CGPoint(x: center.x + cascade * step, y: center.y + cascade * step)
     }
 
     private func saveTargetTemplate(_ target: SchematicTarget) {
@@ -2458,14 +2460,15 @@ struct ContentView: View {
 
     // Screen-space inverse of canvasDropPoint.
     private func screenPoint(forCanvas point: CGPoint) -> CGPoint {
-        let center = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
-        let scaled = CGPoint(x: (point.x - center.x) * canvasScale, y: (point.y - center.y) * canvasScale)
+        let viewportCenter = CGPoint(x: editorSize.width / 2, y: editorSize.height / 2)
+        let canvasCenter = CGPoint(x: canvasFieldSize / 2, y: canvasFieldSize / 2)
+        let scaled = CGPoint(x: (point.x - canvasCenter.x) * canvasScale, y: (point.y - canvasCenter.y) * canvasScale)
         let angle = canvasRotation.radians
         let rotated = CGPoint(
             x: scaled.x * CGFloat(cos(angle)) - scaled.y * CGFloat(sin(angle)),
             y: scaled.x * CGFloat(sin(angle)) + scaled.y * CGFloat(cos(angle))
         )
-        return CGPoint(x: rotated.x + center.x + canvasOffset.width, y: rotated.y + center.y + canvasOffset.height)
+        return CGPoint(x: rotated.x + viewportCenter.x + canvasOffset.width, y: rotated.y + viewportCenter.y + canvasOffset.height)
     }
 
     private func selectionBoxPosition(near canvasPoint: CGPoint) -> CGPoint {
@@ -3682,7 +3685,7 @@ struct ContentView: View {
             // Clear background image if document has no background image
             backgroundImage = nil
             backgroundImageSize = CGSize(width: 500, height: 500)
-            backgroundImagePosition = CGPoint(x: 5000, y: 5000)
+            backgroundImagePosition = CGPoint(x: 2000, y: 2000)
             backgroundImageOpacity = 1.0
             backgroundImageLocked = false
             backgroundImageConstrainProportions = false
@@ -3787,7 +3790,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var targetDefinitions: [TargetDefinition] = []
     var backgroundImageBase64: String? = nil
     var backgroundImageSize: CGSize = CGSize(width: 200, height: 200)
-    var backgroundImagePosition: CGPoint = CGPoint(x: 5000, y: 5000)
+    var backgroundImagePosition: CGPoint = CGPoint(x: 2000, y: 2000)
     var backgroundImageOpacity: Double = 1.0
     var backgroundImageLocked: Bool = false
     var backgroundImageConstrainProportions: Bool = false
@@ -3808,7 +3811,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
         backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
         backgroundImageSize = try container.decodeIfPresent(CGSize.self, forKey: .backgroundImageSize) ?? CGSize(width: 200, height: 200)
-        backgroundImagePosition = try container.decodeIfPresent(CGPoint.self, forKey: .backgroundImagePosition) ?? CGPoint(x: 5000, y: 5000)
+        backgroundImagePosition = try container.decodeIfPresent(CGPoint.self, forKey: .backgroundImagePosition) ?? CGPoint(x: 2000, y: 2000)
         backgroundImageOpacity = try container.decodeIfPresent(Double.self, forKey: .backgroundImageOpacity) ?? 1.0
         backgroundImageLocked = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageLocked) ?? false
         backgroundImageConstrainProportions = try container.decodeIfPresent(Bool.self, forKey: .backgroundImageConstrainProportions) ?? false
