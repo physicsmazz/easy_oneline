@@ -311,9 +311,9 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle(isActive: showConnectionNames))
                 .accessibilityLabel("Show connection names")
 
-            Button(showWireLengths ? "Lengths: On" : "Lengths: Off") { showWireLengths.toggle() }
+            Button(showWireLengths ? "Labels: On" : "Labels: Off") { showWireLengths.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showWireLengths))
-                .accessibilityLabel("Show wire segment lengths")
+                .accessibilityLabel("Show wire labels")
 
             Button("Info") { showInfoPanel.toggle() }
                 .buttonStyle(EditorButtonStyle(isActive: showInfoPanel))
@@ -655,13 +655,7 @@ struct ContentView: View {
                         ForEach(0..<(points.count - 1), id: \.self) { sectionIndex in
                             let first = points[sectionIndex]
                             let second = points[sectionIndex + 1]
-                            Text("\(Int(hypot(second.x - first.x, second.y - first.y).rounded())) px")
-                                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                .foregroundStyle(.yellow.opacity(0.9))
-                                .padding(.horizontal, 3)
-                                .background(.black.opacity(0.65), in: Capsule())
-                                .position(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
-                                .allowsHitTesting(false)
+                            wireLabel(segment.name, from: first, to: second)
                         }
                     }
                 }
@@ -693,6 +687,25 @@ struct ContentView: View {
                 .padding(.trailing, 24)
         }
         }
+    }
+
+    private func wireLabel(_ name: String, from first: CGPoint, to second: CGPoint) -> some View {
+        let dx = second.x - first.x
+        let dy = second.y - first.y
+        let midpoint = CGPoint(x: (first.x + second.x) / 2, y: (first.y + second.y) / 2)
+        let length = max(hypot(dx, dy), 1)
+        let labelPoint = CGPoint(x: midpoint.x - dy / length * 14, y: midpoint.y + dx / length * 14)
+        var angle = atan2(dy, dx)
+        if angle > .pi / 2 || angle < -.pi / 2 { angle += .pi }
+        return Text(name)
+            .font(.system(size: 9, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.9))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(.black.opacity(0.7), in: Capsule())
+            .rotationEffect(.radians(angle))
+            .position(labelPoint)
+            .allowsHitTesting(false)
     }
 
     private func placeDockItem(_ kind: TargetKind, at screenLocation: CGPoint) {
@@ -2257,7 +2270,7 @@ struct ContentView: View {
     }
 
     private func obstacleRect(for target: SchematicTarget) -> CGRect {
-        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : target.isCompact ? CGSize(width: 40, height: 40) : CGSize(width: 108, height: 76)
+        let size = target.kind == .junction ? CGSize(width: 18, height: 18) : target.isCompact ? CGSize(width: 40, height: 40) : CGSize(width: 88, height: 76)
         return CGRect(x: target.position.x - size.width * target.scale / 2, y: target.position.y - size.height * target.scale / 2, width: size.width * target.scale, height: size.height * target.scale)
     }
 
@@ -2827,7 +2840,7 @@ private struct TargetView: View {
                     }.frame(width: 58, height: 48)
                     Text(target.name).font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.75)).lineLimit(1)
                 }
-                .frame(width: 108, height: 76)
+                .frame(width: 88, height: 76)
                 .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
                 .overlay { RoundedRectangle(cornerRadius: 12).stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2) }
             }
@@ -2841,7 +2854,7 @@ private struct TargetView: View {
                 } else {
                     RoundedRectangle(cornerRadius: 13)
                         .stroke(lockedBorderStyle, lineWidth: 1.5)
-                        .frame(width: 108, height: 76)
+                        .frame(width: 88, height: 76)
                 }
             }
         }
