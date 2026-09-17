@@ -1136,7 +1136,7 @@ struct ContentView: View {
                     }
                 }
                 for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
-                    removeStraightBends(from: segment)
+                    fixWire(segment)
                 }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
@@ -2392,10 +2392,10 @@ struct ContentView: View {
                     .buttonStyle(EditorButtonStyle())
                     .help("Add bend point at clicked point")
                     .accessibilityLabel("Add bend point at clicked point")
-                Button { removeStraightBends(from: segment) } label: { Image(systemName: "arrow.triangle.merge") }
+                Button { fixWire(segment) } label: { Image(systemName: "arrow.triangle.merge") }
                     .buttonStyle(EditorButtonStyle())
-                    .help("Remove straight bend points")
-                    .accessibilityLabel("Remove straight bend points")
+                    .help("Fix wire (straighten and remove loops)")
+                    .accessibilityLabel("Fix wire")
             }
             if selectedTargetIDs.count > 1 {
                 Button { toggleSelectedTargetLocks() } label: {
@@ -3044,18 +3044,48 @@ struct ContentView: View {
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
         if let segment = document.segments.first(where: { $0.id == id }) {
-            removeStraightBends(from: segment)
+            fixWire(segment)
         }
     }
 
-    private func removeStraightBends(from segment: SchematicSegment) {
+    /// "Fix wire": simplifies collinear bend points AND collapses unnecessary out-and-back loops
+    /// (e.g. horizontal-vertical-horizontal where the two horizontal legs reverse direction) into a single clean turn.
+    private func fixWire(_ segment: SchematicSegment) {
         guard let index = document.segments.firstIndex(where: { $0.id == segment.id }) else { return }
         let route = document.segments[index].routePoints
-        let simplified = simplifyOrthogonalPoints(route, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+        let delooped = removeRouteLoops(route)
+        let simplified = simplifyOrthogonalPoints(delooped, alignmentTolerance: CGFloat(wireAlignmentTolerance))
         document.segments[index].routePoints = simplified
         if let labelAnchor = wireLabelRouteAnchorPoints[segment.id] {
             updateWireLabelPosition(segment.id, route: simplified, near: labelAnchor)
         }
+    }
+
+    /// Detects a horizontal-vertical-horizontal (or vertical-horizontal-vertical) run where the two
+    /// parallel legs reverse direction - an unnecessary "out and back" loop - and collapses it to one 90-degree turn.
+    private func removeRouteLoops(_ points: [CGPoint]) -> [CGPoint] {
+        guard points.count >= 4 else { return points }
+        var result = points
+        var i = 0
+        while i + 3 < result.count {
+            let a = result[i], b = result[i + 1], c = result[i + 2], d = result[i + 3]
+            let abHorizontal = abs(a.y - b.y) < 0.5
+            let cdHorizontal = abs(c.y - d.y) < 0.5
+            let bcVertical = abs(b.x - c.x) < 0.5
+            if abHorizontal && cdHorizontal && bcVertical, (b.x - a.x) * (d.x - c.x) < 0 {
+                result.replaceSubrange(i...(i + 3), with: [a, CGPoint(x: d.x, y: a.y), d])
+                continue
+            }
+            let abVertical = abs(a.x - b.x) < 0.5
+            let cdVertical = abs(c.x - d.x) < 0.5
+            let bcHorizontal = abs(b.y - c.y) < 0.5
+            if abVertical && cdVertical && bcHorizontal, (b.y - a.y) * (d.y - c.y) < 0 {
+                result.replaceSubrange(i...(i + 3), with: [a, CGPoint(x: a.x, y: d.y), d])
+                continue
+            }
+            i += 1
+        }
+        return result
     }
 
     private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
