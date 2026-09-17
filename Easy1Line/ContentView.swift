@@ -952,7 +952,6 @@ struct ContentView: View {
 
     private func targetTapped(_ target: SchematicTarget) {
         if connectionMode {
-            handleConnectionModeTap(target)
             return
         }
         if selectedTargetIDs.contains(target.id) {
@@ -1076,7 +1075,6 @@ struct ContentView: View {
             connectionModeTargetIDs = [targetID]
             selectedConnectionSlots = [targetID: slot]
         }
-        selectedTargetIDs = [targetID]
     }
 
     private func connectSelectedTargets() {
@@ -3122,7 +3120,7 @@ private struct TargetView: View {
             }
         }
         .overlay {
-            if isSelected || isConnectionStart {
+            if (isSelected || isConnectionStart) && !connectionMode {
                 if target.kind == .junction {
                     Circle().stroke(.cyan, lineWidth: 3).frame(width: 30, height: 30).shadow(color: .cyan.opacity(0.8), radius: 8)
                 } else if target.isCompact {
