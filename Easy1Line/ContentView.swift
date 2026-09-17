@@ -1975,7 +1975,25 @@ struct ContentView: View {
     private func snapTarget(_ id: UUID, canvasSize: CGSize) {
         guard let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
         guard snapToGrid else { return }
+        let previousPosition = document.targets[index].position
         document.targets[index].position = snappedPosition(document.targets[index].position)
+        let delta = CGSize(width: document.targets[index].position.x - previousPosition.x, height: document.targets[index].position.y - previousPosition.y)
+        guard abs(delta.width) > 0.01 || abs(delta.height) > 0.01 else { return }
+        for segmentIndex in document.segments.indices where document.segments[segmentIndex].startID == id || document.segments[segmentIndex].endID == id {
+            guard document.segments[segmentIndex].routePoints.count > 1 else { continue }
+            if document.segments[segmentIndex].startID == id {
+                document.segments[segmentIndex].routePoints[0].x += delta.width
+                document.segments[segmentIndex].routePoints[0].y += delta.height
+                document.segments[segmentIndex].routePoints[1].x += delta.width
+                document.segments[segmentIndex].routePoints[1].y += delta.height
+            } else {
+                let last = document.segments[segmentIndex].routePoints.count - 1
+                document.segments[segmentIndex].routePoints[last].x += delta.width
+                document.segments[segmentIndex].routePoints[last].y += delta.height
+                document.segments[segmentIndex].routePoints[last - 1].x += delta.width
+                document.segments[segmentIndex].routePoints[last - 1].y += delta.height
+            }
+        }
     }
 
     private func snapAllTargets() {
