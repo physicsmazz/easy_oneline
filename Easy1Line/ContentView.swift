@@ -2120,7 +2120,11 @@ struct ContentView: View {
     }
 
     private var wireLegendPanel: some View {
-        let entries = document.colorLegend.sorted { $0.meaning.localizedCaseInsensitiveCompare($1.meaning) == .orderedAscending }
+        var entries = document.colorLegend
+        for segment in document.segments where !entries.contains(where: { $0.colorHex.caseInsensitiveCompare(segment.colorHex) == .orderedSame }) {
+            entries.append(ColorLegendEntry(colorHex: segment.colorHex, meaning: ""))
+        }
+        entries.sort { $0.meaning.localizedCaseInsensitiveCompare($1.meaning) == .orderedAscending }
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("WIRE LEGEND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
@@ -2135,7 +2139,7 @@ struct ContentView: View {
                 ForEach(entries) { entry in
                     HStack(spacing: 10) {
                         Circle().fill(Color(hex: entry.colorHex)).frame(width: 16, height: 16)
-                        Text(entry.meaning).font(.caption.weight(.semibold))
+                        Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption.weight(.semibold))
                         Spacer()
                     }
                 }
@@ -2668,7 +2672,21 @@ struct ContentView: View {
                 Button("Cancel") { cancelTargetName(target) }
                     .buttonStyle(.bordered)
                 Spacer()
-                if target.kind != .junction { ColorPicker("Target color", selection: targetBinding(target).color).labelsHidden() }
+                if target.kind != .junction {
+                    ColorPicker("Target color", selection: targetBinding(target).color).labelsHidden()
+                    ForEach(document.colorLegend) { entry in
+                        Button {
+                            targetBinding(target).color.wrappedValue = Color(hex: entry.colorHex)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
+                                Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
+                    }
+                }
                 Button(role: .destructive) {
                     showDeleteWarning = true
                 } label: {
@@ -2949,6 +2967,18 @@ struct ContentView: View {
             ColorPicker("", selection: colorBinding)
                 .labelsHidden()
                 .help("Wire drawing color")
+            ForEach(document.colorLegend) { entry in
+                Button {
+                    colorBinding.wrappedValue = Color(hex: entry.colorHex)
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
+                        Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
+            }
             Stepper("\(wire.displayWidth, specifier: "%.1f") pt", value: displayWidthBinding, in: 1...20, step: 0.5)
                 .labelsHidden()
                 .frame(width: 96)
@@ -4534,7 +4564,7 @@ private struct TargetView: View {
                 }
                 .frame(width: 40, height: 40)
             } else {
-                VStack(spacing: 2) {
+                ZStack {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.10, green: 0.14, blue: 0.16))
                         if let imageData = target.imageData, let uiImage = UIImage(data: imageData) {
@@ -4546,14 +4576,20 @@ private struct TargetView: View {
                         } else {
                             SchematicSymbolView(kind: target.kind, color: Color(hex: target.colorHex)).frame(width: 28, height: 28)
                         }
-                    }.frame(width: 58, height: 48)
+                    }
+                    .frame(width: 58, height: 48)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color(hex: target.colorHex), lineWidth: 1.5)
+                    }
+                    .position(x: 38, y: 30)
                     Text(target.name)
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.82))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                         .frame(width: 80, height: 24)
-                        .offset(y: -4)
+                        .position(x: 38, y: 62)
                 }
                 .frame(width: 76, height: 68)
                 .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
@@ -4661,7 +4697,13 @@ private struct TargetView: View {
     }
 
     private var borderStyle: AnyShapeStyle {
-        AnyShapeStyle(Color(hex: target.colorHex))
+        if isSelected || isConnectionStart {
+            return AnyShapeStyle(Color(hex: target.colorHex))
+        }
+        if connectedColors.count > 1 {
+            return AnyShapeStyle(AngularGradient(colors: connectedColors, center: .center))
+        }
+        return AnyShapeStyle(connectedColors.first ?? Color.white.opacity(0.18))
     }
 
     private var targetHitShape: AnyShape {
