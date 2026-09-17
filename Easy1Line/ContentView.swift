@@ -82,6 +82,7 @@ struct ContentView: View {
     @State private var selectedSegmentIDs: Set<UUID> = []
     @State private var selectedConnectionSlots: [UUID: Int] = [:]
     @State private var wirePinMoveTargetID: UUID?
+    @State private var wireConnectionMoveMode = false
     @AppStorage("showConnectionNames") private var showConnectionNames = true
     @AppStorage("showWireLegend") private var showWireLegend = false
     @AppStorage("showWireLengths") private var showWireLengths = true
@@ -208,8 +209,8 @@ struct ContentView: View {
             header
                 .zIndex(1000)
 
-            if wirePinMoveTargetID != nil {
-                Text("Select target connection")
+            if wireConnectionMoveMode {
+                Text(wirePinMoveTargetID == nil ? "Select wire connection" : "Select target connection")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.9))
                     .padding(.horizontal, 14)
@@ -1396,6 +1397,7 @@ struct ContentView: View {
 
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
         wirePinMoveTargetID = nil
+        wireConnectionMoveMode = false
         selectedTargetIDs.removeAll()
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
@@ -1444,21 +1446,32 @@ struct ContentView: View {
             handleConnectionModeConnectionPoint(targetID: targetID, slot: slot)
             return
         }
-        // Wire-first: select the existing endpoint pin, then tap a different free pin to move the wire end.
-        if let wire = selectedSegment, wire.startID == targetID || wire.endID == targetID,
-           let index = document.segments.firstIndex(where: { $0.id == wire.id }) {
-            let currentSlot = wire.startID == targetID ? (wire.startSlot ?? 0) : (wire.endSlot ?? 0)
-            if selectedConnectionSlots[targetID] == nil {
-                selectedConnectionSlots[targetID] = currentSlot
+        if wireConnectionMoveMode {
+            guard let wire = selectedSegment,
+                  let index = document.segments.firstIndex(where: { $0.id == wire.id }) else { return }
+            if wirePinMoveTargetID == nil {
+                guard targetID == wire.startID || targetID == wire.endID else { return }
                 wirePinMoveTargetID = targetID
+                selectedConnectionSlots[targetID] = targetID == wire.startID ? (wire.startSlot ?? 0) : (wire.endSlot ?? 0)
                 return
             }
-            guard selectedConnectionSlots[targetID] != slot,
-                  !occupiedSlots(for: targetID).subtracting([currentSlot]).contains(slot) else { return }
-            if wire.startID == targetID { document.segments[index].startSlot = slot } else { document.segments[index].endSlot = slot }
+            guard let sourceTargetID = wirePinMoveTargetID,
+                  targetID != sourceTargetID,
+                  let target = target(with: targetID),
+                  slot >= 0, slot < target.maxConnections else { return }
+            let occupied = occupiedSlots(for: targetID)
+            guard target.kind == .junction || !occupied.contains(slot) else { return }
+            if wire.startID == sourceTargetID {
+                document.segments[index].startID = targetID
+                document.segments[index].startSlot = slot
+            } else if wire.endID == sourceTargetID {
+                document.segments[index].endID = targetID
+                document.segments[index].endSlot = slot
+            }
             document.segments[index].routePoints.removeAll()
-            selectedConnectionSlots[targetID] = slot
             wirePinMoveTargetID = nil
+            wireConnectionMoveMode = false
+            selectedConnectionSlots.removeAll()
             return
         }
         selectedSegmentID = nil
@@ -2889,6 +2902,14 @@ struct ContentView: View {
             Button("Library") { showLineLibrary = true }
                 .buttonStyle(.borderedProminent)
                 .font(.caption)
+            Button(wireConnectionMoveMode ? "Cancel move" : "Move connection") {
+                wireConnectionMoveMode.toggle()
+                wirePinMoveTargetID = nil
+                selectedConnectionSlots.removeAll()
+            }
+            .buttonStyle(.bordered)
+            .tint(wireConnectionMoveMode ? .orange : .cyan)
+            .font(.caption)
         }
         .padding(10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
