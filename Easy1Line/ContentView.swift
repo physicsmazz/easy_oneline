@@ -750,7 +750,7 @@ struct ContentView: View {
     /// Zooms/pans so all targets and wires (not the background image) fit in view - reuses the same bounds as PDF export.
     private func zoomToExtents() {
         guard editorSize != .zero else { return }
-        let bounds = pdfContentBounds()
+        let bounds = selectedContentBounds ?? pdfContentBounds()
         guard bounds.width > 0, bounds.height > 0 else { return }
         let scaleX = editorSize.width / bounds.width
         let scaleY = editorSize.height / bounds.height
@@ -760,6 +760,34 @@ struct ContentView: View {
         canvasRotation = .zero
         canvasScale = newScale
         canvasOffset = CGSize(width: (canvasCenter.x - boundsCenter.x) * newScale, height: (canvasCenter.y - boundsCenter.y) * newScale)
+    }
+
+    private var selectedContentBounds: CGRect? {
+        guard !selectedTargetIDs.isEmpty || !selectedSegmentIDs.isEmpty else { return nil }
+        var bounds = CGRect.null
+        for targetID in selectedTargetIDs {
+            guard let target = target(with: targetID) else { continue }
+            let halfWidth: CGFloat = target.kind == .junction ? 9 : target.isCompact ? 20 : 54
+            let halfHeight: CGFloat = target.kind == .junction ? 9 : target.isCompact ? 20 : 38
+            let scale = CGFloat(target.scale)
+            bounds = bounds.union(CGRect(
+                x: target.position.x - halfWidth * scale,
+                y: target.position.y - halfHeight * scale,
+                width: halfWidth * 2 * scale,
+                height: halfHeight * 2 * scale
+            ))
+        }
+        for segmentID in selectedSegmentIDs {
+            guard let segment = document.segments.first(where: { $0.id == segmentID }),
+                  let start = target(with: segment.startID),
+                  let end = target(with: segment.endID) else { continue }
+            let points = cachedWirePoints[segment.id] ?? orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
+            for point in points {
+                bounds = bounds.union(CGRect(x: point.x, y: point.y, width: 1, height: 1))
+            }
+        }
+        guard !bounds.isNull else { return nil }
+        return bounds.insetBy(dx: -40, dy: -40)
     }
 
     private func pdfCanvas(in size: CGSize, origin: CGPoint) -> some View {
