@@ -2541,10 +2541,10 @@ struct ContentView: View {
             }
             if selectedTargetIDs.count == 1, let targetID = selectedTargetIDs.first, let target = target(with: targetID) {
                 if canRemoveTargetFromWire(target) {
-                    Button { removeTargetFromWire(target) } label: { Image(systemName: "arrow.uturn.right.circle") }
+                    Button { removeTargetFromWire(target) } label: { Image(systemName: "link.badge.minus") }
                         .buttonStyle(EditorButtonStyle())
-                        .help("Remove item from wire and join the wire")
-                        .accessibilityLabel("Remove item from wire")
+                        .help("Disconnect item from wire and join the wire")
+                        .accessibilityLabel("Disconnect item from wire")
                 }
                 Button { captureForUndo(); rotateTarget(target, by: -90) } label: { Image(systemName: "rotate.left") }
                     .buttonStyle(EditorButtonStyle())
