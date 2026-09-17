@@ -81,6 +81,7 @@ struct ContentView: View {
     @State private var lineLibrarySearch = ""
     @State private var showTargetLibrary = false
     @State private var showNetlist = false
+    @State private var showBackgroundImagePanel = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var connectionDragStartAngles: [String: Double] = [:]
@@ -118,6 +119,12 @@ struct ContentView: View {
     @State private var pendingNewDrawingAfterSave = false
     @State private var editingWireID: UUID?
     @State private var editingWireDraft: SchematicSegment?
+    @State private var backgroundImage: UIImage?
+    @State private var backgroundImageSize = CGSize(width: 500, height: 500)
+    @State private var backgroundImagePosition = CGPoint(x: 5000, y: 5000)
+    @State private var backgroundImageOpacity: Double = 1.0
+    @State private var backgroundImageLocked = false
+    @State private var backgroundImagePhotoItem: PhotosPickerItem?
     @State private var wireLibraryEntries: [SupabaseWireLibraryRecord] = []
     @State private var showWireLibraryPanel = false
     @State private var newWireLibrarySize = ""
@@ -221,6 +228,13 @@ struct ContentView: View {
                     .padding(.trailing, 20)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
+            
+            if showBackgroundImagePanel {
+                backgroundImagePanel
+                    .padding(.top, 84)
+                    .padding(.trailing, 20)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
 
             if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
                 wireBottomPanel(segment)
@@ -244,6 +258,10 @@ struct ContentView: View {
         .onChange(of: selectedPhotoItem) { _, item in
             guard let item, let targetID = selectedTargetIDs.first else { return }
             Task { await loadTargetImage(item, targetID: targetID) }
+        }
+        .onChange(of: backgroundImagePhotoItem) { _, item in
+            guard let item else { return }
+            Task { await loadBackgroundImage(item) }
         }
         .onAppear { if snapToGrid { snapAllTargets() } }
         .task {
@@ -356,6 +374,7 @@ struct ContentView: View {
                 Button("Save to cloud") { promptForSaveName(toCloud: true) }
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
+                Button("Background") { showBackgroundImagePanel.toggle() }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -613,8 +632,59 @@ struct ContentView: View {
                 }
 
             ZStack {
+                if let bgImage = backgroundImage {
+                    ZStack {
+                        Image(uiImage: bgImage)
+                            .resizable()
+                            .opacity(backgroundImageOpacity)
+                            .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
+                        
+                        if !backgroundImageLocked {
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(Color.orange, lineWidth: 1.5)
+                            
+                            HStack(spacing: 0) {
+                                VStack(spacing: 0) {
+                                    ZStack {
+                                        Circle().fill(Color.orange).frame(width: 16, height: 16)
+                                    }
+                                    .contentShape(Circle())
+                                    .gesture(DragGesture().onChanged { value in
+                                        backgroundImageSize.width = max(50, backgroundImageSize.width - value.translation.width / canvasScale)
+                                        backgroundImageSize.height = max(50, backgroundImageSize.height - value.translation.height / canvasScale)
+                                    })
+                                    Spacer()
+                                }
+                                Spacer()
+                                VStack(spacing: 0) {
+                                    Spacer()
+                                    ZStack {
+                                        Circle().fill(Color.orange).frame(width: 16, height: 16)
+                                    }
+                                    .contentShape(Circle())
+                                    .gesture(DragGesture().onChanged { value in
+                                        backgroundImageSize.width = max(50, backgroundImageSize.width + value.translation.width / canvasScale)
+                                        backgroundImageSize.height = max(50, backgroundImageSize.height + value.translation.height / canvasScale)
+                                    })
+                                }
+                            }
+                            .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
+                        }
+                    }
+                    .frame(width: backgroundImageSize.width, height: backgroundImageSize.height)
+                    .position(x: size.width / 2 + (backgroundImagePosition.x - 5000),
+                             y: size.height / 2 + (backgroundImagePosition.y - 5000))
+                    .gesture(
+                        !backgroundImageLocked ? DragGesture().onChanged { value in
+                            backgroundImagePosition.x += value.translation.width / canvasScale
+                            backgroundImagePosition.y += value.translation.height / canvasScale
+                        } : nil
+                    )
+                }
+            
             Canvas { context, _ in
                 context.translateBy(x: 5000 - size.width / 2, y: 5000 - size.height / 2)
+                
                 for segment in document.segments {
                     guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
                     let path = orthogonalPath(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
@@ -1847,6 +1917,47 @@ struct ContentView: View {
             }
             .padding()
         }
+    }
+    
+    private var backgroundImagePanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("BACKGROUND").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { showBackgroundImagePanel = false } label: { Image(systemName: "xmark") }
+                    .foregroundStyle(.white.opacity(0.65))
+            }
+            
+            if backgroundImage != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Opacity").font(.caption)
+                        Slider(value: $backgroundImageOpacity, in: 0...1)
+                    }
+                    
+                    HStack {
+                        Text("Locked").font(.caption)
+                        Spacer()
+                        Toggle("", isOn: $backgroundImageLocked)
+                    }
+                    
+                    Button(role: .destructive) {
+                        clearBackgroundImage()
+                    } label: {
+                        Label("Remove image", systemImage: "trash")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            } else {
+                PhotosPicker(selection: $backgroundImagePhotoItem, matching: .images) {
+                    Label("Choose image", systemImage: "photo.stack")
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(14)
+        .frame(width: 280)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var inspector: some View {
@@ -3204,6 +3315,19 @@ struct ContentView: View {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
         document.targets[index].imageData = nil
         selectedPhotoItem = nil
+    }
+    
+    private func loadBackgroundImage(_ item: PhotosPickerItem) async {
+        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        guard let uiImage = UIImage(data: data) else { return }
+        backgroundImage = uiImage
+        backgroundImageSize = CGSize(width: uiImage.size.width / 2, height: uiImage.size.height / 2)
+        backgroundImagePhotoItem = nil
+    }
+    
+    private func clearBackgroundImage() {
+        backgroundImage = nil
+        backgroundImagePhotoItem = nil
     }
 
     private func rotateTarget(_ target: SchematicTarget, by degrees: Double) {
