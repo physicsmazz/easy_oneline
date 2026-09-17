@@ -3341,11 +3341,19 @@ struct ContentView: View {
         let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
         let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
         let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
+        let startNext = points.count > 2 ? points[2] : endTarget.position
+        let endNext = points.count > 2 ? points[points.count - 3] : startTarget.position
+        let startTurn = needsStubTurn(from: startEscape, stub: startPin, next: startNext)
+            ? stubTurnPoint(from: startEscape, stub: startPin, toward: endTarget.position, target: startTarget)
+            : nil
+        let endTurn = needsStubTurn(from: endEscape, stub: endPin, next: endNext)
+            ? stubTurnPoint(from: endEscape, stub: endPin, toward: startTarget.position, target: endTarget)
+            : nil
         if points.count == 2 {
-            return orthogonalizedPoints([startPin, startEscape, endEscape, endPin], alignmentTolerance: 0)
+            return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
         }
-        let interior = Array(points.dropFirst().dropLast())
-        return removeRouteBacktracks(orthogonalizedPoints([startPin] + interior + [endPin], alignmentTolerance: 0))
+        let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
+        return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
     }
 
     private func needsStubTurn(from escape: CGPoint, stub pin: CGPoint, next: CGPoint) -> Bool {
@@ -3391,8 +3399,12 @@ struct ContentView: View {
     private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint, matching expected: CGPoint) -> CGPoint {
         let dx = existingPoint.x - pin.x
         let dy = existingPoint.y - pin.y
+        let expectedDX = expected.x - pin.x
+        let expectedDY = expected.y - pin.y
         let length = hypot(dx, dy)
-        guard length > 0.5 else { return fallback }
+        let expectedLength = max(hypot(expectedDX, expectedDY), 1)
+        let directionMatches = (dx * expectedDX + dy * expectedDY) / max(length * expectedLength, 1) > 0.7
+        guard length > 0.5, directionMatches else { return fallback }
         let actualLength = max(minimumLength, length)
         return CGPoint(x: pin.x + dx / length * actualLength, y: pin.y + dy / length * actualLength)
     }
