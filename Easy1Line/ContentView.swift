@@ -2945,7 +2945,7 @@ struct ContentView: View {
                 Button {
                     clearTargetImage(target)
                 } label: {
-                    Label("Use SF Symbol instead", systemImage: "sf.square")
+                    Label("Use SF Symbol instead", systemImage: "square.grid.2x2")
                 }
                 .disabled(target.imageData == nil)
                 Button { duplicateTarget(target) } label: {
