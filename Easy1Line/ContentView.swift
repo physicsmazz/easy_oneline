@@ -1649,7 +1649,7 @@ struct ContentView: View {
     }
 
     private func connectSelectedTargets() {
-        let ids = Array(selectedTargetIDs)
+        let ids = selectedTargetIDs
         guard ids.count >= 2 else { return }
         var connected = false
         for pairIndex in 0..<(ids.count - 1) {
