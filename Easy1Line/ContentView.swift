@@ -3991,6 +3991,7 @@ struct ContentView: View {
     }
 
     private func routeWithCurrentEndpoints(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
+        // Saved bends may change, but endpoint stubs are always rebuilt through the same assembler used for new wires.
         var points = orthogonalizedPoints(routePoints, alignmentTolerance: 0)
         guard points.count > 1 else { return points }
         let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
@@ -4001,43 +4002,15 @@ struct ContentView: View {
         let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
         let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
         let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
-        let startNext = points.count > 2 ? points[2] : endTarget.position
-        let endNext = points.count > 2 ? points[points.count - 3] : startTarget.position
-        let startTurn = needsStubTurn(from: startEscape, stub: startPin, next: startNext)
-            ? stubTurnPoint(from: startEscape, stub: startPin, toward: startNext, target: startTarget)
-            : nil
-        let endTurn = needsStubTurn(from: endEscape, stub: endPin, next: endNext)
-            ? stubTurnPoint(from: endEscape, stub: endPin, toward: endNext, target: endTarget)
-            : nil
         if points.count == 2 {
-            return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
+            return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape, endEscape], endStub: endEscape, end: endPin)
         }
         if points.count == 4 {
             let interior = Array(points.dropFirst().dropLast())
-            return removeRouteLoops(removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + interior + [endEscape, endPin], alignmentTolerance: 0)))
+            return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape] + interior + [endEscape], endStub: endEscape, end: endPin)
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
-        return removeRouteLoops(removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)))
-    }
-
-    private func needsStubTurn(from escape: CGPoint, stub pin: CGPoint, next: CGPoint) -> Bool {
-        let dx = escape.x - pin.x
-        let dy = escape.y - pin.y
-        if abs(dx) >= abs(dy) {
-            return dx < 0 ? next.x > escape.x : next.x < escape.x
-        }
-        return dy < 0 ? next.y > escape.y : next.y < escape.y
-    }
-
-    private func stubTurnPoint(from escape: CGPoint, stub pin: CGPoint, toward other: CGPoint, target: SchematicTarget) -> CGPoint {
-        let turnDistance: CGFloat = target.kind == .junction ? 0 : target.isCompact ? 36 : 54
-        let stubIsVertical = abs(escape.x - pin.x) < abs(escape.y - pin.y)
-        if stubIsVertical {
-            let direction: CGFloat = other.x >= escape.x ? 1 : -1
-            return CGPoint(x: escape.x + direction * turnDistance, y: escape.y)
-        }
-        let direction: CGFloat = other.y >= escape.y ? 1 : -1
-        return CGPoint(x: escape.x, y: escape.y + direction * turnDistance)
+        return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape] + middle + [endEscape], endStub: endEscape, end: endPin)
     }
 
     private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
