@@ -99,12 +99,16 @@ struct ContentView: View {
     @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
     private let canvasFieldSize: CGFloat = 5000
     @AppStorage("baseItemSize") private var baseItemSize: Double = 1.0
+    @AppStorage("selectionHighlightColorHex") private var selectionHighlightColorHex: String = "31D7E8"
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
     @AppStorage("snapToGrid") private var snapToGrid = true
     @AppStorage("showEditBoxOnSelection") private var showEditBoxOnSelection = true
     @State private var forceEditBoxTargetID: UUID?
+    @State private var forceEditBoxSegmentID: UUID?
+    @State private var dismissedEditBoxTargetID: UUID?
+    @State private var dismissedEditBoxSegmentID: UUID?
     private let linePadding: CGFloat = 16
     @State private var showLibrary = false
     @State private var showCloudLibrary = false
@@ -252,7 +256,8 @@ struct ContentView: View {
                     .zIndex(1100)
             }
 
-            if selectedTargetIDs.count == 1, !connectionMode, showEditBoxOnSelection, let target = target(with: selectedTargetIDs.first!) {
+                if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!),
+                       (showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id {
                 targetBottomPanel(target)
                     .background {
                         GeometryReader { proxy in
@@ -325,7 +330,8 @@ struct ContentView: View {
                     .padding(.bottom, 20)
             }
 
-            if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment {
+                if selectedSegmentIDs.count >= 1, !connectionMode, let segment = selectedSegment,
+                       (showEditBoxOnSelection && dismissedEditBoxSegmentID != segment.id) || forceEditBoxSegmentID == segment.id {
                 wireBottomPanel(segment)
                     .padding(.bottom, 6)
                     .padding(.horizontal, 20)
@@ -481,6 +487,12 @@ struct ContentView: View {
             targetNameEditingID = id
             targetNameDraft = target.name
         }
+        .onChange(of: showEditBoxOnSelection) { _, isEnabled in
+            if !isEnabled {
+                forceEditBoxTargetID = nil
+                forceEditBoxSegmentID = nil
+            }
+        }
     }
 
     private var header: some View {
@@ -588,6 +600,10 @@ struct ContentView: View {
                 }
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Base item size: \(Int(baseItemSize * 100))%", value: $baseItemSize, in: 0.5...1.15, step: 0.05)
+                ColorPicker("Selection border color", selection: Binding(
+                    get: { Color(hex: selectionHighlightColorHex) },
+                    set: { selectionHighlightColorHex = $0.hexString }
+                ))
                 Button("Background color") { showBackgroundColorPicker = true }
                 Button("Background image") { showBackgroundImagePanel.toggle() }
                 Divider()
@@ -880,6 +896,7 @@ struct ContentView: View {
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
                         baseItemSize: baseItemSize,
+                        selectionHighlightColor: Color(hex: selectionHighlightColorHex),
                         connectionMode: false,
                         connectionMoveMode: false,
                         onSelectConnectionPoint: { _ in },
@@ -935,7 +952,7 @@ struct ContentView: View {
                     path.move(to: points[0])
                     for point in points.dropFirst() { path.addLine(to: point) }
                     if selectedSegmentIDs.contains(segment.id) {
-                        context.stroke(path, with: .color(.cyan.opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 12, lineCap: .round, lineJoin: .round))
+                        context.stroke(path, with: .color(Color(hex: selectionHighlightColorHex).opacity(0.35)), style: StrokeStyle(lineWidth: segment.displayWidth + 14, lineCap: .round, lineJoin: .round))
                     }
                     if wireAlignmentPreviewSegmentIDs.contains(segment.id) {
                         context.stroke(path, with: .color(.orange.opacity(0.8)), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [6, 5]))
@@ -1015,6 +1032,7 @@ struct ContentView: View {
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
                     baseItemSize: baseItemSize,
+                    selectionHighlightColor: Color(hex: selectionHighlightColorHex),
                     connectionMode: connectionMode,
                     connectionMoveMode: wireConnectionMoveMode,
                     onSelectConnectionPoint: { slot in
@@ -1449,7 +1467,16 @@ struct ContentView: View {
 
     private func openTargetInfo(_ target: SchematicTarget) {
         guard !connectionMode else { return }
-        forceEditBoxTargetID = target.id
+        let isVisible = (showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id
+        if isVisible {
+            forceEditBoxTargetID = nil
+            dismissedEditBoxTargetID = target.id
+        } else {
+            forceEditBoxTargetID = target.id
+            dismissedEditBoxTargetID = nil
+        }
+        forceEditBoxSegmentID = nil
+        dismissedEditBoxSegmentID = nil
         if !selectedTargetIDs.contains(target.id) {
             selectedTargetIDs = [target.id]
         }
@@ -1461,6 +1488,16 @@ struct ContentView: View {
     private func openWireInfo(_ wire: SchematicSegment, sectionIndex: Int) {
         wirePinMoveTargetID = nil
         wireConnectionMoveMode = false
+        let isVisible = (showEditBoxOnSelection && dismissedEditBoxSegmentID != wire.id) || forceEditBoxSegmentID == wire.id
+        if isVisible {
+            forceEditBoxSegmentID = nil
+            dismissedEditBoxSegmentID = wire.id
+        } else {
+            forceEditBoxSegmentID = wire.id
+            dismissedEditBoxSegmentID = nil
+        }
+        forceEditBoxTargetID = nil
+        dismissedEditBoxTargetID = nil
         selectedTargetIDs.removeAll()
         selectedSegmentIDs = [wire.id]
         selectedSegmentID = wire.id
@@ -2317,7 +2354,10 @@ struct ContentView: View {
             Toggle("Wire bridges", isOn: $wireBridgesEnabled).toggleStyle(.switch)
             Toggle("Connection names", isOn: $showConnectionNames).toggleStyle(.switch)
             Toggle("Wire color legend", isOn: $showWireLegend).toggleStyle(.switch)
-            Toggle("Show edit box", isOn: $showEditBoxOnSelection).toggleStyle(.switch)
+            Toggle("Hide edit box", isOn: Binding(
+                get: { !showEditBoxOnSelection },
+                set: { showEditBoxOnSelection = !$0 }
+            )).toggleStyle(.switch)
             Button("Clear visualization settings") {
                 wireBridgesEnabled = false
                 showConnectionNames = false
@@ -4931,6 +4971,7 @@ private struct TargetView: View {
     let connectionNames: [String]
     let showConnectionNames: Bool
     let baseItemSize: Double
+    let selectionHighlightColor: Color
     let connectionMode: Bool
     let connectionMoveMode: Bool
     let onSelectConnectionPoint: (Int) -> Void
@@ -5004,11 +5045,11 @@ private struct TargetView: View {
         .overlay {
             if (isSelected || isConnectionStart) && !connectionMode {
                 if target.kind == .junction {
-                    Circle().stroke(.cyan, lineWidth: 3).frame(width: 30, height: 30).shadow(color: .cyan.opacity(0.8), radius: 8)
+                    Circle().stroke(selectionHighlightColor, lineWidth: 4).frame(width: 30, height: 30).shadow(color: selectionHighlightColor.opacity(0.95), radius: 12)
                 } else if target.isCompact {
-                    Circle().stroke(.cyan, lineWidth: 3).frame(width: 44, height: 44).shadow(color: .cyan.opacity(0.8), radius: 8)
+                    Circle().stroke(selectionHighlightColor, lineWidth: 4).frame(width: 44, height: 44).shadow(color: selectionHighlightColor.opacity(0.95), radius: 12)
                 } else {
-                    RoundedRectangle(cornerRadius: 12).stroke(.cyan, lineWidth: 3).frame(width: 76, height: 68).shadow(color: .cyan.opacity(0.8), radius: 8)
+                    RoundedRectangle(cornerRadius: 12).stroke(selectionHighlightColor, lineWidth: 4).frame(width: 76, height: 68).shadow(color: selectionHighlightColor.opacity(0.95), radius: 12)
                 }
             }
         }
