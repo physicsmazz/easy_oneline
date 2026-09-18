@@ -35,19 +35,35 @@ struct SupabaseDrawingStore {
     }
 
     func saveDrawing(id: UUID, name: String, data: Data, createdByName: String = "", updatedByName: String = "") async throws {
-        var request = URLRequest(url: endpoint("/rest/v1/rpc/save_drawing"))
-        request.httpMethod = "POST"
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
+        let dataObject = try JSONSerialization.jsonObject(with: data)
+        let payload: [String: Any] = [
             "p_id": id.uuidString,
             "p_name": name,
-            "p_data": try JSONSerialization.jsonObject(with: data),
+            "p_data": dataObject,
             "p_created_by_name": createdByName,
             "p_updated_by_name": updatedByName
-        ])
+        ]
+        var request = URLRequest(url: endpoint("/rest/v1/rpc/save_drawing"))
+        request.httpMethod = "POST"
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try await perform(request)
+        do {
+            try await perform(request)
+        } catch StoreError.requestFailed(let statusCode, let message) where statusCode == 404 && message.contains("PGRST202") {
+            var legacyRequest = URLRequest(url: endpoint("/rest/v1/rpc/save_drawing"))
+            legacyRequest.httpMethod = "POST"
+            legacyRequest.httpBody = try JSONSerialization.data(withJSONObject: [
+                "p_id": id.uuidString,
+                "p_name": name,
+                "p_data": dataObject
+            ])
+            legacyRequest.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+            legacyRequest.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+            legacyRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            try await perform(legacyRequest)
+        }
     }
 
     func loadProfiles() async throws -> [SupabaseProfileRecord] {

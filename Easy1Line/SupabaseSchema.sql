@@ -187,7 +187,7 @@ security definer
 set search_path = public
 as $$
 begin
-    insert into public.drawings (id, name, data, updated_at)
+    insert into public.drawings (id, name, data, created_by_name, updated_by_name, updated_at)
     values (p_id, p_name, p_data, p_created_by_name, p_updated_by_name, now())
     on conflict (id) do update set name = excluded.name, data = excluded.data, updated_by_name = excluded.updated_by_name, updated_at = now();
 
@@ -213,7 +213,6 @@ begin
 end;
 $$;
 
-grant execute on function public.save_drawing(uuid, text, jsonb) to anon, authenticated;
 grant execute on function public.save_drawing(uuid, text, jsonb, text, text) to anon, authenticated;
 
 -- Anonymous prototype policies. Replace with owner checks when auth is enabled.

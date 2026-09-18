@@ -211,7 +211,7 @@ struct ContentView: View {
 
             palette
                 .padding(.leading, 20)
-                .padding(.top, 84)
+                .padding(.top, 90)
                 .offset(x: itemsPanelOffsetX, y: itemsPanelOffsetY)
                 .gesture(itemsPanelDragGesture)
 
@@ -390,6 +390,12 @@ struct ContentView: View {
             sanitizeTargetDefinitionSymbols()
             if currentDisplayName.isEmpty { showProfilePicker = true }
         }
+        .task(id: cloudStatus) {
+            guard !cloudStatus.isEmpty else { return }
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            cloudStatus = ""
+        }
         .alert("Name this schematic", isPresented: $showSaveNamePrompt) {
             TextField("Schematic name", text: $saveNameDraft)
             Button("Save") { commitNamedSave() }
@@ -514,9 +520,15 @@ struct ContentView: View {
                     .help("Change profile")
                 }
                 if !cloudStatus.isEmpty {
-                    Text(cloudStatus)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.cyan.opacity(0.8))
+                    Button {
+                        cloudStatus = ""
+                    } label: {
+                        Text(cloudStatus)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.cyan.opacity(0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Dismiss status: \(cloudStatus)")
                 }
             }
 
@@ -3052,7 +3064,7 @@ struct ContentView: View {
                 let start = itemsPanelDragStartOffset ?? .zero
                 let proposed = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
                 let topOffset: CGFloat = 0
-                let bottomOffset = max(0, editorSize.height - 84 - itemsPanelHeight - 20)
+                let bottomOffset = max(0, editorSize.height - 90 - itemsPanelHeight - 20)
                 let nearest = [topOffset, bottomOffset].min { abs(proposed.height - $0) < abs(proposed.height - $1) } ?? proposed.height
                 let snappedHeight = abs(proposed.height - nearest) <= 48 ? nearest : proposed.height
                 let snapped = clampedItemsPanelOffset(CGSize(width: proposed.width, height: snappedHeight))
@@ -3063,7 +3075,7 @@ struct ContentView: View {
     }
 
     private func clampedItemsPanelOffset(_ proposed: CGSize) -> CGSize {
-        let bottomOffset = max(0, editorSize.height - 84 - itemsPanelHeight - 20)
+        let bottomOffset = max(0, editorSize.height - 90 - itemsPanelHeight - 20)
         return CGSize(width: proposed.width, height: min(max(proposed.height, 0), bottomOffset))
     }
 
@@ -3128,7 +3140,7 @@ struct ContentView: View {
             topOffset = targetToolbarTopOffset
             bottomOffset = 0
         } else if isZoom {
-            topOffset = 0
+            topOffset = 1
             bottomOffset = max(0, editorSize.height - 112 - 44)
         } else {
             topOffset = 0
@@ -3149,7 +3161,7 @@ struct ContentView: View {
             bottomOffset = 0
         } else {
             let toolbarHeight = isZoom ? CGFloat(44) : selectionBoxSize.height
-            topOffset = 0
+            topOffset = isZoom ? 1 : 0
             bottomOffset = max(0, editorSize.height - 112 - toolbarHeight)
         }
         return CGSize(
