@@ -1046,7 +1046,7 @@ struct ContentView: View {
                             // Stub sections: keep the hit area clear of the pin so pin taps aren't swallowed by the wire.
                             let pinEnd = sectionIndex == 0 ? points[sectionIndex] : points[sectionIndex + 1]
                             let farEnd = sectionIndex == 0 ? points[sectionIndex + 1] : points[sectionIndex]
-                            let movableSectionIndex = sectionIndex == 0 ? 1 : max(1, points.count - 3)
+                            let movableSectionIndex = sectionIndex
                             SegmentHitArea(path: sectionPath(from: points[sectionIndex], to: points[sectionIndex + 1]), hitPath: sectionPath(from: trimmed(pinEnd, toward: farEnd, by: 4), to: farEnd), isSelected: selectedSegmentIDs.contains(segment.id), isSectionSelected: false, onDrag: { translation in
                                 moveSegmentSection(segment.id, sectionIndex: movableSectionIndex, translation: canvasDelta(for: translation))
                             }, onEndDrag: {
@@ -3844,12 +3844,10 @@ struct ContentView: View {
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
         guard var points = segmentDragStartPoints[id], sectionIndex >= 0, sectionIndex + 1 < points.count else { return }
-        let isEndpointStub = sectionIndex == 0 || sectionIndex + 1 == points.count - 1
-        guard !isEndpointStub || points.count <= 3 || sectionIndex > 0 else { return }
         let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
         let delta = isVertical ? translation.width : translation.height
         let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
-        let movedCoordinate = snapToGrid ? snappedCoordinate(base + delta) : base + delta
+        let movedCoordinate = base + delta
         let alignment = nearbyParallelAlignment(segmentID: id, sectionStart: points[sectionIndex], sectionEnd: points[sectionIndex + 1], coordinate: movedCoordinate)
         let alignedCoordinate = alignment?.coordinate ?? movedCoordinate
         if isVertical {
