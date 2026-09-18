@@ -1247,7 +1247,12 @@ struct ContentView: View {
         guard editorSize != .zero else { return }
         let dropPoint = canvasDropPoint(screenLocation, canvasSize: editorSize)
         let snappedDropPoint = snapToGrid ? snappedPosition(dropPoint) : dropPoint
-        let iconPoint = CGPoint(x: snappedDropPoint.x, y: snappedDropPoint.y + (kind == .junction ? 0 : 9))
+        #if targetEnvironment(macCatalyst)
+        let dropOffset: CGFloat = 0
+        #else
+        let dropOffset: CGFloat = kind == .junction ? 0 : 9
+        #endif
+        let iconPoint = CGPoint(x: snappedDropPoint.x, y: snappedDropPoint.y + dropOffset)
         addTarget(kind, at: iconPoint)
         guard let id = document.targets.last?.id,
               let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
