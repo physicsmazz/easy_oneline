@@ -3845,25 +3845,46 @@ struct ContentView: View {
         }
         guard var points = segmentDragStartPoints[id], sectionIndex >= 0, sectionIndex + 1 < points.count else { return }
         let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
-        let delta = isVertical ? translation.width : translation.height
-        let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
-        let movedCoordinate = base + delta
-        let alignment = nearbyParallelAlignment(segmentID: id, sectionStart: points[sectionIndex], sectionEnd: points[sectionIndex + 1], coordinate: movedCoordinate)
-        let alignedCoordinate = alignment?.coordinate ?? movedCoordinate
         if isVertical {
-            points[sectionIndex].x = alignedCoordinate
-            points[sectionIndex + 1].x = alignedCoordinate
+            let movedX = points[sectionIndex].x + translation.width
+            points[sectionIndex].x = movedX
+            points[sectionIndex + 1].x = movedX
         } else {
-            points[sectionIndex].y = alignedCoordinate
-            points[sectionIndex + 1].y = alignedCoordinate
+            let movedY = points[sectionIndex].y + translation.height
+            points[sectionIndex].y = movedY
+            points[sectionIndex + 1].y = movedY
         }
-        var dragRoute = normalizedRoute(removeRouteLoops(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))))
-        wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
+        let dragRoute = routeWithDragCorners(points, draggedSectionIndex: sectionIndex, isVertical: isVertical)
+        wireAlignmentPreviewSegmentIDs.removeAll()
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
             updateWireLabelPosition(id, route: dragRoute, near: labelAnchor)
         }
         selectedTargetIDs.removeAll()
+    }
+
+    private func routeWithDragCorners(_ points: [CGPoint], draggedSectionIndex: Int, isVertical: Bool) -> [CGPoint] {
+        guard points.indices.contains(draggedSectionIndex), points.indices.contains(draggedSectionIndex + 1) else { return points }
+        var result = points
+        let startIndex = draggedSectionIndex
+        let endIndex = draggedSectionIndex + 1
+        if result.indices.contains(endIndex + 1) {
+            let end = result[endIndex]
+            let next = result[endIndex + 1]
+            if abs(end.x - next.x) > 0.5 && abs(end.y - next.y) > 0.5 {
+                let corner = isVertical ? CGPoint(x: end.x, y: next.y) : CGPoint(x: next.x, y: end.y)
+                result.insert(corner, at: endIndex + 1)
+            }
+        }
+        if result.indices.contains(startIndex - 1), result.indices.contains(startIndex) {
+            let previous = result[startIndex - 1]
+            let start = result[startIndex]
+            if abs(previous.x - start.x) > 0.5 && abs(previous.y - start.y) > 0.5 {
+                let corner = isVertical ? CGPoint(x: start.x, y: previous.y) : CGPoint(x: previous.x, y: start.y)
+                result.insert(corner, at: startIndex)
+            }
+        }
+        return result
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
@@ -4092,32 +4113,11 @@ struct ContentView: View {
     }
 
     private func routePreservingStubs(start: CGPoint, startStub: CGPoint, middle: [CGPoint], endStub: CGPoint, end: CGPoint) -> [CGPoint] {
-        let interior = Array(middle.dropFirst().dropLast())
-        let route = [start, startStub] + interior + [endStub, end]
-        return routeWithOrthogonalContinuity(route)
-    }
-
-    private func routeWithOrthogonalContinuity(_ points: [CGPoint]) -> [CGPoint] {
-        guard points.count > 1 else { return points }
+        var interior = Array(middle.dropFirst().dropLast())
+        var route = [start, startStub] + interior + [endStub, end]
         var result: [CGPoint] = []
-        func appendIfDistinct(_ point: CGPoint) {
-            guard result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true else { return }
+        for point in route where result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true {
             result.append(point)
-        }
-        appendIfDistinct(points[0])
-        for point in points.dropFirst() {
-            guard let previous = result.last else {
-                appendIfDistinct(point)
-                continue
-            }
-            if abs(previous.x - point.x) > 0.5 && abs(previous.y - point.y) > 0.5 {
-                if result.count >= 2, abs(result[result.count - 2].x - previous.x) < 0.5 {
-                    appendIfDistinct(CGPoint(x: previous.x, y: point.y))
-                } else {
-                    appendIfDistinct(CGPoint(x: point.x, y: previous.y))
-                }
-            }
-            appendIfDistinct(point)
         }
         return result
     }
