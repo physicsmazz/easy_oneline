@@ -57,6 +57,9 @@ struct ContentView: View {
     @State private var showProfilePicker = false
     @State private var editingDocumentName = false
     @State private var isApplyingRemoteDocument = false
+    @State private var remoteSyncEnabled = false
+    @State private var remoteSyncTask: Task<Void, Never>?
+    @State private var remoteSyncDirty = false
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -355,6 +358,7 @@ struct ContentView: View {
             sanitizeTargetDefinitionSymbols()
             if !isApplyingRemoteDocument {
                 broadcastDocumentIfNeeded(newValue)
+                remoteSyncDirty = true
             }
         }
         .onChange(of: wireBridgesEnabled) { _, _ in
@@ -676,6 +680,14 @@ struct ContentView: View {
                 }
                 .buttonStyle(EditorButtonStyle(isActive: !multipeerSession.connectedPeers.isEmpty))
                 .accessibilityLabel("Multiuser session")
+
+                Button(action: toggleRemoteSync) {
+                    Image(systemName: remoteSyncEnabled ? "arrow.triangle.2.circlepath.icloud.fill" : "arrow.triangle.2.circlepath.icloud")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle(isActive: remoteSyncEnabled))
+                .help(remoteSyncEnabled ? "Stop remote sync" : "Start remote sync")
+                .accessibilityLabel(remoteSyncEnabled ? "Stop remote sync" : "Start remote sync")
             }
         }
 
@@ -1997,6 +2009,54 @@ struct ContentView: View {
     private func broadcastDocumentIfNeeded(_ newValue: SchematicDocument) {
         guard let encoded = try? JSONEncoder().encode(newValue) else { return }
         multipeerSession.send(encoded)
+    }
+
+    private func toggleRemoteSync() {
+        if remoteSyncEnabled {
+            remoteSyncEnabled = false
+            remoteSyncTask?.cancel()
+            remoteSyncTask = nil
+            cloudStatus = "Remote sync stopped"
+            return
+        }
+        guard SupabaseDrawingStore() != nil else {
+            cloudStatus = "Supabase is not configured"
+            return
+        }
+        remoteSyncEnabled = true
+        remoteSyncDirty = true
+        cloudStatus = "Remote sync started"
+        remoteSyncTask = Task {
+            while !Task.isCancelled {
+                await runRemoteSyncStep()
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+            }
+        }
+    }
+
+    private func runRemoteSyncStep() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        if remoteSyncDirty {
+            remoteSyncDirty = false
+            do {
+                let data = try JSONEncoder().encode(document)
+                try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
+            } catch {
+                recordError("Remote sync push failed: \(cloudErrorText(error))")
+            }
+        }
+        do {
+            guard let remote = try await store.loadDrawing(id: document.id) else { return }
+            let decoded = try JSONDecoder().decode(SchematicDocument.self, from: remote.data)
+            guard decoded != document else { return }
+            isApplyingRemoteDocument = true
+            document = decoded
+            DispatchQueue.main.async {
+                self.isApplyingRemoteDocument = false
+            }
+        } catch {
+            recordError("Remote sync pull failed: \(cloudErrorText(error))")
+        }
     }
 
     private func applyRemoteDocument(_ data: Data) {
