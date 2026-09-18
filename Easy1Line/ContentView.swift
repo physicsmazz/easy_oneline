@@ -157,6 +157,7 @@ struct ContentView: View {
     @AppStorage("itemsPanelOffsetX") private var itemsPanelOffsetX: Double = 0
     @AppStorage("itemsPanelOffsetY") private var itemsPanelOffsetY: Double = 0
     @AppStorage("canvasLocked") private var canvasLocked = false
+    @AppStorage("rotationLocked") private var rotationLocked = false
     @State private var targetsPanelResizeStart: Double?
     @State private var targetsPanelWidthResizeStart: Double?
     @State private var itemsPanelDragStartOffset: CGSize?
@@ -1120,7 +1121,7 @@ struct ContentView: View {
             isPinchingOrRotating = false
         })
         .simultaneousGesture(RotationGesture().onChanged { value in
-            guard !canvasLocked else { return }
+            guard !canvasLocked, !rotationLocked else { return }
             isPinchingOrRotating = true
             if gestureStartRotation == nil { gestureStartRotation = canvasRotation }
             let newAngle = (gestureStartRotation ?? .zero) + value
@@ -1296,11 +1297,11 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle())
                 .help("Reset zoom and rotation")
                 .disabled(canvasLocked)
-            Button { canvasRotation = .zero } label: {
-                Image(systemName: "arrow.counterclockwise")
+            Button { rotationLocked.toggle() } label: {
+                Image(systemName: rotationLocked ? "rotate.3d.slash" : "rotate.3d")
             }
-            .buttonStyle(EditorButtonStyle())
-            .help("Reset rotation only (keep zoom)")
+            .buttonStyle(EditorButtonStyle(isActive: rotationLocked))
+            .help(rotationLocked ? "Unlock canvas rotation" : "Lock canvas rotation")
             .disabled(canvasLocked)
             Button { zoomToExtents() } label: {
                 Image(systemName: "viewfinder")
