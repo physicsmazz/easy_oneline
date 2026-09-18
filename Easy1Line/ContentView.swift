@@ -1948,9 +1948,8 @@ struct ContentView: View {
         guard targets.count >= 2 else { return }
         let movableTargets = targets.filter { !$0.locked }
         guard !movableTargets.isEmpty else { return }
-        let reference = targets.reduce(CGFloat.zero) { total, target in
-            total + (alignment == .horizontal ? target.position.x : target.position.y)
-        } / CGFloat(targets.count)
+        guard let anchor = selectedTargetIDs.last.flatMap({ target(with: $0) }) else { return }
+        let reference = alignment == .horizontal ? anchor.position.x : anchor.position.y
         let movedIDs = Set(movableTargets.map(\.id))
         captureForUndo()
         for index in document.targets.indices where movedIDs.contains(document.targets[index].id) {
