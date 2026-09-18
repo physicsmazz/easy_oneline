@@ -18,6 +18,12 @@
             "type": "shell",
             "command": "rm -rf /tmp/Easy1Line-mac-build && xcodebuild -project Easy1Line.xcodeproj -scheme Easy1Line -configuration Debug -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath /tmp/Easy1Line-mac-build build && open /tmp/Easy1Line-mac-build/Build/Products/Debug-maccatalyst/Easy1Line.app",
             "problemMatcher": []
+        },
+        {
+            "label": "Install Easy1Line to Applications",
+            "type": "shell",
+            "command": "rm -rf /tmp/Easy1Line-mac-build && xcodebuild -project Easy1Line.xcodeproj -scheme Easy1Line -configuration Release -destination 'platform=macOS,variant=Mac Catalyst' -derivedDataPath /tmp/Easy1Line-mac-build build && mkdir -p \"$HOME/Applications\" && rm -rf \"$HOME/Applications/Easy1Line.app\" && ditto /tmp/Easy1Line-mac-build/Build/Products/Release-maccatalyst/Easy1Line.app \"$HOME/Applications/Easy1Line.app\" && open -R \"$HOME/Applications/Easy1Line.app\"",
+            "problemMatcher": []
         }
     ]
 }
