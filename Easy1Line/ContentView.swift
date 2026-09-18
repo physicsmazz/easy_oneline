@@ -148,7 +148,6 @@ struct ContentView: View {
     @State private var showSaveNamePrompt = false
     @State private var showFileExporter = false
     @State private var pdfShareItem: PDFShareItem?
-    @State private var showErrorLogShare = false
     @State private var showFileImporter = false
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
@@ -461,9 +460,6 @@ struct ContentView: View {
         .sheet(item: $pdfShareItem) { item in
             ActivityView(activityItems: [item.url])
         }
-        .sheet(isPresented: $showErrorLogShare) {
-            ActivityView(activityItems: [LocalErrorLog.text(errorLog)])
-        }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
                 let url = try result.get()
@@ -564,7 +560,6 @@ struct ContentView: View {
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
                 Button("Clear status") { cloudStatus = "" }
-                Button("Share error log") { showErrorLogShare = true }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -1099,6 +1094,11 @@ struct ContentView: View {
         .frame(width: size.width, height: size.height)
         .ignoresSafeArea(edges: .bottom)
         .onAppear { editorSize = size }
+        .onChange(of: size) { _, newSize in
+            guard newSize != .zero else { return }
+            editorSize = newSize
+            recoverToolbarOffsetsIfNeeded()
+        }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             guard !canvasLocked else { return }
             isPinchingOrRotating = true
