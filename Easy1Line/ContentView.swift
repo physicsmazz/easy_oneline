@@ -3814,10 +3814,10 @@ struct ContentView: View {
         }
         if points.count == 4 {
             let interior = Array(points.dropFirst().dropLast())
-            return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + interior + [endEscape, endPin], alignmentTolerance: 0))
+            return removeRouteLoops(removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + interior + [endEscape, endPin], alignmentTolerance: 0)))
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
-        return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
+        return removeRouteLoops(removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)))
     }
 
     private func needsStubTurn(from escape: CGPoint, stub pin: CGPoint, next: CGPoint) -> Bool {
