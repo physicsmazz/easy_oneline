@@ -3804,10 +3804,10 @@ struct ContentView: View {
         let startNext = points.count > 2 ? points[2] : endTarget.position
         let endNext = points.count > 2 ? points[points.count - 3] : startTarget.position
         let startTurn = needsStubTurn(from: startEscape, stub: startPin, next: startNext)
-            ? stubTurnPoint(from: startEscape, stub: startPin, toward: endTarget.position, target: startTarget)
+            ? stubTurnPoint(from: startEscape, stub: startPin, toward: startNext, target: startTarget)
             : nil
         let endTurn = needsStubTurn(from: endEscape, stub: endPin, next: endNext)
-            ? stubTurnPoint(from: endEscape, stub: endPin, toward: startTarget.position, target: endTarget)
+            ? stubTurnPoint(from: endEscape, stub: endPin, toward: endNext, target: endTarget)
             : nil
         if points.count == 2 {
             return orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0)
