@@ -1370,13 +1370,6 @@ struct ContentView: View {
                     snapTarget(targetID, canvasSize: canvasSize)
                     splitSegmentIfNeeded(for: targetID)
                 }
-                for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
-                    let attachedJunction = activeTargetDragIDs.contains(where: { self.target(with: $0)?.kind == .junction }) &&
-                        (activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID))
-                    if !attachedJunction {
-                        fixWire(segment)
-                    }
-                }
                 dragStartPositions.removeAll()
                 activeTargetDragIDs.removeAll()
                 splitCandidateSegmentID = nil
@@ -3658,7 +3651,7 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        var dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
+        var dragRoute = normalizedRoute(removeRouteLoops(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))))
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
@@ -3821,7 +3814,7 @@ struct ContentView: View {
         }
         if points.count == 4 {
             let interior = Array(points.dropFirst().dropLast())
-            return removeRouteBacktracks(orthogonalizedPoints([startPin] + interior + [endPin], alignmentTolerance: 0))
+            return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + interior + [endEscape, endPin], alignmentTolerance: 0))
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
         return removeRouteBacktracks(orthogonalizedPoints([startPin, startEscape] + (startTurn.map { [$0] } ?? []) + middle + (endTurn.map { [$0] } ?? []) + [endEscape, endPin], alignmentTolerance: 0))
