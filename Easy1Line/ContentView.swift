@@ -3914,6 +3914,42 @@ struct ContentView: View {
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
+        if let sectionIndex = selectedSegmentSectionIndex,
+           let segmentIndex = document.segments.firstIndex(where: { $0.id == id }),
+           let start = target(with: document.segments[segmentIndex].startID),
+           let end = target(with: document.segments[segmentIndex].endID) {
+            let points = cachedWirePoints[id]
+                ?? orthogonalPoints(for: document.segments[segmentIndex], from: start, to: end, avoiding: [])
+            if sectionIndex + 1 < points.count {
+                let sectionStart = points[sectionIndex]
+                let sectionEnd = points[sectionIndex + 1]
+                let horizontal = abs(sectionStart.y - sectionEnd.y) < 0.5
+                let coordinate = horizontal ? sectionStart.y : sectionStart.x
+                if let alignment = nearbyParallelAlignment(
+                    segmentID: id,
+                    sectionStart: sectionStart,
+                    sectionEnd: sectionEnd,
+                    coordinate: coordinate
+                ) {
+                    var alignedPoints = points
+                    let delta = alignment.coordinate - coordinate
+                    if horizontal {
+                        alignedPoints[sectionIndex].y += delta
+                        alignedPoints[sectionIndex + 1].y += delta
+                    } else {
+                        alignedPoints[sectionIndex].x += delta
+                        alignedPoints[sectionIndex + 1].x += delta
+                    }
+                    let alignedRoute = routeWithOrthogonalDragJoints(
+                        alignedPoints,
+                        draggedSectionIndex: sectionIndex,
+                        isVertical: !horizontal
+                    )
+                    document.segments[segmentIndex].routePoints = alignedRoute
+                    cachedWirePoints[id] = alignedRoute
+                }
+            }
+        }
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
     }
