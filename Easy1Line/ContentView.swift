@@ -136,6 +136,7 @@ struct ContentView: View {
     @State private var showNetlist = false
     @State private var showBackgroundImagePanel = false
     @State private var showBackgroundColorPicker = false
+    @State private var showSelectionColorPicker = false
     @State private var selectedLineDefinitionID: UUID?
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var connectionDragStartAngles: [String: Double] = [:]
@@ -569,8 +570,8 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Colors") { showColorLibrary.toggle() }
-                Button("Targets") { showTargetLibrary.toggle() }
-                Button("Sync target library") { Task { await syncLibraries() } }
+                Button("Items") { showTargetLibrary.toggle() }
+                Button("Sync item library") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -600,11 +601,22 @@ struct ContentView: View {
                 }
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
                 Stepper("Base item size: \(Int(baseItemSize * 100))%", value: $baseItemSize, in: 0.5...1.15, step: 0.05)
-                ColorPicker("Selection border color", selection: Binding(
-                    get: { Color(hex: selectionHighlightColorHex) },
-                    set: { selectionHighlightColorHex = $0.hexString }
-                ))
-                Button("Background color") { showBackgroundColorPicker = true }
+                Button {
+                    showSelectionColorPicker = true
+                } label: {
+                    Label("Selection border color", systemImage: "circle.fill")
+                        .imageScale(.large)
+                        .tint(Color(hex: selectionHighlightColorHex))
+                }
+                .accessibilityLabel("Selection border color")
+                Button {
+                    showBackgroundColorPicker = true
+                } label: {
+                    Label("Background color", systemImage: "circle.fill")
+                        .imageScale(.large)
+                        .tint(Color(hex: canvasBackgroundColorHex))
+                }
+                .accessibilityLabel("Background color")
                 Button("Background image") { showBackgroundImagePanel.toggle() }
                 Divider()
                 Button("Reset Toolbars") { resetToolbars() }
@@ -616,6 +628,14 @@ struct ContentView: View {
                     get: { Color(hex: canvasBackgroundColorHex) },
                     set: { canvasBackgroundColorHex = $0.hexString }
                 ))
+                .padding()
+                .frame(width: 260)
+            }
+            .popover(isPresented: $showSelectionColorPicker) {
+                ColorPicker("Selection border color", selection: Binding(
+                    get: { Color(hex: selectionHighlightColorHex) },
+                    set: { selectionHighlightColorHex = $0.hexString }
+                ), supportsOpacity: false)
                 .padding()
                 .frame(width: 260)
             }
@@ -671,15 +691,18 @@ struct ContentView: View {
     }
 
     private var palette: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let compact = targetsPanelWidth < 180
+        return VStack(alignment: .leading, spacing: 12) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { targetsPanelExpanded.toggle() }
             } label: {
                 HStack(spacing: 8) {
-                    Text("ITEMS")
-                        .font(.system(size: 10, weight: .bold))
-                        .tracking(1.4)
-                        .foregroundStyle(.white.opacity(0.45))
+                    if !compact {
+                        Text("ITEMS")
+                            .font(.system(size: 14.95, weight: .bold))
+                            .tracking(1.4)
+                            .foregroundStyle(.white.opacity(0.45))
+                    }
                     Spacer()
                     Image(systemName: targetsPanelExpanded ? "chevron.up" : "chevron.down")
                         .frame(width: 24, height: 24)
@@ -692,7 +715,7 @@ struct ContentView: View {
             if targetsPanelExpanded {
                 ScrollView {
                     ForEach(TargetKind.palette) { kind in
-                        PaletteItem(kind: kind)
+                        PaletteItem(kind: kind, compact: compact)
                             .contentShape(Rectangle())
                             .onTapGesture { addTarget(kind) }
                             .overlay(alignment: .trailing) {
@@ -721,10 +744,12 @@ struct ContentView: View {
                 }
                 .frame(height: targetsPanelListHeight)
 
-                Text("Drag to place\nTap to add at center")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
-                    .fixedSize(horizontal: false, vertical: true)
+                if !compact {
+                    Text("Drag to place\nTap to add at center")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.35))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Capsule()
                     .fill(.white.opacity(0.25))
@@ -740,7 +765,7 @@ struct ContentView: View {
                             }
                             .onEnded { _ in targetsPanelResizeStart = nil }
                     )
-                    .accessibilityLabel("Resize targets panel")
+                    .accessibilityLabel("Resize items panel")
             }
         }
         .padding(.horizontal, 14)
@@ -765,11 +790,11 @@ struct ContentView: View {
                     DragGesture(minimumDistance: 2, coordinateSpace: .global)
                         .onChanged { value in
                             if targetsPanelWidthResizeStart == nil { targetsPanelWidthResizeStart = targetsPanelWidth }
-                            targetsPanelWidth = min(max((targetsPanelWidthResizeStart ?? targetsPanelWidth) + value.translation.width, 170), 360)
+                            targetsPanelWidth = min(max((targetsPanelWidthResizeStart ?? targetsPanelWidth) + value.translation.width, 30), 360)
                         }
                         .onEnded { _ in targetsPanelWidthResizeStart = nil }
                 )
-                .accessibilityLabel("Resize targets panel width")
+                .accessibilityLabel("Resize items panel width")
         }
     }
 
@@ -2614,12 +2639,12 @@ struct ContentView: View {
     private var targetLibraryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("TARGET LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Text("ITEM LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
                 Spacer()
                 Button { addTarget(.junction) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
             }
 
-            Text("PROJECT TARGETS").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            Text("PROJECT ITEMS").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
             ForEach(document.targets) { target in
                 Button {
                     selectedTargetIDs = [target.id]
@@ -2639,7 +2664,7 @@ struct ContentView: View {
             }
 
             Divider().overlay(.white.opacity(0.12))
-            Text("SAVED TARGET TYPES").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            Text("SAVED ITEM TYPES").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
             ForEach(document.targetDefinitions) { template in
                 Button { addTarget(from: template) } label: {
                     HStack(spacing: 8) {
@@ -2866,7 +2891,7 @@ struct ContentView: View {
     private func targetBottomPanel(_ target: SchematicTarget) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Text("TARGET").inspectorLabel()
+                Text("ITEM").inspectorLabel()
                 TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
                 Button("Save") { saveTargetName(target) }
                     .buttonStyle(.borderedProminent)
@@ -2874,7 +2899,7 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                 Spacer()
                 if target.kind != .junction {
-                    ColorPicker("Target color", selection: targetBinding(target).color).labelsHidden()
+                    ColorPicker("Item color", selection: targetBinding(target).color).labelsHidden()
                     Text("CUSTOM").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55)).padding(.trailing, 12)
                     ForEach(document.colorLegend) { entry in
                         Button {
@@ -2894,7 +2919,7 @@ struct ContentView: View {
                 Button(role: .destructive) {
                     showDeleteWarning = true
                 } label: {
-                    Label("Delete target", systemImage: "trash")
+                    Label("Delete item", systemImage: "trash")
                 }
             }
 
@@ -2920,10 +2945,10 @@ struct ContentView: View {
                 }
                 .disabled(target.imageData == nil)
                 Button { duplicateTarget(target) } label: {
-                    Label("Duplicate target", systemImage: "plus.square.on.square")
+                    Label("Duplicate item", systemImage: "plus.square.on.square")
                 }
                 Button { saveTargetTemplate(target) } label: {
-                    Label("Save as target type", systemImage: "square.and.arrow.down")
+                    Label("Save as item type", systemImage: "square.and.arrow.down")
                 }
             }
 
@@ -2936,7 +2961,7 @@ struct ContentView: View {
                     Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
                     Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
                     Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
-                    Toggle("Compact target", isOn: targetBinding(target).isCompact)
+                    Toggle("Compact item", isOn: targetBinding(target).isCompact)
                 }
             }
 
@@ -3287,7 +3312,7 @@ struct ContentView: View {
             HStack {
                 Text(applyToAll ? "\(selectedSegmentIDs.count) wires" : String(wire.id.uuidString.prefix(8))).font(.caption2.monospaced()).foregroundStyle(.white.opacity(0.4))
                 Spacer()
-                Text("WIRE").font(.caption2.weight(.bold)).foregroundStyle(.cyan)
+                Text("WIRE").inspectorLabel()
             }
             TextField("Wire name", text: binding.name).textFieldStyle(.roundedBorder)
             HStack {
@@ -3320,8 +3345,7 @@ struct ContentView: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Text(selectedSegmentIDs.count > 1 ? "LAST SELECTED\nWIRE" : "SELECTED\nWIRE")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.cyan)
+                    .inspectorLabel()
                     .multilineTextAlignment(.leading)
                     .frame(width: 112, alignment: .leading)
                 readOnlyWireField("NAME", wire.name).frame(width: 130, alignment: .leading)
@@ -3348,7 +3372,7 @@ struct ContentView: View {
                 }
             }
             HStack(spacing: 10) {
-                Text("ITEM\nCOLOR").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.5)).multilineTextAlignment(.leading)
+                Text("ITEM\nCOLOR").inspectorLabel().multilineTextAlignment(.leading)
                 HStack(spacing: 6) {
                     ColorPicker("", selection: colorBinding)
                         .labelsHidden()
@@ -4949,12 +4973,21 @@ private struct MultiuserSessionView: View {
 
 private struct PaletteItem: View {
     let kind: TargetKind
+    let compact: Bool
     var body: some View {
         HStack(spacing: 10) {
             SchematicSymbolView(kind: kind, color: Color(hex: kind.defaultColorHex)).frame(width: 18, height: 18)
-            Text(kind.title).font(.system(size: 13, weight: .semibold)); Spacer(); Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(.white.opacity(0.25))
+            if !compact {
+                Text(kind.title).font(.system(size: 14.95, weight: .semibold))
+                Spacer()
+            }
+            Image(systemName: "line.3.horizontal").font(.system(size: 10)).foregroundStyle(.white.opacity(0.25))
         }
-        .padding(.horizontal, 9).frame(height: 38).background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 38)
+        .clipped()
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
     }
 }
 
@@ -5297,7 +5330,7 @@ private struct EditorButtonStyle: ButtonStyle {
     var isActive = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 14.95, weight: .semibold))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(isActive ? .cyan : .white.opacity(0.82))
@@ -5309,7 +5342,7 @@ private struct EditorButtonStyle: ButtonStyle {
 }
 
 private extension View {
-    func inspectorLabel() -> some View { font(.system(size: 10, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.4)) }
+    func inspectorLabel() -> some View { font(.system(size: 11.5, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.4)) }
 }
 
 private extension Color {
