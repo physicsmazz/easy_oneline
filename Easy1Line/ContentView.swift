@@ -262,7 +262,9 @@ struct ContentView: View {
             }
 
                 if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!),
-                       (showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id {
+                       target.kind == .junction
+                           ? forceEditBoxTargetID == target.id
+                           : ((showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id) {
                 targetBottomPanel(target)
                     .background {
                         GeometryReader { proxy in
@@ -5107,6 +5109,7 @@ private struct TargetView: View {
             if target.kind == .junction {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+                    Circle().stroke(isSelected ? selectionHighlightColor : .white.opacity(0.35), lineWidth: isSelected ? 2 : 1)
                 }
                 .frame(width: 32, height: 32)
             } else if target.isCompact {
