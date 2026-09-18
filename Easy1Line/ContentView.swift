@@ -4984,6 +4984,7 @@ private struct TargetView: View {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
                 }
+                .frame(width: 32, height: 32)
             } else if target.isCompact {
                 ZStack {
                     Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
@@ -5159,7 +5160,8 @@ private struct TargetBodyHitShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         if kind == .junction {
-            return Circle().path(in: CGRect(x: rect.midX - 9, y: rect.midY - 9, width: 18, height: 18))
+            // Wider than the 18pt visual dot — a mouse pointer on Mac needs more room than a fingertip.
+            return Circle().path(in: CGRect(x: rect.midX - 16, y: rect.midY - 16, width: 32, height: 32))
         }
         if isCompact {
             return Circle().path(in: CGRect(x: rect.midX - 20, y: rect.midY - 20, width: 40, height: 40))
