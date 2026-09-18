@@ -216,6 +216,10 @@ struct ContentView: View {
     @State private var wireMiscOptions: [SupabaseWireMiscRecord] = []
 
     var body: some View {
+        AnyView(rootContent)
+    }
+
+    private var rootContent: some View {
         ZStack(alignment: .topLeading) {
             Color(hex: canvasBackgroundColorHex)
                 .ignoresSafeArea()
@@ -293,13 +297,6 @@ struct ContentView: View {
                     .padding(.trailing, 20)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-
-                    if showVersionHistory {
-                    versionHistoryPanel
-                        .padding(.top, 84)
-                        .padding(.trailing, 20)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
 
             if showCloudLibrary {
                 cloudLibraryPanel
