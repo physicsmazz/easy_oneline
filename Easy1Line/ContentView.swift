@@ -1965,6 +1965,35 @@ struct ContentView: View {
         }
     }
 
+    private func distributeSelectedTargets(_ alignment: TargetAlignment) {
+        let targets = selectedTargetIDs.compactMap { target(with: $0) }
+        guard targets.count >= 3 else { return }
+        let sortedTargets = targets.sorted {
+            let firstPosition = alignment == .horizontal ? $0.position.x : $0.position.y
+            let secondPosition = alignment == .horizontal ? $1.position.x : $1.position.y
+            return firstPosition < secondPosition
+        }
+        let firstPosition = alignment == .horizontal ? sortedTargets[0].position.x : sortedTargets[0].position.y
+        let lastPosition = alignment == .horizontal ? sortedTargets[sortedTargets.count - 1].position.x : sortedTargets[sortedTargets.count - 1].position.y
+        let step = (lastPosition - firstPosition) / CGFloat(sortedTargets.count - 1)
+        guard step.isFinite, abs(step) > 0.01 else { return }
+        let movedIDs = Set(sortedTargets.dropFirst().dropLast().filter { !$0.locked }.map(\.id))
+        guard !movedIDs.isEmpty else { return }
+        captureForUndo()
+        for (positionIndex, target) in sortedTargets.enumerated() where movedIDs.contains(target.id) {
+            guard let targetIndex = document.targets.firstIndex(where: { $0.id == target.id }) else { continue }
+            let position = firstPosition + step * CGFloat(positionIndex)
+            if alignment == .horizontal {
+                document.targets[targetIndex].position.x = position
+            } else {
+                document.targets[targetIndex].position.y = position
+            }
+        }
+        for index in document.segments.indices where movedIDs.contains(document.segments[index].startID) || movedIDs.contains(document.segments[index].endID) {
+            document.segments[index].routePoints.removeAll()
+        }
+    }
+
     private func toggleSelectedTargetLocks() {
         let shouldLock = !selectedTargetsAreLocked
         for index in document.targets.indices where selectedTargetIDs.contains(document.targets[index].id) {
@@ -3118,7 +3147,7 @@ struct ContentView: View {
         }
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 5
+            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 7
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 5 : 1
         }
@@ -3178,6 +3207,22 @@ struct ContentView: View {
                 .buttonStyle(EditorButtonStyle())
                 .help("Align selected items vertically")
                 .accessibilityLabel("Align selected items vertically")
+                Button { distributeSelectedTargets(.horizontal) } label: {
+                    Image(systemName: "arrow.left.and.right")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(selectedTargetIDs.count < 3)
+                .opacity(selectedTargetIDs.count < 3 ? 0.4 : 1)
+                .help("Distribute selected items horizontally")
+                .accessibilityLabel("Distribute selected items horizontally")
+                Button { distributeSelectedTargets(.vertical) } label: {
+                    Image(systemName: "arrow.up.and.down")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(selectedTargetIDs.count < 3)
+                .opacity(selectedTargetIDs.count < 3 ? 0.4 : 1)
+                .help("Distribute selected items vertically")
+                .accessibilityLabel("Distribute selected items vertically")
                 Button { toggleSelectedTargetLocks() } label: {
                     Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
                 }
