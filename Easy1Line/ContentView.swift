@@ -1074,6 +1074,9 @@ struct ContentView: View {
                 .onTapGesture(count: 2) {
                     openTargetInfo(target)
                 }
+                // Junctions are small and often sit directly on a wire's hit area; force the tap
+                // to win over any overlapping wire gesture instead of letting z-order/ambiguity decide.
+                .highPriorityTapIfJunction(target.kind == .junction) { targetTapped(target) }
             }
 
             if showWireLabels {
@@ -4991,6 +4994,8 @@ private struct TargetView: View {
             if target.kind == .junction {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
+                    // Temporary: shows the actual 32x32 clickable region while diagnosing Mac click issues.
+                    Circle().stroke(.yellow.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(width: 32, height: 32)
                 }
                 .frame(width: 32, height: 32)
             } else if target.isCompact {
@@ -5319,6 +5324,15 @@ private struct EditorButtonStyle: ButtonStyle {
 
 private extension View {
     func inspectorLabel() -> some View { font(.system(size: 11.5, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.4)) }
+
+    @ViewBuilder
+    func highPriorityTapIfJunction(_ isJunction: Bool, action: @escaping () -> Void) -> some View {
+        if isJunction {
+            highPriorityGesture(TapGesture().onEnded(action), including: .all)
+        } else {
+            self
+        }
+    }
 }
 
 private extension Color {
