@@ -1938,6 +1938,33 @@ struct ContentView: View {
         !selectedTargetIDs.isEmpty && selectedTargetIDs.allSatisfy { target(with: $0)?.locked == true }
     }
 
+    private enum TargetAlignment {
+        case horizontal
+        case vertical
+    }
+
+    private func alignSelectedTargets(_ alignment: TargetAlignment) {
+        let targets = selectedTargetIDs.compactMap { target(with: $0) }
+        guard targets.count >= 2 else { return }
+        let movableTargets = targets.filter { !$0.locked }
+        guard !movableTargets.isEmpty else { return }
+        let reference = targets.reduce(CGFloat.zero) { total, target in
+            total + (alignment == .horizontal ? target.position.y : target.position.x)
+        } / CGFloat(targets.count)
+        let movedIDs = Set(movableTargets.map(\.id))
+        captureForUndo()
+        for index in document.targets.indices where movedIDs.contains(document.targets[index].id) {
+            if alignment == .horizontal {
+                document.targets[index].position.y = reference
+            } else {
+                document.targets[index].position.x = reference
+            }
+        }
+        for index in document.segments.indices where movedIDs.contains(document.segments[index].startID) || movedIDs.contains(document.segments[index].endID) {
+            document.segments[index].routePoints.removeAll()
+        }
+    }
+
     private func toggleSelectedTargetLocks() {
         let shouldLock = !selectedTargetsAreLocked
         for index in document.targets.indices where selectedTargetIDs.contains(document.targets[index].id) {
@@ -3091,7 +3118,7 @@ struct ContentView: View {
         }
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 3
+            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 5
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 5 : 1
         }
@@ -3139,6 +3166,18 @@ struct ContentView: View {
                 .accessibilityLabel(wireConnectionMoveMode ? "Cancel moving connection" : "Move wire connection")
             }
             if selectedTargetIDs.count > 1 {
+                Button { alignSelectedTargets(.horizontal) } label: {
+                    Image(systemName: "align.horizontal.center")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .help("Align selected items horizontally")
+                .accessibilityLabel("Align selected items horizontally")
+                Button { alignSelectedTargets(.vertical) } label: {
+                    Image(systemName: "align.vertical.center")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .help("Align selected items vertically")
+                .accessibilityLabel("Align selected items vertically")
                 Button { toggleSelectedTargetLocks() } label: {
                     Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
                 }
