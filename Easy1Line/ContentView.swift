@@ -220,7 +220,7 @@ struct ContentView: View {
                 .padding(.leading, 20)
                 .padding(.top, 90)
                 .offset(x: itemsPanelOffsetX, y: itemsPanelOffsetY)
-                .gesture(itemsPanelDragGesture)
+                .simultaneousGesture(itemsPanelDragGesture)
 
             if let dockDragKind {
                 ZStack {
@@ -277,7 +277,7 @@ struct ContentView: View {
                     .padding(.horizontal, 20)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .offset(x: targetToolbarOffsetX, y: targetToolbarOffsetY)
-                    .gesture(toolbarDragGesture(isTarget: true))
+                    .simultaneousGesture(toolbarDragGesture(isTarget: true))
             }
 
             if showLibrary {
@@ -1134,7 +1134,7 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 selectionBox
                     .offset(x: selectionToolbarOffsetX, y: selectionToolbarOffsetY)
-                    .gesture(toolbarDragGesture(isTarget: false))
+                    .simultaneousGesture(toolbarDragGesture(isTarget: false))
                 zoomControls
                     .background {
                         GeometryReader { proxy in
@@ -1144,7 +1144,7 @@ struct ContentView: View {
                         }
                     }
                     .offset(x: zoomToolbarOffsetX, y: zoomToolbarOffsetY)
-                    .gesture(toolbarDragGesture(isTarget: false, isZoom: true))
+                    .simultaneousGesture(toolbarDragGesture(isTarget: false, isZoom: true))
             }
             .padding(.top, 88)
             .padding(.trailing, 24)
