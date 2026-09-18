@@ -501,6 +501,10 @@ struct ContentView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
+    }
+
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -622,6 +626,8 @@ struct ContentView: View {
                 Button("Background image") { showBackgroundImagePanel.toggle() }
                 Divider()
                 Button("Reset Toolbars") { resetToolbars() }
+                Divider()
+                Text("Version \(appVersion)")
             }
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("App settings")
