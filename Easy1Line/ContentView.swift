@@ -5154,7 +5154,7 @@ private struct TargetView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if target.kind == .junction || target.isCompact {
+            if target.isCompact {
                 Text(target.name)
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
@@ -5163,7 +5163,7 @@ private struct TargetView: View {
                     .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(.black.opacity(0.55), in: Capsule())
-                    .offset(y: target.kind == .junction ? 20 : 26)
+                    .offset(y: 26)
                     .allowsHitTesting(false)
             }
         }
