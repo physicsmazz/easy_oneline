@@ -1949,15 +1949,15 @@ struct ContentView: View {
         let movableTargets = targets.filter { !$0.locked }
         guard !movableTargets.isEmpty else { return }
         let reference = targets.reduce(CGFloat.zero) { total, target in
-            total + (alignment == .horizontal ? target.position.y : target.position.x)
+            total + (alignment == .horizontal ? target.position.x : target.position.y)
         } / CGFloat(targets.count)
         let movedIDs = Set(movableTargets.map(\.id))
         captureForUndo()
         for index in document.targets.indices where movedIDs.contains(document.targets[index].id) {
             if alignment == .horizontal {
-                document.targets[index].position.y = reference
-            } else {
                 document.targets[index].position.x = reference
+            } else {
+                document.targets[index].position.y = reference
             }
         }
         for index in document.segments.indices where movedIDs.contains(document.segments[index].startID) || movedIDs.contains(document.segments[index].endID) {
