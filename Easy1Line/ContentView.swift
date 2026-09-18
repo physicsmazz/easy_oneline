@@ -80,7 +80,6 @@ struct ContentView: View {
     @State private var activeTargetDragIDs: [UUID] = []
     @State private var targetDragStartRoutes: [UUID: [CGPoint]] = [:]
     @State private var draggingTargetID: UUID?
-    @State private var segmentDragStartOffsets: [UUID: CGFloat] = [:]
     @State private var selectedSegmentSectionIndex: Int?
     @State private var segmentDragStartPoints: [UUID: [CGPoint]] = [:]
     @State private var selectedTargetIDs: [UUID] = []
@@ -1379,7 +1378,7 @@ struct ContentView: View {
                         captureAttachedRoutes(for: targetID)
                     }
                 }
-                guard let start = dragStartPositions[target.id] else { return }
+                guard dragStartPositions[target.id] != nil else { return }
                 autoPanCanvasIfNeeded(for: document.targets[index].position)
                 let delta = canvasDelta(for: value.translation)
                 let canvasPan = CGSize(
@@ -3188,7 +3187,7 @@ struct ContentView: View {
                     .help("Connect selected items")
                     .accessibilityLabel("Connect selected items")
             }
-            if selectedTargetIDs.isEmpty, selectedSegmentIDs.count == 1, let segment = selectedSegment {
+            if selectedTargetIDs.isEmpty, selectedSegmentIDs.count == 1, selectedSegment != nil {
                 Button { wirePlacementMode = .connection } label: { Image(systemName: "circle.fill") }
                     .buttonStyle(EditorButtonStyle())
                     .help("Add connection at clicked point")
@@ -3952,6 +3951,8 @@ struct ContentView: View {
                 }
             }
 
+            points = routeAroundObstaclesIfNeeded(points, segment: document.segments[segmentIndex], start: start, end: end)
+
             // Once the drag ends, merge collinear aligned sections and discard only
             // the interior vertices that no longer change the wire's path.
             let normalized = normalizedRoute(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))
@@ -3960,6 +3961,32 @@ struct ContentView: View {
         }
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
+    }
+
+    private func routeAroundObstaclesIfNeeded(_ points: [CGPoint], segment: SchematicSegment, start: SchematicTarget, end: SchematicTarget) -> [CGPoint] {
+        guard points.count >= 4 else { return points }
+        let obstacles = routingObstacles(excluding: start.id, end.id)
+            .filter { $0.kind != .junction }
+            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+        guard !obstacles.isEmpty, !pointsAreClear(points, from: obstacles) else { return points }
+
+        let startSlot = segment.startSlot ?? nearestConnectionSlot(for: start, to: points[0])
+        let endSlot = segment.endSlot ?? nearestConnectionSlot(for: end, to: points[points.count - 1])
+        let startPin = connectionPoint(for: start, slot: startSlot)
+        let endPin = connectionPoint(for: end, slot: endSlot)
+        let startFallback = escapePoint(for: start, slot: startSlot, toward: end)
+        let endFallback = escapePoint(for: end, slot: endSlot, toward: start)
+        let startStub = preservedStub(from: startPin, to: points[1], minimumLength: CGFloat(connectionStubLength), fallback: startFallback, matching: startFallback)
+        let endStub = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: CGFloat(connectionStubLength), fallback: endFallback, matching: endFallback)
+        let detour = orthogonalRoute(from: startStub, to: endStub, avoiding: obstacles)
+        let routed = routePreservingStubs(
+            start: startPin,
+            startStub: startStub,
+            middle: detour,
+            endStub: endStub,
+            end: endPin
+        )
+        return pointsAreClear(routed, from: obstacles) ? routed : points
     }
 
     /// "Fix wire": simplifies collinear bend points AND collapses unnecessary out-and-back loops
@@ -4071,20 +4098,6 @@ struct ContentView: View {
         return best.map { ($0.segmentID, $0.coordinate) }
     }
 
-    private func hasNearAlignment(in points: [CGPoint]) -> Bool {
-        guard points.count > 2 else { return false }
-        for index in 1..<(points.count - 1) {
-            let before = points[index - 1]
-            let current = points[index]
-            let after = points[index + 1]
-            let tolerance = CGFloat(wireAlignmentTolerance)
-            let vertical = abs(before.x - current.x) <= tolerance && abs(current.x - after.x) <= tolerance
-            let horizontal = abs(before.y - current.y) <= tolerance && abs(current.y - after.y) <= tolerance
-            if vertical || horizontal { return true }
-        }
-        return false
-    }
-
     private func snappedPosition(_ position: CGPoint) -> CGPoint {
         guard snapToGrid else { return position }
         let gridSize: CGFloat = 32
@@ -4111,7 +4124,7 @@ struct ContentView: View {
 
     private func routeWithCurrentEndpoints(_ routePoints: [CGPoint], segment: SchematicSegment, startTarget: SchematicTarget, endTarget: SchematicTarget) -> [CGPoint] {
         // Saved bends may change, but endpoint stubs are always rebuilt through the same assembler used for new wires.
-        var points = orthogonalizedPoints(routePoints, alignmentTolerance: 0)
+        let points = orthogonalizedPoints(routePoints, alignmentTolerance: 0)
         guard points.count > 1 else { return points }
         let startSlot = segment.startSlot ?? startTargetSlot(startTarget, point: points[0])
         let endSlot = segment.endSlot ?? endTargetSlot(endTarget, point: points[points.count - 1])
@@ -4130,26 +4143,6 @@ struct ContentView: View {
         }
         let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
         return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape] + middle + [endEscape], endStub: endEscape, end: endPin)
-    }
-
-    private func removeRouteBacktracks(_ points: [CGPoint]) -> [CGPoint] {
-        guard points.count > 3 else { return points }
-        var result = points
-        // Keep index 2: it is the deliberate turn immediately after the start stub.
-        var index = 3
-        while index < result.count - 3 {
-            let before = result[index - 1]
-            let current = result[index]
-            let after = result[index + 1]
-            let sameVertical = abs(before.x - current.x) < 4 && abs(current.x - after.x) < 4
-            let sameHorizontal = abs(before.y - current.y) < 4 && abs(current.y - after.y) < 4
-            if sameVertical || sameHorizontal {
-                result.remove(at: index)
-            } else {
-                index += 1
-            }
-        }
-        return result
     }
 
     private func preservedStub(from pin: CGPoint, to existingPoint: CGPoint, minimumLength: CGFloat, fallback: CGPoint, matching expected: CGPoint) -> CGPoint {
