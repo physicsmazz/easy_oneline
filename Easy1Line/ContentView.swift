@@ -3572,14 +3572,10 @@ struct ContentView: View {
             if document.segments[segmentIndex].startID == id {
                 document.segments[segmentIndex].routePoints[0].x += delta.width
                 document.segments[segmentIndex].routePoints[0].y += delta.height
-                document.segments[segmentIndex].routePoints[1].x += delta.width
-                document.segments[segmentIndex].routePoints[1].y += delta.height
             } else {
                 let last = document.segments[segmentIndex].routePoints.count - 1
                 document.segments[segmentIndex].routePoints[last].x += delta.width
                 document.segments[segmentIndex].routePoints[last].y += delta.height
-                document.segments[segmentIndex].routePoints[last - 1].x += delta.width
-                document.segments[segmentIndex].routePoints[last - 1].y += delta.height
             }
         }
     }
@@ -3623,35 +3619,8 @@ struct ContentView: View {
                 points[movedIndex].y += translation.height
             } else {
                 let pinIndex = segment.startID == targetID ? 0 : points.count - 1
-                let stubIndex = segment.startID == targetID ? 1 : points.count - 2
-                let pin = points[pinIndex], stub = points[stubIndex]
-                let stubIsVertical = abs(pin.x - stub.x) < 0.5
                 points[pinIndex].x += translation.width
                 points[pinIndex].y += translation.height
-                // Stub end follows only across the stub axis so the next leg keeps its line;
-                // along the stub axis it stays put unless the pin passes it.
-                let minimumStub: CGFloat = 8
-                if stubIsVertical {
-                    points[stubIndex].x += translation.width
-                    let direction: CGFloat = stub.y >= pin.y ? 1 : -1
-                    if (points[stubIndex].y - points[pinIndex].y) * direction < minimumStub {
-                        points[stubIndex].y = points[pinIndex].y + direction * minimumStub
-                    }
-                } else {
-                    points[stubIndex].y += translation.height
-                    let direction: CGFloat = stub.x >= pin.x ? 1 : -1
-                    if (points[stubIndex].x - points[pinIndex].x) * direction < minimumStub {
-                        points[stubIndex].x = points[pinIndex].x + direction * minimumStub
-                    }
-                }
-            }
-            if let start = target(with: segment.startID), let end = target(with: segment.endID), target(with: targetID)?.kind != .junction {
-                let rectangles = routingObstacles(excluding: start.id, end.id)
-                    .filter { $0.kind != .junction }
-                    .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-                if !rectangles.isEmpty, !pointsAreClear(points, from: rectangles) {
-                    points = orthogonalRoute(from: points[0], to: points[points.count - 1], avoiding: rectangles)
-                }
             }
             document.segments[index].routePoints = normalizedRoute(points)
         }
@@ -3668,7 +3637,8 @@ struct ContentView: View {
         guard let start = target(with: document.segments[index].startID), let end = target(with: document.segments[index].endID) else { return }
         if segmentDragStartPoints[id] == nil {
             captureForUndo()
-            segmentDragStartPoints[id] = orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            segmentDragStartPoints[id] = cachedWirePoints[id]
+                ?? orthogonalPoints(for: document.segments[index], from: start, to: end, avoiding: [])
             let initialRoute = segmentDragStartPoints[id] ?? []
             wireLabelRouteAnchorPoints[id] = labelAnchor(for: document.segments[index], on: initialRoute).point
         }
@@ -3689,12 +3659,6 @@ struct ContentView: View {
             points[sectionIndex + 1].y = alignedCoordinate
         }
         var dragRoute = normalizedRoute(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance)))
-        let obstacles = routingObstacles(excluding: start.id, end.id)
-            .filter { $0.kind != .junction }
-            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        if !obstacles.isEmpty, !pointsAreClear(dragRoute, from: obstacles), let first = dragRoute.first, let last = dragRoute.last {
-            dragRoute = normalizedRoute(orthogonalRoute(from: first, to: last, avoiding: obstacles))
-        }
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
