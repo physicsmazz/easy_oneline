@@ -1250,7 +1250,7 @@ struct ContentView: View {
             .help("Reset rotation only (keep zoom)")
             .disabled(canvasLocked)
             Button { zoomToExtents() } label: {
-                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                Image(systemName: "viewfinder")
             }
             .buttonStyle(EditorButtonStyle())
             .help("Zoom to fit items and wires (ignores background image)")
