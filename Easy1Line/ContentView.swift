@@ -1452,7 +1452,8 @@ struct ContentView: View {
         var points: [UUID: [CGPoint]] = [:]
         for segment in document.segments {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            points[segment.id] = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            points[segment.id] = routeWithInsertedOrthogonalJoints(route)
         }
         cachedWirePoints = points
 
@@ -3854,37 +3855,62 @@ struct ContentView: View {
             points[sectionIndex].y = movedY
             points[sectionIndex + 1].y = movedY
         }
-        let dragRoute = routeWithDragCorners(points, draggedSectionIndex: sectionIndex, isVertical: isVertical)
+        let dragRoute = routeWithOrthogonalDragJoints(points, draggedSectionIndex: sectionIndex, isVertical: isVertical)
         wireAlignmentPreviewSegmentIDs.removeAll()
         document.segments[index].routePoints = dragRoute
+        cachedWirePoints[id] = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
             updateWireLabelPosition(id, route: dragRoute, near: labelAnchor)
         }
         selectedTargetIDs.removeAll()
     }
 
-    private func routeWithDragCorners(_ points: [CGPoint], draggedSectionIndex: Int, isVertical: Bool) -> [CGPoint] {
+    private func routeWithOrthogonalDragJoints(_ points: [CGPoint], draggedSectionIndex: Int, isVertical: Bool) -> [CGPoint] {
         guard points.indices.contains(draggedSectionIndex), points.indices.contains(draggedSectionIndex + 1) else { return points }
-        var result = points
-        let startIndex = draggedSectionIndex
-        let endIndex = draggedSectionIndex + 1
-        if result.indices.contains(endIndex + 1) {
-            let end = result[endIndex]
-            let next = result[endIndex + 1]
-            if abs(end.x - next.x) > 0.5 && abs(end.y - next.y) > 0.5 {
-                let corner = isVertical ? CGPoint(x: end.x, y: next.y) : CGPoint(x: next.x, y: end.y)
-                result.insert(corner, at: endIndex + 1)
+        return routeWithInsertedOrthogonalJoints(points) { sectionIndex, first, second, currentRoute in
+            if sectionIndex == draggedSectionIndex - 1 {
+                return isVertical ? CGPoint(x: second.x, y: first.y) : CGPoint(x: first.x, y: second.y)
             }
+            if sectionIndex == draggedSectionIndex + 1 {
+                return isVertical ? CGPoint(x: first.x, y: second.y) : CGPoint(x: second.x, y: first.y)
+            }
+            return preferredOrthogonalJoint(from: first, to: second, after: currentRoute)
         }
-        if result.indices.contains(startIndex - 1), result.indices.contains(startIndex) {
-            let previous = result[startIndex - 1]
-            let start = result[startIndex]
-            if abs(previous.x - start.x) > 0.5 && abs(previous.y - start.y) > 0.5 {
-                let corner = isVertical ? CGPoint(x: start.x, y: previous.y) : CGPoint(x: previous.x, y: start.y)
-                result.insert(corner, at: startIndex)
+    }
+
+    private func routeWithInsertedOrthogonalJoints(_ points: [CGPoint], corner: (Int, CGPoint, CGPoint, [CGPoint]) -> CGPoint) -> [CGPoint] {
+        guard points.count > 1 else { return points }
+        var result: [CGPoint] = []
+        for sectionIndex in 0..<(points.count - 1) {
+            let first = points[sectionIndex]
+            let second = points[sectionIndex + 1]
+            appendDistinct(first, to: &result)
+            if abs(first.x - second.x) > 0.5 && abs(first.y - second.y) > 0.5 {
+                appendDistinct(corner(sectionIndex, first, second, result), to: &result)
             }
+            appendDistinct(second, to: &result)
         }
         return result
+    }
+
+    private func routeWithInsertedOrthogonalJoints(_ points: [CGPoint]) -> [CGPoint] {
+        routeWithInsertedOrthogonalJoints(points) { _, first, second, currentRoute in
+            preferredOrthogonalJoint(from: first, to: second, after: currentRoute)
+        }
+    }
+
+    private func preferredOrthogonalJoint(from first: CGPoint, to second: CGPoint, after route: [CGPoint]) -> CGPoint {
+        if route.count >= 2 {
+            let previous = route[route.count - 2]
+            let arrivesVertically = abs(previous.x - first.x) < 0.5
+            return arrivesVertically ? CGPoint(x: first.x, y: second.y) : CGPoint(x: second.x, y: first.y)
+        }
+        return CGPoint(x: second.x, y: first.y)
+    }
+
+    private func appendDistinct(_ point: CGPoint, to points: inout [CGPoint]) {
+        guard points.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true else { return }
+        points.append(point)
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
@@ -3947,7 +3973,7 @@ struct ContentView: View {
             result = simplifyOrthogonalPoints(removeRouteLoops(result), alignmentTolerance: alignmentTolerance)
             if result == previous { break }
         }
-        return result
+        return routeWithInsertedOrthogonalJoints(result)
     }
 
     private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
@@ -4113,13 +4139,11 @@ struct ContentView: View {
     }
 
     private func routePreservingStubs(start: CGPoint, startStub: CGPoint, middle: [CGPoint], endStub: CGPoint, end: CGPoint) -> [CGPoint] {
-        var interior = Array(middle.dropFirst().dropLast())
-        var route = [start, startStub] + interior + [endStub, end]
-        var result: [CGPoint] = []
-        for point in route where result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true {
-            result.append(point)
+        let interior = Array(middle.dropFirst().dropLast())
+        let route = [start, startStub] + interior + [endStub, end]
+        return routeWithInsertedOrthogonalJoints(route) { _, first, second, currentRoute in
+            preferredOrthogonalJoint(from: first, to: second, after: currentRoute)
         }
-        return result
     }
 
     /// Grid-based orthogonal pathfinder: builds a Manhattan grid from the start/end points plus every
@@ -4188,7 +4212,7 @@ struct ContentView: View {
         var points = path.map { CGPoint(x: sortedX[$0.x], y: sortedY[$0.y]) }
         points[0] = start
         points[points.count - 1] = end
-        return simplifyOrthogonalPoints(points)
+        return routeWithInsertedOrthogonalJoints(simplifyOrthogonalPoints(points))
     }
 
     private func sectionPath(from start: CGPoint, to end: CGPoint) -> Path {
@@ -4402,12 +4426,12 @@ struct ContentView: View {
     // Ends `points` at the pin by way of its escape stub so the wire leaves the pin outward.
     private func routeIntoPin(_ points: [CGPoint], target: SchematicTarget, slot: Int, toward otherID: UUID, fallback: CGPoint) -> [CGPoint] {
         let pin = connectionPoint(for: target, slot: slot)
-        guard let other = self.target(with: otherID) else { return orthogonalizedPoints(points + [pin]) }
+        guard let other = self.target(with: otherID) else { return routeWithInsertedOrthogonalJoints(orthogonalizedPoints(points + [pin])) }
         let escape = escapePoint(for: target, slot: slot, toward: other)
         let previous = points.last ?? fallback
         let pinIsVertical = abs(pin.y - target.position.y) >= abs(pin.x - target.position.x)
         let corner = pinIsVertical ? CGPoint(x: previous.x, y: escape.y) : CGPoint(x: escape.x, y: previous.y)
-        return simplifyOrthogonalPoints((points.isEmpty ? [fallback] : points) + [corner, escape, pin])
+        return routeWithInsertedOrthogonalJoints(simplifyOrthogonalPoints((points.isEmpty ? [fallback] : points) + [corner, escape, pin]))
     }
 
     private func splitWire(_ segment: SchematicSegment, at placedPoint: CGPoint? = nil) {
