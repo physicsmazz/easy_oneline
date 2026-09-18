@@ -101,6 +101,7 @@ struct ContentView: View {
     @AppStorage("showWireNetNames") private var showWireNetNames = false
     @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
     private let canvasFieldSize: CGFloat = 5000
+    private let wireRoutingClearancePixels: CGFloat = 2
     @AppStorage("baseItemSize") private var baseItemSize: Double = 1.0
     @AppStorage("selectionHighlightColorHex") private var selectionHighlightColorHex: String = "31D7E8"
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
@@ -3813,15 +3814,12 @@ struct ContentView: View {
             } else {
                 let pinIndex = segment.startID == targetID ? 0 : points.count - 1
                 let adjacentIndex = pinIndex == 0 ? 1 : points.count - 2
-                // The turn nearest the moved pin shares one axis with it (the stub's orientation).
-                // Slide that same axis on the turn so the stub tracks the pin instead of leaving a
-                // frozen trunk segment behind — the trunk's own level/column is left untouched.
-                let sharesX = abs(points[adjacentIndex].x - points[pinIndex].x) < 0.5
-                let sharesY = abs(points[adjacentIndex].y - points[pinIndex].y) < 0.5
+                // Translate the pin and its adjacent stub endpoint together. This preserves the
+                // stub vector while leaving the rest of the route anchored to the stationary end.
                 points[pinIndex].x += translation.width
                 points[pinIndex].y += translation.height
-                if sharesX { points[adjacentIndex].x = points[pinIndex].x }
-                if sharesY { points[adjacentIndex].y = points[pinIndex].y }
+                points[adjacentIndex].x += translation.width
+                points[adjacentIndex].y += translation.height
             }
             document.segments[index].routePoints = normalizedRoute(points)
         }
@@ -3967,7 +3965,7 @@ struct ContentView: View {
         guard points.count >= 4 else { return points }
         let obstacles = routingObstacles(excluding: start.id, end.id)
             .filter { $0.kind != .junction }
-            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+            .map { obstacleRect(for: $0).insetBy(dx: -wireRoutingClearancePixels, dy: -wireRoutingClearancePixels) }
         guard !obstacles.isEmpty, !pointsAreClear(points, from: obstacles) else { return points }
 
         let startSlot = segment.startSlot ?? nearestConnectionSlot(for: start, to: points[0])
@@ -4170,7 +4168,7 @@ struct ContentView: View {
 
         let rectangles = obstacles
             .filter { $0.kind != .junction }
-            .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
+            .map { obstacleRect(for: $0).insetBy(dx: -wireRoutingClearancePixels, dy: -wireRoutingClearancePixels) }
         let directPaths = [
             [escapeStart, CGPoint(x: escapeEnd.x, y: escapeStart.y), escapeEnd],
             [escapeStart, CGPoint(x: escapeStart.x, y: escapeEnd.y), escapeEnd]
