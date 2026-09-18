@@ -262,9 +262,7 @@ struct ContentView: View {
             }
 
                 if selectedTargetIDs.count == 1, !connectionMode, let target = target(with: selectedTargetIDs.first!),
-                       target.kind == .junction
-                           ? forceEditBoxTargetID == target.id
-                           : ((showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id) {
+                       (showEditBoxOnSelection && dismissedEditBoxTargetID != target.id) || forceEditBoxTargetID == target.id {
                 targetBottomPanel(target)
                     .background {
                         GeometryReader { proxy in
@@ -574,8 +572,8 @@ struct ContentView: View {
             Menu("Libraries") {
                 Button("Wires") { showLineLibrary.toggle() }
                 Button("Colors") { showColorLibrary.toggle() }
-                Button("Components") { showTargetLibrary.toggle() }
-                Button("Sync component library") { Task { await syncLibraries() } }
+                Button("Items") { showTargetLibrary.toggle() }
+                Button("Sync item library") { Task { await syncLibraries() } }
             }
             .buttonStyle(EditorButtonStyle())
 
@@ -710,7 +708,7 @@ struct ContentView: View {
             } label: {
                 HStack(spacing: 8) {
                     if !compact {
-                        Text("COMPONENTS")
+                        Text("ITEMS")
                             .font(.system(size: 14.95, weight: .bold))
                             .tracking(1.4)
                             .foregroundStyle(.white.opacity(0.45))
@@ -2738,12 +2736,12 @@ struct ContentView: View {
     private var targetLibraryPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("COMPONENT LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
+                Text("ITEM LIBRARY").font(.system(size: 10, weight: .bold)).tracking(1.3).foregroundStyle(.white.opacity(0.45))
                 Spacer()
                 Button { addTarget(.junction) } label: { Image(systemName: "plus") }.foregroundStyle(.cyan)
             }
 
-            Text("PROJECT COMPONENTS").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            Text("PROJECT ITEMS").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
             ForEach(document.targets) { target in
                 Button {
                     selectedTargetIDs = [target.id]
@@ -2763,7 +2761,7 @@ struct ContentView: View {
             }
 
             Divider().overlay(.white.opacity(0.12))
-            Text("SAVED COMPONENT TYPES").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
+            Text("SAVED ITEM TYPES").font(.system(size: 9, weight: .bold)).tracking(1.1).foregroundStyle(.white.opacity(0.35))
             ForEach(document.targetDefinitions) { template in
                 Button { addTarget(from: template) } label: {
                     HStack(spacing: 8) {
@@ -2987,64 +2985,38 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    @ViewBuilder
     private func targetBottomPanel(_ target: SchematicTarget) -> some View {
-        if target.kind == .junction {
-            junctionNameOnlyPanel(target)
-        } else {
-            fullComponentBottomPanel(target)
-        }
-    }
-
-    private func junctionNameOnlyPanel(_ target: SchematicTarget) -> some View {
-        HStack(spacing: 12) {
-            Text("COMPONENT").inspectorLabel()
-            TextField("Component name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
-            Button("Save") { saveTargetName(target) }
-                .buttonStyle(.borderedProminent)
-            Button("Cancel") { cancelTargetName(target) }
-                .buttonStyle(.bordered)
-            Spacer()
-            Button(role: .destructive) {
-                showDeleteWarning = true
-            } label: {
-                Label("Delete component", systemImage: "trash")
-            }
-        }
-        .padding(12)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func fullComponentBottomPanel(_ target: SchematicTarget) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Text("COMPONENT").inspectorLabel()
-                TextField("Component name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
+                Text("ITEM").inspectorLabel()
+                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
                 Button("Save") { saveTargetName(target) }
                     .buttonStyle(.borderedProminent)
                 Button("Cancel") { cancelTargetName(target) }
                     .buttonStyle(.bordered)
                 Spacer()
-                ColorPicker("Component color", selection: targetBinding(target).color).labelsHidden()
-                Text("CUSTOM").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55)).padding(.trailing, 12)
-                ForEach(document.colorLegend) { entry in
-                    Button {
-                        targetBinding(target).color.wrappedValue = Color(hex: entry.colorHex)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
-                            Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
+                if target.kind != .junction {
+                    ColorPicker("Item color", selection: targetBinding(target).color).labelsHidden()
+                    Text("CUSTOM").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.55)).padding(.trailing, 12)
+                    ForEach(document.colorLegend) { entry in
+                        Button {
+                            targetBinding(target).color.wrappedValue = Color(hex: entry.colorHex)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color(hex: entry.colorHex)).frame(width: 18, height: 18)
+                                Text(entry.meaning.isEmpty ? "EMPTY" : entry.meaning).font(.caption2)
+                            }
+                            .padding(3)
+                            .background(Color(hex: target.colorHex).hexString.caseInsensitiveCompare(entry.colorHex) == .orderedSame ? Color.white.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
                         }
-                        .padding(3)
-                        .background(Color(hex: target.colorHex).hexString.caseInsensitiveCompare(entry.colorHex) == .orderedSame ? Color.white.opacity(0.2) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                        .buttonStyle(.plain)
+                        .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
                     }
-                    .buttonStyle(.plain)
-                    .help(entry.meaning.isEmpty ? "Use custom legend color" : entry.meaning)
                 }
                 Button(role: .destructive) {
                     showDeleteWarning = true
                 } label: {
-                    Label("Delete component", systemImage: "trash")
+                    Label("Delete item", systemImage: "trash")
                 }
             }
 
@@ -3070,18 +3042,24 @@ struct ContentView: View {
                 }
                 .disabled(target.imageData == nil)
                 Button { duplicateTarget(target) } label: {
-                    Label("Duplicate component", systemImage: "plus.square.on.square")
+                    Label("Duplicate item", systemImage: "plus.square.on.square")
                 }
                 Button { saveTargetTemplate(target) } label: {
-                    Label("Save as component type", systemImage: "square.and.arrow.down")
+                    Label("Save as item type", systemImage: "square.and.arrow.down")
                 }
             }
 
-            HStack(spacing: 20) {
-                Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
-                Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
-                Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
-                Toggle("Compact component", isOn: targetBinding(target).isCompact)
+            if target.kind == .junction {
+                Text("Connections: Unlimited")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.55))
+            } else {
+                HStack(spacing: 20) {
+                    Stepper("Connections: \(target.maxConnections)", value: targetBinding(target).maxConnections, in: 0...32)
+                    Stepper("Point rotation: \(target.connectionAngle, specifier: "%.0f")°", value: targetBinding(target).connectionAngle, in: 0...360, step: 15)
+                    Stepper("Size: \(target.scale, specifier: "%.1f")x", value: targetBinding(target).scale, in: 0.5...3, step: 0.1)
+                    Toggle("Compact item", isOn: targetBinding(target).isCompact)
+                }
             }
 
             if target.maxConnections > 0 {
@@ -5109,7 +5087,6 @@ private struct TargetView: View {
             if target.kind == .junction {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
-                    Circle().stroke(isSelected ? selectionHighlightColor : .white.opacity(0.35), lineWidth: isSelected ? 2 : 1)
                 }
                 .frame(width: 32, height: 32)
             } else if target.isCompact {
@@ -5154,20 +5131,6 @@ private struct TargetView: View {
                 .frame(width: 76, height: 68)
                 .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
                 .overlay { RoundedRectangle(cornerRadius: 12).stroke(borderStyle, lineWidth: isSelected || isConnectionStart ? 3 : 2) }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if target.isCompact {
-                Text(target.name)
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(.black.opacity(0.55), in: Capsule())
-                    .offset(y: 26)
-                    .allowsHitTesting(false)
             }
         }
         .overlay {
