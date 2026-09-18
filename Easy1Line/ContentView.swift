@@ -57,6 +57,10 @@ struct ContentView: View {
     @State private var showProfilePicker = false
     @State private var editingDocumentName = false
     @State private var isApplyingRemoteDocument = false
+    @State private var remoteSyncEnabled = false
+    @State private var remoteSyncTask: Task<Void, Never>?
+    @State private var remoteSyncDirty = false
+    @State private var remoteSyncLastKnownUpdatedAt: String?
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -164,7 +168,7 @@ struct ContentView: View {
     @State private var itemsPanelHeight: CGFloat = 44
     @State private var splitCandidateSegmentID: UUID?
     @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
-    @State private var targetNameDraft = ""
+    @State private var targetIdentifierDraft = ""
     @State private var targetNameEditingID: UUID?
     @AppStorage("selectionToolbarOffsetX") private var selectionToolbarOffsetX: Double = 0
     @AppStorage("selectionToolbarOffsetY") private var selectionToolbarOffsetY: Double = 0
@@ -355,6 +359,7 @@ struct ContentView: View {
             sanitizeTargetDefinitionSymbols()
             if !isApplyingRemoteDocument {
                 broadcastDocumentIfNeeded(newValue)
+                remoteSyncDirty = true
             }
         }
         .onChange(of: wireBridgesEnabled) { _, _ in
@@ -482,11 +487,11 @@ struct ContentView: View {
             }
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
-                targetNameDraft = ""
+                targetIdentifierDraft = ""
                 return
             }
             targetNameEditingID = id
-            targetNameDraft = target.name
+            targetIdentifierDraft = target.identifier
         }
         .onChange(of: showEditBoxOnSelection) { _, isEnabled in
             if !isEnabled {
@@ -494,6 +499,10 @@ struct ContentView: View {
                 forceEditBoxSegmentID = nil
             }
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown"
     }
 
     private var header: some View {
@@ -617,6 +626,8 @@ struct ContentView: View {
                 Button("Background image") { showBackgroundImagePanel.toggle() }
                 Divider()
                 Button("Reset Toolbars") { resetToolbars() }
+                Divider()
+                Text("Version \(appVersion)")
             }
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("App settings")
@@ -676,6 +687,14 @@ struct ContentView: View {
                 }
                 .buttonStyle(EditorButtonStyle(isActive: !multipeerSession.connectedPeers.isEmpty))
                 .accessibilityLabel("Multiuser session")
+
+                Button(action: toggleRemoteSync) {
+                    Image(systemName: remoteSyncEnabled ? "arrow.triangle.2.circlepath.icloud.fill" : "arrow.triangle.2.circlepath.icloud")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(EditorButtonStyle(isActive: remoteSyncEnabled))
+                .help(remoteSyncEnabled ? "Stop remote sync" : "Start remote sync")
+                .accessibilityLabel(remoteSyncEnabled ? "Stop remote sync" : "Start remote sync")
             }
         }
 
@@ -1071,13 +1090,14 @@ struct ContentView: View {
                 )
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
-                .onTapGesture { targetTapped(target) }
                 .onTapGesture(count: 2) {
                     openTargetInfo(target)
                 }
                 // Junctions are small and often sit directly on a wire's hit area; force the tap
                 // to win over any overlapping wire gesture instead of letting z-order/ambiguity decide.
-                .highPriorityTapIfJunction(target.kind == .junction) { targetTapped(target) }
+                // Only one single-tap recognizer is attached at a time -- adding both a plain
+                // onTapGesture AND this for the same view made Mac click recognition unreliable.
+                .singleTapToSelect(isJunction: target.kind == .junction) { targetTapped(target) }
             }
 
             if showWireLabels {
@@ -1757,7 +1777,7 @@ struct ContentView: View {
     private func addTarget(from template: TargetDefinition) {
         captureForUndo()
         let position = snappedPosition(quickAddPosition())
-        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: template.kind), kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
+        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: template.kind), kind: template.kind, name: template.kind.title, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -1782,7 +1802,7 @@ struct ContentView: View {
         var copy = target
         copy.id = UUID()
         copy.identifier = nextTargetIdentifier(for: target.kind)
-        copy.name = "\(target.name) copy"
+        copy.name = target.kind.title
         copy.position = snappedPosition(CGPoint(x: target.position.x + 48, y: target.position.y + 48))
         document.targets.append(copy)
         selectedTargetIDs = [copy.id]
@@ -1924,6 +1944,61 @@ struct ContentView: View {
         !selectedTargetIDs.isEmpty && selectedTargetIDs.allSatisfy { target(with: $0)?.locked == true }
     }
 
+    private enum TargetAlignment {
+        case horizontal
+        case vertical
+    }
+
+    private func alignSelectedTargets(_ alignment: TargetAlignment) {
+        let targets = selectedTargetIDs.compactMap { target(with: $0) }
+        guard targets.count >= 2 else { return }
+        let movableTargets = targets.filter { !$0.locked }
+        guard !movableTargets.isEmpty else { return }
+        guard let anchor = selectedTargetIDs.last.flatMap({ target(with: $0) }) else { return }
+        let reference = alignment == .horizontal ? anchor.position.x : anchor.position.y
+        let movedIDs = Set(movableTargets.map(\.id))
+        captureForUndo()
+        for index in document.targets.indices where movedIDs.contains(document.targets[index].id) {
+            if alignment == .horizontal {
+                document.targets[index].position.x = reference
+            } else {
+                document.targets[index].position.y = reference
+            }
+        }
+        for index in document.segments.indices where movedIDs.contains(document.segments[index].startID) || movedIDs.contains(document.segments[index].endID) {
+            document.segments[index].routePoints.removeAll()
+        }
+    }
+
+    private func distributeSelectedTargets(_ alignment: TargetAlignment) {
+        let targets = selectedTargetIDs.compactMap { target(with: $0) }
+        guard targets.count >= 3 else { return }
+        let sortedTargets = targets.sorted {
+            let firstPosition = alignment == .horizontal ? $0.position.x : $0.position.y
+            let secondPosition = alignment == .horizontal ? $1.position.x : $1.position.y
+            return firstPosition < secondPosition
+        }
+        let firstPosition = alignment == .horizontal ? sortedTargets[0].position.x : sortedTargets[0].position.y
+        let lastPosition = alignment == .horizontal ? sortedTargets[sortedTargets.count - 1].position.x : sortedTargets[sortedTargets.count - 1].position.y
+        let step = (lastPosition - firstPosition) / CGFloat(sortedTargets.count - 1)
+        guard step.isFinite, abs(step) > 0.01 else { return }
+        let movedIDs = Set(sortedTargets.dropFirst().dropLast().filter { !$0.locked }.map(\.id))
+        guard !movedIDs.isEmpty else { return }
+        captureForUndo()
+        for (positionIndex, target) in sortedTargets.enumerated() where movedIDs.contains(target.id) {
+            guard let targetIndex = document.targets.firstIndex(where: { $0.id == target.id }) else { continue }
+            let position = firstPosition + step * CGFloat(positionIndex)
+            if alignment == .horizontal {
+                document.targets[targetIndex].position.x = position
+            } else {
+                document.targets[targetIndex].position.y = position
+            }
+        }
+        for index in document.segments.indices where movedIDs.contains(document.segments[index].startID) || movedIDs.contains(document.segments[index].endID) {
+            document.segments[index].routePoints.removeAll()
+        }
+    }
+
     private func toggleSelectedTargetLocks() {
         let shouldLock = !selectedTargetsAreLocked
         for index in document.targets.indices where selectedTargetIDs.contains(document.targets[index].id) {
@@ -1997,6 +2072,84 @@ struct ContentView: View {
     private func broadcastDocumentIfNeeded(_ newValue: SchematicDocument) {
         guard let encoded = try? JSONEncoder().encode(newValue) else { return }
         multipeerSession.send(encoded)
+    }
+
+    private func toggleRemoteSync() {
+        if remoteSyncEnabled {
+            remoteSyncEnabled = false
+            remoteSyncTask?.cancel()
+            remoteSyncTask = nil
+            cloudStatus = "Remote sync stopped"
+            return
+        }
+        guard SupabaseDrawingStore() != nil else {
+            cloudStatus = "Supabase is not configured"
+            return
+        }
+        remoteSyncEnabled = true
+        remoteSyncLastKnownUpdatedAt = nil
+        cloudStatus = "Remote sync started"
+        remoteSyncTask = Task {
+            await joinRemoteSync()
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                await runRemoteSyncStep()
+            }
+        }
+    }
+
+    /// Joining an existing remote session should adopt its current state rather than overwrite it;
+    /// only push if no remote copy exists yet (first time this document is shared).
+    private func joinRemoteSync() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        do {
+            if let remote = try await store.loadDrawing(id: document.id) {
+                remoteSyncLastKnownUpdatedAt = try await store.loadDrawingUpdatedAt(id: document.id)
+                let decoded = try JSONDecoder().decode(SchematicDocument.self, from: remote.data)
+                guard decoded != document else { return }
+                isApplyingRemoteDocument = true
+                document = decoded
+                DispatchQueue.main.async {
+                    self.isApplyingRemoteDocument = false
+                }
+            } else {
+                let data = try JSONEncoder().encode(document)
+                try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
+            }
+        } catch {
+            recordError("Remote sync join failed: \(cloudErrorText(error))")
+        }
+    }
+
+    private func runRemoteSyncStep() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        if remoteSyncDirty {
+            remoteSyncDirty = false
+            do {
+                let data = try JSONEncoder().encode(document)
+                try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
+            } catch {
+                recordError("Remote sync push failed: \(cloudErrorText(error))")
+            }
+            return // we just pushed our own latest state; no need to immediately pull it back
+        }
+        do {
+            // Cheap timestamp check first, so an idle tick with nobody else editing costs a tiny
+            // request instead of fetching and decoding the whole document every 4 seconds.
+            guard let remoteUpdatedAt = try await store.loadDrawingUpdatedAt(id: document.id),
+                  remoteUpdatedAt != remoteSyncLastKnownUpdatedAt else { return }
+            remoteSyncLastKnownUpdatedAt = remoteUpdatedAt
+            guard let remote = try await store.loadDrawing(id: document.id) else { return }
+            let decoded = try JSONDecoder().decode(SchematicDocument.self, from: remote.data)
+            guard decoded != document else { return }
+            isApplyingRemoteDocument = true
+            document = decoded
+            DispatchQueue.main.async {
+                self.isApplyingRemoteDocument = false
+            }
+        } catch {
+            recordError("Remote sync pull failed: \(cloudErrorText(error))")
+        }
     }
 
     private func applyRemoteDocument(_ data: Data) {
@@ -2896,11 +3049,11 @@ struct ContentView: View {
     private func targetBottomPanel(_ target: SchematicTarget) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Text("ITEM").inspectorLabel()
-                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
-                Button("Save") { saveTargetName(target) }
+                Text("COMPONENT ID").inspectorLabel()
+                TextField("ID", text: $targetIdentifierDraft).textFieldStyle(.roundedBorder).frame(width: 160)
+                Button("Save") { saveTargetIdentifier(target) }
                     .buttonStyle(.borderedProminent)
-                Button("Cancel") { cancelTargetName(target) }
+                Button("Cancel") { cancelTargetIdentifier(target) }
                     .buttonStyle(.bordered)
                 Spacer()
                 if target.kind != .junction {
@@ -2999,7 +3152,7 @@ struct ContentView: View {
         }
         let actionCount: Int
         if !selectedTargetIDs.isEmpty {
-            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 3
+            actionCount = selectedTargetIDs.count == 1 ? (selectedTargetIDs.first.flatMap { target(with: $0) }.map { canRemoveTargetFromWire($0) && $0.kind != .junction } == true ? 7 : 6) : 7
         } else {
             actionCount = selectedSegmentIDs.count == 1 ? 5 : 1
         }
@@ -3047,6 +3200,34 @@ struct ContentView: View {
                 .accessibilityLabel(wireConnectionMoveMode ? "Cancel moving connection" : "Move wire connection")
             }
             if selectedTargetIDs.count > 1 {
+                Button { alignSelectedTargets(.horizontal) } label: {
+                    Image(systemName: "align.horizontal.center")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .help("Align selected items horizontally")
+                .accessibilityLabel("Align selected items horizontally")
+                Button { alignSelectedTargets(.vertical) } label: {
+                    Image(systemName: "align.vertical.center")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .help("Align selected items vertically")
+                .accessibilityLabel("Align selected items vertically")
+                Button { distributeSelectedTargets(.horizontal) } label: {
+                    Image(systemName: "arrow.left.and.right")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(selectedTargetIDs.count < 3)
+                .opacity(selectedTargetIDs.count < 3 ? 0.4 : 1)
+                .help("Distribute selected items horizontally")
+                .accessibilityLabel("Distribute selected items horizontally")
+                Button { distributeSelectedTargets(.vertical) } label: {
+                    Image(systemName: "arrow.up.and.down")
+                }
+                .buttonStyle(EditorButtonStyle())
+                .disabled(selectedTargetIDs.count < 3)
+                .opacity(selectedTargetIDs.count < 3 ? 0.4 : 1)
+                .help("Distribute selected items vertically")
+                .accessibilityLabel("Distribute selected items vertically")
                 Button { toggleSelectedTargetLocks() } label: {
                     Image(systemName: selectedTargetsAreLocked ? "lock.open" : "lock")
                 }
@@ -4405,15 +4586,17 @@ struct ContentView: View {
         }
     }
 
-    private func saveTargetName(_ target: SchematicTarget) {
+    private func saveTargetIdentifier(_ target: SchematicTarget) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
-        let trimmedName = targetNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        document.targets[index].name = trimmedName.isEmpty ? target.kind.title : trimmedName
-        targetNameDraft = document.targets[index].name
+        let trimmedIdentifier = targetIdentifierDraft.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !trimmedIdentifier.isEmpty,
+              !document.targets.enumerated().contains(where: { $0.offset != index && $0.element.identifier.caseInsensitiveCompare(trimmedIdentifier) == .orderedSame }) else { return }
+        document.targets[index].identifier = trimmedIdentifier
+        targetIdentifierDraft = trimmedIdentifier
     }
 
-    private func cancelTargetName(_ target: SchematicTarget) {
-        targetNameDraft = target.name
+    private func cancelTargetIdentifier(_ target: SchematicTarget) {
+        targetIdentifierDraft = target.identifier
     }
 
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
@@ -4673,7 +4856,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.id = id
         self.identifier = identifier
         self.kind = kind
-        self.name = name
+        self.name = kind.title
         self.position = position
         self.maxConnections = maxConnections
         self.colorHex = colorHex
@@ -4693,7 +4876,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         identifier = try container.decodeIfPresent(String.self, forKey: .identifier) ?? ""
         let rawKind = try container.decodeIfPresent(String.self, forKey: .kind) ?? TargetKind.source.rawValue
         kind = TargetKind(rawValue: rawKind) ?? .source
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
+        name = kind.title
         position = try container.decode(CGPoint.self, forKey: .position)
         maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
@@ -5073,7 +5256,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
+        .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : target.kind == .junction ? AnyShape(Rectangle().inset(by: -16)) : targetHitShape)
         .scaleEffect(CGFloat(target.scale * baseItemSize))
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -5324,13 +5507,11 @@ private struct EditorButtonStyle: ButtonStyle {
 private extension View {
     func inspectorLabel() -> some View { font(.system(size: 11.5, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.4)) }
 
+    /// Exactly one single-tap recognizer, never both -- attaching a plain onTapGesture AND a
+    /// highPriorityGesture tap to the same view made click recognition unreliable on Mac.
     @ViewBuilder
-    func highPriorityTapIfJunction(_ isJunction: Bool, action: @escaping () -> Void) -> some View {
-        if isJunction {
-            highPriorityGesture(TapGesture().onEnded(action), including: .all)
-        } else {
-            self
-        }
+    func singleTapToSelect(isJunction: Bool, action: @escaping () -> Void) -> some View {
+        onTapGesture(perform: action)
     }
 }
 
