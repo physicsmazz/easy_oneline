@@ -148,6 +148,7 @@ struct ContentView: View {
     @State private var showSaveNamePrompt = false
     @State private var showFileExporter = false
     @State private var pdfShareItem: PDFShareItem?
+    @State private var showErrorLogShare = false
     @State private var showFileImporter = false
     @State private var editorSize = CGSize.zero
     @State private var dockDragKind: TargetKind?
@@ -460,6 +461,9 @@ struct ContentView: View {
         .sheet(item: $pdfShareItem) { item in
             ActivityView(activityItems: [item.url])
         }
+        .sheet(isPresented: $showErrorLogShare) {
+            ActivityView(activityItems: [LocalErrorLog.text(errorLog)])
+        }
         .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.line]) { result in
             do {
                 let url = try result.get()
@@ -560,9 +564,7 @@ struct ContentView: View {
                 Button("Load from cloud") { Task { await loadCloudDrawings() } }
                 Button("View netlist") { showNetlist.toggle() }
                 Button("Clear status") { cloudStatus = "" }
-                ShareLink(item: LocalErrorLog.text(errorLog), subject: Text("Easy1Line error log"), message: Text("Easy1Line diagnostics")) {
-                    Label("Share error log", systemImage: "square.and.arrow.up")
-                }
+                Button("Share error log") { showErrorLogShare = true }
             }
             .buttonStyle(EditorButtonStyle())
 
