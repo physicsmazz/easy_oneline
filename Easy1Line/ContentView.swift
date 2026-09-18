@@ -3619,8 +3619,16 @@ struct ContentView: View {
                 points[movedIndex].y += translation.height
             } else {
                 let pinIndex = segment.startID == targetID ? 0 : points.count - 1
+                let adjacentIndex = pinIndex == 0 ? 1 : points.count - 2
+                // The turn nearest the moved pin shares one axis with it (the stub's orientation).
+                // Slide that same axis on the turn so the stub tracks the pin instead of leaving a
+                // frozen trunk segment behind — the trunk's own level/column is left untouched.
+                let sharesX = abs(points[adjacentIndex].x - points[pinIndex].x) < 0.5
+                let sharesY = abs(points[adjacentIndex].y - points[pinIndex].y) < 0.5
                 points[pinIndex].x += translation.width
                 points[pinIndex].y += translation.height
+                if sharesX { points[adjacentIndex].x = points[pinIndex].x }
+                if sharesY { points[adjacentIndex].y = points[pinIndex].y }
             }
             document.segments[index].routePoints = normalizedRoute(points)
         }
