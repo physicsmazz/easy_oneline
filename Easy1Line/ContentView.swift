@@ -1099,6 +1099,9 @@ struct ContentView: View {
             editorSize = newSize
             recoverToolbarOffsetsIfNeeded()
         }
+        .overlay {
+            macScrollZoomOverlay
+        }
         .simultaneousGesture(MagnificationGesture().onChanged { value in
             guard !canvasLocked else { return }
             isPinchingOrRotating = true
@@ -1151,6 +1154,23 @@ struct ContentView: View {
             .padding(.top, 88)
             .padding(.trailing, 24)
         }
+    }
+
+    @ViewBuilder
+    private var macScrollZoomOverlay: some View {
+        #if targetEnvironment(macCatalyst)
+        ScrollZoomOverlay { delta in
+            guard !canvasLocked else { return }
+            let factor = CGFloat(exp(-Double(delta) * 0.006))
+            let newScale = min(4, max(0.25, canvasScale * factor))
+            guard newScale != canvasScale else { return }
+            let appliedFactor = newScale / canvasScale
+            canvasOffset = CGSize(width: canvasOffset.width * appliedFactor, height: canvasOffset.height * appliedFactor)
+            canvasScale = newScale
+        }
+        #else
+        EmptyView()
+        #endif
     }
 
     private func wireLabel(_ segment: SchematicSegment, on points: [CGPoint]) -> some View {
@@ -5196,6 +5216,49 @@ private struct GridBackground: View {
         color
     }
 }
+
+#if targetEnvironment(macCatalyst)
+private struct ScrollZoomOverlay: UIViewRepresentable {
+    let onScroll: (CGFloat) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onScroll: onScroll) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = true
+        let gesture = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        gesture.allowedScrollTypesMask = [.continuous, .discrete]
+        gesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(gesture)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
+
+    final class Coordinator: NSObject {
+        private let onScroll: (CGFloat) -> Void
+        private var lastTranslation: CGFloat = 0
+
+        init(onScroll: @escaping (CGFloat) -> Void) {
+            self.onScroll = onScroll
+        }
+
+        @objc func handlePan(_ gesture: UIPanGestureRecognizer) {
+            let translation = gesture.translation(in: gesture.view).y
+            switch gesture.state {
+            case .began:
+                lastTranslation = translation
+            case .changed:
+                onScroll(translation - lastTranslation)
+                lastTranslation = translation
+            default:
+                lastTranslation = 0
+            }
+        }
+    }
+}
+#endif
 
 /// Custom vector-drawn ANSI/IEEE-style electrical schematic symbols, replacing generic SF Symbol icons.
 private struct SchematicSymbolView: View {
