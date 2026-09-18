@@ -4994,8 +4994,6 @@ private struct TargetView: View {
             if target.kind == .junction {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
-                    // Temporary: shows the actual 32x32 clickable region while diagnosing Mac click issues.
-                    Circle().stroke(.yellow.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(width: 32, height: 32)
                 }
                 .frame(width: 32, height: 32)
             } else if target.isCompact {
