@@ -3914,13 +3914,13 @@ struct ContentView: View {
     }
 
     private func finalizeWireSectionDrag(_ id: UUID) {
-        if let sectionIndex = selectedSegmentSectionIndex,
-           let segmentIndex = document.segments.firstIndex(where: { $0.id == id }),
+        if let segmentIndex = document.segments.firstIndex(where: { $0.id == id }),
            let start = target(with: document.segments[segmentIndex].startID),
            let end = target(with: document.segments[segmentIndex].endID) {
-            let points = cachedWirePoints[id]
+            var points = cachedWirePoints[id]
                 ?? orthogonalPoints(for: document.segments[segmentIndex], from: start, to: end, avoiding: [])
-            if sectionIndex + 1 < points.count {
+            if let sectionIndex = selectedSegmentSectionIndex,
+               sectionIndex + 1 < points.count {
                 let sectionStart = points[sectionIndex]
                 let sectionEnd = points[sectionIndex + 1]
                 let horizontal = abs(sectionStart.y - sectionEnd.y) < 0.5
@@ -3931,24 +3931,27 @@ struct ContentView: View {
                     sectionEnd: sectionEnd,
                     coordinate: coordinate
                 ) {
-                    var alignedPoints = points
                     let delta = alignment.coordinate - coordinate
                     if horizontal {
-                        alignedPoints[sectionIndex].y += delta
-                        alignedPoints[sectionIndex + 1].y += delta
+                        points[sectionIndex].y += delta
+                        points[sectionIndex + 1].y += delta
                     } else {
-                        alignedPoints[sectionIndex].x += delta
-                        alignedPoints[sectionIndex + 1].x += delta
+                        points[sectionIndex].x += delta
+                        points[sectionIndex + 1].x += delta
                     }
-                    let alignedRoute = routeWithOrthogonalDragJoints(
-                        alignedPoints,
+                    points = routeWithOrthogonalDragJoints(
+                        points,
                         draggedSectionIndex: sectionIndex,
                         isVertical: !horizontal
                     )
-                    document.segments[segmentIndex].routePoints = alignedRoute
-                    cachedWirePoints[id] = alignedRoute
                 }
             }
+
+            // Once the drag ends, merge collinear aligned sections and discard only
+            // the interior vertices that no longer change the wire's path.
+            let normalized = normalizedRoute(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))
+            document.segments[segmentIndex].routePoints = normalized
+            cachedWirePoints[id] = normalized
         }
         wireAlignmentPreviewSegmentIDs.removeAll()
         wireLabelRouteAnchorPoints.removeValue(forKey: id)
@@ -4006,10 +4009,32 @@ struct ContentView: View {
         var result = points
         for _ in 0..<max(points.count, 1) {
             let previous = result
-            result = simplifyOrthogonalPoints(removeRouteLoops(result), alignmentTolerance: alignmentTolerance)
+            result = collapseAlignedInteriorPoints(removeRouteLoops(result), tolerance: alignmentTolerance)
             if result == previous { break }
         }
         return routeWithInsertedOrthogonalJoints(result)
+    }
+
+    private func collapseAlignedInteriorPoints(_ points: [CGPoint], tolerance: CGFloat) -> [CGPoint] {
+        guard points.count > 2 else { return points }
+        var collapsed = [points[0]]
+        for point in points.dropFirst() {
+            guard let previous = collapsed.last else { continue }
+            if abs(point.x - previous.x) <= tolerance && abs(point.y - previous.y) <= tolerance {
+                continue
+            }
+            if collapsed.count >= 2 {
+                let before = collapsed[collapsed.count - 2]
+                let sharesVerticalAxis = abs(before.x - previous.x) <= tolerance && abs(previous.x - point.x) <= tolerance
+                let sharesHorizontalAxis = abs(before.y - previous.y) <= tolerance && abs(previous.y - point.y) <= tolerance
+                if sharesVerticalAxis || sharesHorizontalAxis {
+                    collapsed[collapsed.count - 1] = point
+                    continue
+                }
+            }
+            collapsed.append(point)
+        }
+        return collapsed
     }
 
     private func nearbyParallelAlignment(segmentID: UUID, sectionStart: CGPoint, sectionEnd: CGPoint, coordinate: CGFloat) -> (segmentID: UUID, coordinate: CGFloat)? {
@@ -4145,31 +4170,28 @@ struct ContentView: View {
         let escapeStart = escapePoint(for: startTarget, slot: startTargetSlot(startTarget, point: start), toward: endTarget)
         let escapeEnd = escapePoint(for: endTarget, slot: endTargetSlot(endTarget, point: end), toward: startTarget)
 
-        var directPath = [escapeStart, CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeStart.y), CGPoint(x: (escapeStart.x + escapeEnd.x) / 2, y: escapeEnd.y), escapeEnd]
-        if abs(directPath[1].x - directPath[2].x) < 0.5 {
-            directPath[1].x += segment.bendOffset
-            directPath[2].x += segment.bendOffset
-            if snapToGrid {
-                let snappedX = snappedCoordinate(directPath[1].x)
-                directPath[1].x = snappedX
-                directPath[2].x = snappedX
-            }
-        } else {
-            directPath[1].y += segment.bendOffset
-            directPath[2].y += segment.bendOffset
-            if snapToGrid {
-                let snappedY = snappedCoordinate(directPath[1].y)
-                directPath[1].y = snappedY
-                directPath[2].y = snappedY
-            }
-        }
-
         let rectangles = obstacles
             .filter { $0.kind != .junction }
             .map { obstacleRect(for: $0).insetBy(dx: -12, dy: -12) }
-        let middlePath = (rectangles.isEmpty || pointsAreClear(directPath, from: rectangles))
-            ? directPath
-            : orthogonalRoute(from: escapeStart, to: escapeEnd, avoiding: rectangles)
+        let directPaths = [
+            [escapeStart, CGPoint(x: escapeEnd.x, y: escapeStart.y), escapeEnd],
+            [escapeStart, CGPoint(x: escapeStart.x, y: escapeEnd.y), escapeEnd]
+        ].map { path in
+            var adjusted = path
+            if adjusted.count > 2 {
+                if abs(adjusted[0].y - adjusted[1].y) < 0.5 {
+                    adjusted[1].y += segment.bendOffset
+                    if snapToGrid { adjusted[1].y = snappedCoordinate(adjusted[1].y) }
+                } else {
+                    adjusted[1].x += segment.bendOffset
+                    if snapToGrid { adjusted[1].x = snappedCoordinate(adjusted[1].x) }
+                }
+            }
+            return adjusted
+        }
+        let clearDirectPaths = directPaths.filter { rectangles.isEmpty || pointsAreClear($0, from: rectangles) }
+        let middlePath = clearDirectPaths.min(by: { pathLength($0) < pathLength($1) })
+            ?? orthogonalRoute(from: escapeStart, to: escapeEnd, avoiding: rectangles)
 
         return routePreservingStubs(start: start, startStub: escapeStart, middle: middlePath, endStub: escapeEnd, end: end)
     }
@@ -4184,11 +4206,16 @@ struct ContentView: View {
 
     /// Grid-based orthogonal pathfinder: builds a Manhattan grid from the start/end points plus every
     /// obstacle rectangle's edges, then finds the shortest all-right-angle path that doesn't cross any
-    /// obstacle - routing AROUND items rather than behind them. Falls back to a direct 2-turn path if no
+    /// obstacle - routing AROUND items rather than behind them. Falls back to a shortest one-bend path if no
     /// obstacle blocks it, or if no clear route can be found at all.
     private func orthogonalRoute(from start: CGPoint, to end: CGPoint, avoiding obstacles: [CGRect]) -> [CGPoint] {
-        let directFallback = [start, CGPoint(x: (start.x + end.x) / 2, y: start.y), CGPoint(x: (start.x + end.x) / 2, y: end.y), end]
-        guard !obstacles.isEmpty else { return directFallback }
+        let directFallbacks = [
+            [start, CGPoint(x: end.x, y: start.y), end],
+            [start, CGPoint(x: start.x, y: end.y), end]
+        ]
+        guard !obstacles.isEmpty else {
+            return directFallbacks.min(by: { pathLength($0) < pathLength($1) }) ?? [start, end]
+        }
 
         var xs = Set([start.x, end.x])
         var ys = Set([start.y, end.y])
@@ -4237,7 +4264,9 @@ struct ContentView: View {
             }
         }
 
-        guard cameFrom[endNode] != nil else { return directFallback }
+        guard cameFrom[endNode] != nil else {
+            return directFallbacks.min(by: { pathLength($0) < pathLength($1) }) ?? [start, end]
+        }
         var path = [endNode]
         var node = endNode
         while node != startNode, let prev = cameFrom[node] {
@@ -5446,7 +5475,7 @@ private struct SegmentHitArea: View {
     let onDoubleTap: () -> Void
     var onTapAt: ((CGPoint) -> Void)? = nil
     var body: some View {
-        path.stroke(isSelected ? Color.cyan.opacity(0.25) : Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
+        path.stroke(Color.white.opacity(0.001), style: StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round))
             .contentShape((hitPath ?? path).strokedPath(StrokeStyle(lineWidth: 24, lineCap: .round, lineJoin: .round)))
             .onTapGesture(perform: onTap)
             .onTapGesture(count: 2, perform: onDoubleTap)
