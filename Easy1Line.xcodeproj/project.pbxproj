@@ -278,7 +278,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-															 MARKETING_VERSION = 0.7.2;
+															 MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = MazzWebdesign.Easy1Line;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -289,6 +289,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+					SUPPORTS_MACCATALYST = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -314,7 +315,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-															 MARKETING_VERSION = 0.7.2;
+															 MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = MazzWebdesign.Easy1Line;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -325,6 +326,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+					SUPPORTS_MACCATALYST = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

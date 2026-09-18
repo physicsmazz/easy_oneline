@@ -1247,7 +1247,12 @@ struct ContentView: View {
         guard editorSize != .zero else { return }
         let dropPoint = canvasDropPoint(screenLocation, canvasSize: editorSize)
         let snappedDropPoint = snapToGrid ? snappedPosition(dropPoint) : dropPoint
-        let iconPoint = CGPoint(x: snappedDropPoint.x, y: snappedDropPoint.y + (kind == .junction ? 0 : 9))
+        #if targetEnvironment(macCatalyst)
+        let dropOffset: CGFloat = 0
+        #else
+        let dropOffset: CGFloat = kind == .junction ? 0 : 9
+        #endif
+        let iconPoint = CGPoint(x: snappedDropPoint.x, y: snappedDropPoint.y + dropOffset)
         addTarget(kind, at: iconPoint)
         guard let id = document.targets.last?.id,
               let index = document.targets.firstIndex(where: { $0.id == id }) else { return }
@@ -3614,8 +3619,16 @@ struct ContentView: View {
                 points[movedIndex].y += translation.height
             } else {
                 let pinIndex = segment.startID == targetID ? 0 : points.count - 1
+                let adjacentIndex = pinIndex == 0 ? 1 : points.count - 2
+                // The turn nearest the moved pin shares one axis with it (the stub's orientation).
+                // Slide that same axis on the turn so the stub tracks the pin instead of leaving a
+                // frozen trunk segment behind — the trunk's own level/column is left untouched.
+                let sharesX = abs(points[adjacentIndex].x - points[pinIndex].x) < 0.5
+                let sharesY = abs(points[adjacentIndex].y - points[pinIndex].y) < 0.5
                 points[pinIndex].x += translation.width
                 points[pinIndex].y += translation.height
+                if sharesX { points[adjacentIndex].x = points[pinIndex].x }
+                if sharesY { points[adjacentIndex].y = points[pinIndex].y }
             }
             document.segments[index].routePoints = normalizedRoute(points)
         }
@@ -4979,6 +4992,7 @@ private struct TargetView: View {
                 ZStack {
                     Circle().fill(connectedColor).frame(width: 18, height: 18).overlay { Circle().stroke(.white.opacity(0.7), lineWidth: 2) }
                 }
+                .frame(width: 32, height: 32)
             } else if target.isCompact {
                 ZStack {
                     Circle().fill(Color(red: 0.10, green: 0.14, blue: 0.16))
@@ -5154,7 +5168,8 @@ private struct TargetBodyHitShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         if kind == .junction {
-            return Circle().path(in: CGRect(x: rect.midX - 9, y: rect.midY - 9, width: 18, height: 18))
+            // Wider than the 18pt visual dot — a mouse pointer on Mac needs more room than a fingertip.
+            return Circle().path(in: CGRect(x: rect.midX - 16, y: rect.midY - 16, width: 32, height: 32))
         }
         if isCompact {
             return Circle().path(in: CGRect(x: rect.midX - 20, y: rect.midY - 20, width: 40, height: 40))
