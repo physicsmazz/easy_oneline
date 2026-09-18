@@ -5165,7 +5165,7 @@ private struct TargetView: View {
             }
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
-        .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
+        .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : target.kind == .junction ? AnyShape(Rectangle().inset(by: -16)) : targetHitShape)
         .scaleEffect(CGFloat(target.scale * baseItemSize))
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
@@ -5420,11 +5420,7 @@ private extension View {
     /// highPriorityGesture tap to the same view made click recognition unreliable on Mac.
     @ViewBuilder
     func singleTapToSelect(isJunction: Bool, action: @escaping () -> Void) -> some View {
-        if isJunction {
-            highPriorityGesture(TapGesture().onEnded(action), including: .all)
-        } else {
-            onTapGesture(perform: action)
-        }
+        onTapGesture(perform: action)
     }
 }
 
