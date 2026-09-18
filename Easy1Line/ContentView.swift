@@ -97,7 +97,8 @@ struct ContentView: View {
     @AppStorage("showWireCoverings") private var showWireCoverings = false
     @AppStorage("showWireNetNames") private var showWireNetNames = false
     @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
-    @AppStorage("canvasFieldSize") private var canvasFieldSize: Double = 4000
+    private let canvasFieldSize: CGFloat = 5000
+    @AppStorage("baseItemSize") private var baseItemSize: Double = 1.0
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
     @AppStorage("connectionStubLength") private var connectionStubLength: Double = 15
     @AppStorage("wireBridgesEnabled") private var wireBridgesEnabled = true
@@ -167,6 +168,7 @@ struct ContentView: View {
     @AppStorage("zoomToolbarOffsetY") private var zoomToolbarOffsetY: Double = 0
     @State private var toolbarDragStartOffset: CGSize?
     @State private var targetToolbarHeight: CGFloat = 0
+    @State private var zoomToolbarWidth: CGFloat = 0
     @State private var showDeleteWarning = false
     @State private var deleteWarningSourceFrame: CGRect = .zero
     @State private var wirePlacementMode: WirePlacementMode?
@@ -585,10 +587,11 @@ struct ContentView: View {
                     Label("Snap to grid: \(snapToGrid ? "On" : "Off")", systemImage: snapToGrid ? "checkmark.circle.fill" : "circle")
                 }
                 Stepper("Auto-straighten distance: \(wireAlignmentTolerance, specifier: "%.0f") px", value: $wireAlignmentTolerance, in: 1...25, step: 1)
-                Stepper("Canvas size: \(Int(canvasFieldSize)) px", value: $canvasFieldSize, in: 2000...5000, step: 500)
+                Stepper("Base item size: \(Int(baseItemSize * 100))%", value: $baseItemSize, in: 0.5...1.15, step: 0.05)
                 Button("Background color") { showBackgroundColorPicker = true }
-                Divider()
                 Button("Background image") { showBackgroundImagePanel.toggle() }
+                Divider()
+                Button("Reset Toolbars") { resetToolbars() }
             }
             .buttonStyle(EditorButtonStyle())
             .accessibilityLabel("App settings")
@@ -876,6 +879,7 @@ struct ContentView: View {
                         selectedSlots: [],
                         connectionNames: target.connectionNames,
                         showConnectionNames: showConnectionNames,
+                        baseItemSize: baseItemSize,
                         connectionMode: false,
                         connectionMoveMode: false,
                         onSelectConnectionPoint: { _ in },
@@ -1010,6 +1014,7 @@ struct ContentView: View {
                     selectedSlots: selectedConnectionSlots[target.id].map { Set([$0]) } ?? [],
                     connectionNames: target.connectionNames,
                     showConnectionNames: showConnectionNames,
+                    baseItemSize: baseItemSize,
                     connectionMode: connectionMode,
                     connectionMoveMode: wireConnectionMoveMode,
                     onSelectConnectionPoint: { slot in
@@ -1088,6 +1093,13 @@ struct ContentView: View {
                     .offset(x: selectionToolbarOffsetX, y: selectionToolbarOffsetY)
                     .gesture(toolbarDragGesture(isTarget: false))
                 zoomControls
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear
+                                .onAppear { zoomToolbarWidth = proxy.size.width }
+                                .onChange(of: proxy.size.width) { _, newWidth in zoomToolbarWidth = newWidth }
+                        }
+                    }
                     .offset(x: zoomToolbarOffsetX, y: zoomToolbarOffsetY)
                     .gesture(toolbarDragGesture(isTarget: false, isZoom: true))
             }
@@ -3049,6 +3061,22 @@ struct ContentView: View {
     private var selectedSegment: SchematicSegment? { guard let selectedSegmentID else { return nil }; return document.segments.first { $0.id == selectedSegmentID } }
     private func segment(with id: UUID) -> SchematicSegment? { document.segments.first { $0.id == id } }
 
+    private func resetToolbars() {
+        itemsPanelOffsetX = 0
+        itemsPanelOffsetY = 0
+        zoomToolbarOffsetX = 0
+        zoomToolbarOffsetY = 2
+        targetToolbarOffsetX = 0
+        targetToolbarOffsetY = 0
+
+        let selectionWidth = selectionBoxSize.width
+        let rightOverlayInset: CGFloat = 24
+        let toolbarSpacing: CGFloat = 8
+        selectionToolbarOffsetX = editorSize.width / 2
+            - (editorSize.width - rightOverlayInset - zoomToolbarWidth - toolbarSpacing - selectionWidth / 2)
+        selectionToolbarOffsetY = 0
+    }
+
     private var itemsPanelDragGesture: some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { value in
@@ -3140,7 +3168,7 @@ struct ContentView: View {
             topOffset = targetToolbarTopOffset
             bottomOffset = 0
         } else if isZoom {
-            topOffset = 1
+            topOffset = 2
             bottomOffset = max(0, editorSize.height - 112 - 44)
         } else {
             topOffset = 0
@@ -3161,7 +3189,7 @@ struct ContentView: View {
             bottomOffset = 0
         } else {
             let toolbarHeight = isZoom ? CGFloat(44) : selectionBoxSize.height
-            topOffset = isZoom ? 1 : 0
+            topOffset = isZoom ? 2 : 0
             bottomOffset = max(0, editorSize.height - 112 - toolbarHeight)
         }
         return CGSize(
@@ -4902,6 +4930,7 @@ private struct TargetView: View {
     let selectedSlots: Set<Int>
     let connectionNames: [String]
     let showConnectionNames: Bool
+    let baseItemSize: Double
     let connectionMode: Bool
     let connectionMoveMode: Bool
     let onSelectConnectionPoint: (Int) -> Void
@@ -4992,7 +5021,7 @@ private struct TargetView: View {
         }
         // Pins sit outside the body frame; widen the hit shape so taps on them don't fall through to wires.
         .contentShape(connectionMode || connectionMoveMode ? AnyShape(Rectangle().inset(by: -48)) : targetHitShape)
-        .scaleEffect(target.scale)
+        .scaleEffect(CGFloat(target.scale * baseItemSize))
         .overlay(alignment: .topTrailing) {
             if let selectionOrder {
                 Text("\(selectionOrder)")
