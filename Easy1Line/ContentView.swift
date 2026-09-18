@@ -1298,7 +1298,7 @@ struct ContentView: View {
                 .help("Reset zoom and rotation")
                 .disabled(canvasLocked)
             Button { rotationLocked.toggle() } label: {
-                Image(systemName: rotationLocked ? "rotate.3d.slash" : "rotate.3d")
+                Image(systemName: rotationLocked ? "lock.rotation" : "lock.rotation.open")
             }
             .buttonStyle(EditorButtonStyle(isActive: rotationLocked))
             .help(rotationLocked ? "Unlock canvas rotation" : "Lock canvas rotation")
