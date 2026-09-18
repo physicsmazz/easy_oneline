@@ -350,6 +350,14 @@ struct ContentView: View {
                     .allowsHitTesting(false)
                     .zIndex(900)
             }
+
+            Text("v\(appVersion)")
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.28))
+                .padding(.trailing, 8)
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .allowsHitTesting(false)
         }
         .preferredColorScheme(.dark)
         .onChange(of: document) { _, newValue in
