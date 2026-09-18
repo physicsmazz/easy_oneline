@@ -4092,11 +4092,32 @@ struct ContentView: View {
     }
 
     private func routePreservingStubs(start: CGPoint, startStub: CGPoint, middle: [CGPoint], endStub: CGPoint, end: CGPoint) -> [CGPoint] {
-        var interior = Array(middle.dropFirst().dropLast())
-        var route = [start, startStub] + interior + [endStub, end]
+        let interior = Array(middle.dropFirst().dropLast())
+        let route = [start, startStub] + interior + [endStub, end]
+        return routeWithOrthogonalContinuity(route)
+    }
+
+    private func routeWithOrthogonalContinuity(_ points: [CGPoint]) -> [CGPoint] {
+        guard points.count > 1 else { return points }
         var result: [CGPoint] = []
-        for point in route where result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true {
+        func appendIfDistinct(_ point: CGPoint) {
+            guard result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true else { return }
             result.append(point)
+        }
+        appendIfDistinct(points[0])
+        for point in points.dropFirst() {
+            guard let previous = result.last else {
+                appendIfDistinct(point)
+                continue
+            }
+            if abs(previous.x - point.x) > 0.5 && abs(previous.y - point.y) > 0.5 {
+                if result.count >= 2, abs(result[result.count - 2].x - previous.x) < 0.5 {
+                    appendIfDistinct(CGPoint(x: previous.x, y: point.y))
+                } else {
+                    appendIfDistinct(CGPoint(x: point.x, y: previous.y))
+                }
+            }
+            appendIfDistinct(point)
         }
         return result
     }
