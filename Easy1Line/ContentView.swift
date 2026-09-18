@@ -150,6 +150,9 @@ struct ContentView: View {
     @State private var saveNameDraft = ""
     @State private var pendingSaveToCloud = false
     @State private var showSaveNamePrompt = false
+    @State private var showVersionPrompt = false
+    @State private var showVersionHistory = false
+    @State private var versionDescriptionDraft = ""
     @State private var showFileExporter = false
     @State private var pdfShareItem: PDFShareItem?
     @State private var showFileImporter = false
@@ -291,6 +294,13 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
+                    if showVersionHistory {
+                    versionHistoryPanel
+                        .padding(.top, 84)
+                        .padding(.trailing, 20)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+
             if showCloudLibrary {
                 cloudLibraryPanel
                     .padding(.top, 84)
@@ -423,6 +433,13 @@ struct ContentView: View {
             Button("Save") { commitNamedSave() }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Save a version", isPresented: $showVersionPrompt) {
+            TextField("What changed?", text: $versionDescriptionDraft)
+            Button("Save version") { saveVersion() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Add a short description so you can recognize this snapshot later.")
+        }
         .popover(isPresented: $showDeleteWarning, attachmentAnchor: .point(.center), arrowEdge: .bottom) {
             VStack(spacing: 12) {
                 Text(deleteWarningTitle)
@@ -517,21 +534,22 @@ struct ContentView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Easy1Line")
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .tracking(1.5)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .tracking(1.1)
+                    .foregroundStyle(.white.opacity(0.62))
                 HStack(spacing: 5) {
                     if editingDocumentName {
                         TextField("Schematic name", text: $document.name)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
                             .textFieldStyle(.plain)
-                            .foregroundStyle(.white.opacity(0.5))
-                            .frame(width: 150)
+                            .foregroundStyle(.white.opacity(0.92))
+                            .frame(width: 190)
                     } else {
                         Text(document.name)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.92))
                             .lineLimit(1)
-                            .frame(width: 150, alignment: .leading)
+                            .frame(width: 190, alignment: .leading)
                     }
                     Button { editingDocumentName.toggle() } label: {
                         Image(systemName: editingDocumentName ? "checkmark" : "pencil")
@@ -544,8 +562,8 @@ struct ContentView: View {
                 if !currentDisplayName.isEmpty {
                     Button { showProfilePicker = true } label: {
                         Label(currentDisplayName, systemImage: "person")
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.35))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.62))
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -571,6 +589,8 @@ struct ContentView: View {
                 Divider()
                 Button("New Drawing") { showNewDrawingWarning = true }
                 Button("Save locally") { promptForSaveName(toCloud: false) }
+                Button("Save version") { promptForVersion() }
+                Button("Version history") { showVersionHistory.toggle() }
                 Button("Export .line") { showFileExporter = true }
                 Button("Export PDF") { preparePDFShare() }
                 Button("Import .line") { showFileImporter = true }
@@ -2023,6 +2043,46 @@ struct ContentView: View {
         showSaveNamePrompt = true
     }
 
+    private func promptForVersion() {
+        versionDescriptionDraft = ""
+        showVersionPrompt = true
+    }
+
+    private func saveVersion() {
+        let description = versionDescriptionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !description.isEmpty,
+              let data = SchematicDocument.snapshotData(for: document) else { return }
+        document.versionHistory.insert(
+            SchematicVersion(
+                createdAt: Date(),
+                description: description,
+                userName: currentDisplayName,
+                data: data
+            ),
+            at: 0
+        )
+        saveCurrent()
+        cloudStatus = "Version saved"
+    }
+
+    private func recallVersion(_ version: SchematicVersion) {
+        guard let restored = try? JSONDecoder().decode(SchematicDocument.self, from: version.data) else {
+            cloudStatus = "Version could not be recalled"
+            return
+        }
+        var recalled = restored
+        recalled.versionHistory = document.versionHistory
+        document = recalled
+        showVersionHistory = false
+        selectedTargetIDs.removeAll()
+        selectedConnectionSlots.removeAll()
+        selectedSegmentIDs.removeAll()
+        selectedSegmentID = nil
+        saveCurrent()
+        autoZoomAfterLoad()
+        cloudStatus = "Recalled version"
+    }
+
     private func commitNamedSave() {
         let trimmed = saveNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { document.name = trimmed }
@@ -2380,19 +2440,75 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var versionHistoryPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("VERSION HISTORY")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.3)
+                    .foregroundStyle(.white.opacity(0.45))
+                Spacer()
+                Button { showVersionHistory = false } label: {
+                    Image(systemName: "xmark")
+                }
+                .foregroundStyle(.white.opacity(0.65))
+            }
+            Button { promptForVersion() } label: {
+                Label("Save current version", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            if document.versionHistory.isEmpty {
+                Text("No saved versions yet.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 6) {
+                        ForEach(document.versionHistory) { version in
+                            Button { recallVersion(version) } label: {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(version.description)
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(version.createdAt, format: .dateTime.month(.abbreviated).day().year().hour().minute())
+                                        .font(.caption2)
+                                        .foregroundStyle(.white.opacity(0.5))
+                                    Text(version.userName.isEmpty ? "Unknown user" : version.userName)
+                                        .font(.caption2)
+                                        .foregroundStyle(.cyan.opacity(0.75))
+                                }
+                                .padding(9)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 420)
+            }
+        }
+        .padding(14)
+        .frame(width: 300)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var profilePickerPanel: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("WHO ARE YOU?").font(.system(size: 11, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.55))
-            Text("Choose your name for shared drawing history.").font(.caption).foregroundStyle(.white.opacity(0.65))
+            Text("Choose your display name")
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+            Text("This is the name others will see during shared editing.")
+                .font(.callout)
+                .foregroundStyle(.white.opacity(0.65))
             ForEach(profileNames, id: \.self) { name in
                 Button(name) { selectProfileName(name) }
                     .buttonStyle(.bordered)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            TextField("Add your name", text: $profileNameDraft)
+            TextField("Display name", text: $profileNameDraft)
                 .textFieldStyle(.roundedBorder)
-            Button("Use this name") { createAndSelectProfile() }
+            Button("Continue") { createAndSelectProfile() }
                 .buttonStyle(.borderedProminent)
                 .disabled(profileNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
@@ -3860,11 +3976,7 @@ struct ContentView: View {
         }
         let dragRoute = routeWithOrthogonalDragJoints(points, draggedSectionIndex: sectionIndex, isVertical: isVertical)
         wireAlignmentPreviewSegmentIDs.removeAll()
-        document.segments[index].routePoints = dragRoute
         cachedWirePoints[id] = dragRoute
-        if let labelAnchor = wireLabelRouteAnchorPoints[id] {
-            updateWireLabelPosition(id, route: dragRoute, near: labelAnchor)
-        }
         selectedTargetIDs.removeAll()
     }
 
@@ -4793,6 +4905,14 @@ private struct LocalErrorEntry: Codable {
     let message: String
 }
 
+private struct SchematicVersion: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var createdAt: Date
+    var description: String
+    var userName: String
+    var data: Data
+}
+
 private enum LocalErrorLog {
     private static let key = "easy1line.errorLog"
 
@@ -4867,6 +4987,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
     var lineDefinitions: [LineDefinition] = LineDefinition.defaults
     var colorLegend: [ColorLegendEntry] = ColorLegendEntry.defaults
     var targetDefinitions: [TargetDefinition] = []
+    var versionHistory: [SchematicVersion] = []
     var backgroundImageBase64: String? = nil
     var backgroundImageSize: CGSize = CGSize(width: 200, height: 200)
     var backgroundImagePosition: CGPoint = CGPoint(x: 2000, y: 2000)
@@ -4894,6 +5015,7 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
         colorLegend = try container.decodeIfPresent([ColorLegendEntry].self, forKey: .colorLegend) ?? ColorLegendEntry.defaults
         let savedTargetDefinitions = try container.decodeIfPresent([TargetDefinition].self, forKey: .targetDefinitions) ?? []
         targetDefinitions = savedTargetDefinitions.isEmpty ? TargetDefinition.defaults : savedTargetDefinitions
+        versionHistory = try container.decodeIfPresent([SchematicVersion].self, forKey: .versionHistory) ?? []
         backgroundImageBase64 = try container.decodeIfPresent(String.self, forKey: .backgroundImageBase64)
         backgroundImageSize = try container.decodeIfPresent(CGSize.self, forKey: .backgroundImageSize) ?? CGSize(width: 200, height: 200)
         backgroundImagePosition = try container.decodeIfPresent(CGPoint.self, forKey: .backgroundImagePosition) ?? CGPoint(x: 2000, y: 2000)
@@ -4917,6 +5039,12 @@ private struct SchematicDocument: Identifiable, Codable, Equatable {
             used.insert(identifier)
             counters[prefix] = number + 1
         }
+    }
+
+    static func snapshotData(for document: SchematicDocument) -> Data? {
+        var snapshot = document
+        snapshot.versionHistory = []
+        return try? JSONEncoder().encode(snapshot)
     }
 
     static func loadLast() -> SchematicDocument {
