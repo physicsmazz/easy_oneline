@@ -714,7 +714,7 @@ struct ContentView: View {
             } label: {
                 HStack(spacing: 8) {
                     if !compact {
-                        Text("ITEMS")
+                        Text("COMPONENTS")
                             .font(.system(size: 14.95, weight: .bold))
                             .tracking(1.4)
                             .foregroundStyle(.white.opacity(0.45))
@@ -3841,7 +3841,7 @@ struct ContentView: View {
         let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
         let delta = isVertical ? translation.width : translation.height
         let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
-        let movedCoordinate = snapToGrid ? snappedCoordinate(base + delta) : base + delta
+        let movedCoordinate = base + delta
         let alignment = nearbyParallelAlignment(segmentID: id, sectionStart: points[sectionIndex], sectionEnd: points[sectionIndex + 1], coordinate: movedCoordinate)
         let alignedCoordinate = alignment?.coordinate ?? movedCoordinate
         if isVertical {
