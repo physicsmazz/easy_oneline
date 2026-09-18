@@ -3857,7 +3857,7 @@ struct ContentView: View {
             points[sectionIndex].y = alignedCoordinate
             points[sectionIndex + 1].y = alignedCoordinate
         }
-        var dragRoute = normalizedRoute(removeRouteLoops(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))))
+        let dragRoute = points
         wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
         document.segments[index].routePoints = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
