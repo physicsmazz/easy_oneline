@@ -220,7 +220,6 @@ struct ContentView: View {
                 .padding(.leading, 20)
                 .padding(.top, 90)
                 .offset(x: itemsPanelOffsetX, y: itemsPanelOffsetY)
-                .simultaneousGesture(itemsPanelDragGesture)
 
             if let dockDragKind {
                 ZStack {
@@ -710,6 +709,7 @@ struct ContentView: View {
                 }
             }
             .buttonStyle(.plain)
+            .simultaneousGesture(itemsPanelDragGesture)
             .accessibilityLabel(targetsPanelExpanded ? "Collapse items" : "Expand items")
 
             if targetsPanelExpanded {
@@ -725,7 +725,7 @@ struct ContentView: View {
                                     .frame(width: 48, height: 38)
                                     .background(.cyan.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
                                     .contentShape(RoundedRectangle(cornerRadius: 6))
-                                    .gesture(
+                                    .highPriorityGesture(
                                         DragGesture(minimumDistance: 4, coordinateSpace: .global)
                                             .onChanged { value in
                                                 dockDragKind = kind
@@ -1368,6 +1368,7 @@ struct ContentView: View {
                 targetDragStartRoutes.removeAll()
                 for targetID in activeTargetDragIDs {
                     snapTarget(targetID, canvasSize: canvasSize)
+                    splitSegmentIfNeeded(for: targetID)
                 }
                 for segment in document.segments where activeTargetDragIDs.contains(segment.startID) || activeTargetDragIDs.contains(segment.endID) {
                     let attachedJunction = activeTargetDragIDs.contains(where: { self.target(with: $0)?.kind == .junction }) &&
@@ -4174,9 +4175,10 @@ struct ContentView: View {
     private func splitCandidate(at position: CGPoint, excluding targetID: UUID?) -> (segment: SchematicSegment, index: Int, route: [CGPoint], point: CGPoint)? {
         for (index, segment) in document.segments.enumerated() {
             guard segment.startID != targetID, segment.endID != targetID, let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let route = segment.routePoints.count > 1
-                ? segment.routePoints
-                : orthogonalPoints(for: segment, from: start, to: end, avoiding: [])
+            let route = cachedWirePoints[segment.id]
+                ?? (segment.routePoints.count > 1
+                    ? segment.routePoints
+                    : orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id)))
             let candidate = nearestPoint(on: route, to: position)
             if candidate.distance <= 52 { return (segment, index, route, candidate.point) }
         }
