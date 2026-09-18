@@ -168,7 +168,7 @@ struct ContentView: View {
     @State private var itemsPanelHeight: CGFloat = 44
     @State private var splitCandidateSegmentID: UUID?
     @State private var wireAlignmentPreviewSegmentIDs: Set<UUID> = []
-    @State private var targetNameDraft = ""
+    @State private var targetIdentifierDraft = ""
     @State private var targetNameEditingID: UUID?
     @AppStorage("selectionToolbarOffsetX") private var selectionToolbarOffsetX: Double = 0
     @AppStorage("selectionToolbarOffsetY") private var selectionToolbarOffsetY: Double = 0
@@ -487,11 +487,11 @@ struct ContentView: View {
             }
             guard let id = ids.last, let target = target(with: id) else {
                 targetNameEditingID = nil
-                targetNameDraft = ""
+                targetIdentifierDraft = ""
                 return
             }
             targetNameEditingID = id
-            targetNameDraft = target.name
+            targetIdentifierDraft = target.identifier
         }
         .onChange(of: showEditBoxOnSelection) { _, isEnabled in
             if !isEnabled {
@@ -1771,7 +1771,7 @@ struct ContentView: View {
     private func addTarget(from template: TargetDefinition) {
         captureForUndo()
         let position = snappedPosition(quickAddPosition())
-        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: template.kind), kind: template.kind, name: template.name, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
+        document.targets.append(SchematicTarget(identifier: nextTargetIdentifier(for: template.kind), kind: template.kind, name: template.kind.title, position: position, maxConnections: template.maxConnections, colorHex: template.colorHex, symbol: template.symbol, imageData: template.imageData, connectionAngles: template.connectionAngles, scale: template.scale, isCompact: template.isCompact))
         selectedTargetIDs = [document.targets.last!.id]
         selectedSegmentID = nil
         selectedSegmentIDs.removeAll()
@@ -1796,7 +1796,7 @@ struct ContentView: View {
         var copy = target
         copy.id = UUID()
         copy.identifier = nextTargetIdentifier(for: target.kind)
-        copy.name = "\(target.name) copy"
+        copy.name = target.kind.title
         copy.position = snappedPosition(CGPoint(x: target.position.x + 48, y: target.position.y + 48))
         document.targets.append(copy)
         selectedTargetIDs = [copy.id]
@@ -3043,11 +3043,11 @@ struct ContentView: View {
     private func targetBottomPanel(_ target: SchematicTarget) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Text("ITEM").inspectorLabel()
-                TextField("Item name", text: $targetNameDraft).textFieldStyle(.roundedBorder).frame(width: 160)
-                Button("Save") { saveTargetName(target) }
+                Text("COMPONENT ID").inspectorLabel()
+                TextField("ID", text: $targetIdentifierDraft).textFieldStyle(.roundedBorder).frame(width: 160)
+                Button("Save") { saveTargetIdentifier(target) }
                     .buttonStyle(.borderedProminent)
-                Button("Cancel") { cancelTargetName(target) }
+                Button("Cancel") { cancelTargetIdentifier(target) }
                     .buttonStyle(.bordered)
                 Spacer()
                 if target.kind != .junction {
@@ -4580,15 +4580,17 @@ struct ContentView: View {
         }
     }
 
-    private func saveTargetName(_ target: SchematicTarget) {
+    private func saveTargetIdentifier(_ target: SchematicTarget) {
         guard let index = document.targets.firstIndex(where: { $0.id == target.id }) else { return }
-        let trimmedName = targetNameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        document.targets[index].name = trimmedName.isEmpty ? target.kind.title : trimmedName
-        targetNameDraft = document.targets[index].name
+        let trimmedIdentifier = targetIdentifierDraft.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !trimmedIdentifier.isEmpty,
+              !document.targets.enumerated().contains(where: { $0.offset != index && $0.element.identifier.caseInsensitiveCompare(trimmedIdentifier) == .orderedSame }) else { return }
+        document.targets[index].identifier = trimmedIdentifier
+        targetIdentifierDraft = trimmedIdentifier
     }
 
-    private func cancelTargetName(_ target: SchematicTarget) {
-        targetNameDraft = target.name
+    private func cancelTargetIdentifier(_ target: SchematicTarget) {
+        targetIdentifierDraft = target.identifier
     }
 
     private func applyLineDefinition(_ line: LineDefinition, to segmentID: UUID) {
@@ -4848,7 +4850,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         self.id = id
         self.identifier = identifier
         self.kind = kind
-        self.name = name
+        self.name = kind.title
         self.position = position
         self.maxConnections = maxConnections
         self.colorHex = colorHex
@@ -4868,7 +4870,7 @@ private struct SchematicTarget: Identifiable, Codable, Equatable {
         identifier = try container.decodeIfPresent(String.self, forKey: .identifier) ?? ""
         let rawKind = try container.decodeIfPresent(String.self, forKey: .kind) ?? TargetKind.source.rawValue
         kind = TargetKind(rawValue: rawKind) ?? .source
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? kind.title
+        name = kind.title
         position = try container.decode(CGPoint.self, forKey: .position)
         maxConnections = try container.decodeIfPresent(Int.self, forKey: .maxConnections) ?? 2
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex) ?? kind.defaultColorHex
