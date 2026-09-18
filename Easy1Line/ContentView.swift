@@ -60,6 +60,7 @@ struct ContentView: View {
     @State private var remoteSyncEnabled = false
     @State private var remoteSyncTask: Task<Void, Never>?
     @State private var remoteSyncDirty = false
+    @State private var remoteSyncLastKnownUpdatedAt: String?
     @State private var canvasOffset = CGSize.zero
     @State private var canvasScale: CGFloat = 1
     @State private var canvasRotation = Angle.zero
@@ -2025,6 +2026,7 @@ struct ContentView: View {
         }
         remoteSyncEnabled = true
         remoteSyncDirty = true
+        remoteSyncLastKnownUpdatedAt = nil
         cloudStatus = "Remote sync started"
         remoteSyncTask = Task {
             while !Task.isCancelled {
@@ -2044,8 +2046,14 @@ struct ContentView: View {
             } catch {
                 recordError("Remote sync push failed: \(cloudErrorText(error))")
             }
+            return // we just pushed our own latest state; no need to immediately pull it back
         }
         do {
+            // Cheap timestamp check first, so an idle tick with nobody else editing costs a tiny
+            // request instead of fetching and decoding the whole document every 4 seconds.
+            guard let remoteUpdatedAt = try await store.loadDrawingUpdatedAt(id: document.id),
+                  remoteUpdatedAt != remoteSyncLastKnownUpdatedAt else { return }
+            remoteSyncLastKnownUpdatedAt = remoteUpdatedAt
             guard let remote = try await store.loadDrawing(id: document.id) else { return }
             let decoded = try JSONDecoder().decode(SchematicDocument.self, from: remote.data)
             guard decoded != document else { return }

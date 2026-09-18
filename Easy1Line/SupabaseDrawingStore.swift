@@ -242,6 +242,18 @@ struct SupabaseDrawingStore {
         return (rowID, name, try JSONSerialization.data(withJSONObject: drawing))
     }
 
+    /// Cheap poll target: fetches only the timestamp so callers can skip the full document fetch when nothing changed.
+    func loadDrawingUpdatedAt(id: UUID) async throws -> String? {
+        var request = URLRequest(url: endpoint("/rest/v1/drawings?id=eq.\(id.uuidString)&select=updated_at"))
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(configuration.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(configuration.anonKey, forHTTPHeaderField: "apikey")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validate(response: response, data: data)
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]], let row = rows.first else { return nil }
+        return row["updated_at"] as? String
+    }
+
     func deleteDrawing(id: UUID) async throws {
         var request = URLRequest(url: endpoint("/rest/v1/drawings?id=eq.\(id.uuidString)"))
         request.httpMethod = "DELETE"
