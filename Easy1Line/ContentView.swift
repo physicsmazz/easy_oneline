@@ -101,7 +101,7 @@ struct ContentView: View {
     @AppStorage("showWireNetNames") private var showWireNetNames = false
     @AppStorage("canvasBackgroundColorHex") private var canvasBackgroundColorHex: String = "0F1215"
     private let canvasFieldSize: CGFloat = 5000
-    private let wireRoutingClearancePixels: CGFloat = 2
+    private let wireRoutingClearancePixels: CGFloat = 0
     @AppStorage("baseItemSize") private var baseItemSize: Double = 1.0
     @AppStorage("selectionHighlightColorHex") private var selectionHighlightColorHex: String = "31D7E8"
     @AppStorage("wireAlignmentTolerance") private var wireAlignmentTolerance: Double = 5
@@ -1452,7 +1452,9 @@ struct ContentView: View {
         var points: [UUID: [CGPoint]] = [:]
         for segment in document.segments {
             guard let start = target(with: segment.startID), let end = target(with: segment.endID) else { continue }
-            let route = orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
+            let route = segmentDragStartPoints[segment.id] != nil
+                ? segment.routePoints
+                : orthogonalPoints(for: segment, from: start, to: end, avoiding: routingObstacles(excluding: start.id, end.id))
             points[segment.id] = routeWithInsertedOrthogonalJoints(route)
         }
         cachedWirePoints = points
@@ -3814,12 +3816,14 @@ struct ContentView: View {
             } else {
                 let pinIndex = segment.startID == targetID ? 0 : points.count - 1
                 let adjacentIndex = pinIndex == 0 ? 1 : points.count - 2
-                // Translate the pin and its adjacent stub endpoint together. This preserves the
-                // stub vector while leaving the rest of the route anchored to the stationary end.
+                // Move the pin while keeping the trunk coordinate fixed so the endpoint stub
+                // expands or contracts instead of dragging the whole trunk with the component.
+                let sharesX = abs(points[adjacentIndex].x - points[pinIndex].x) < 0.5
+                let sharesY = abs(points[adjacentIndex].y - points[pinIndex].y) < 0.5
                 points[pinIndex].x += translation.width
                 points[pinIndex].y += translation.height
-                points[adjacentIndex].x += translation.width
-                points[adjacentIndex].y += translation.height
+                if sharesX { points[adjacentIndex].x = points[pinIndex].x }
+                if sharesY { points[adjacentIndex].y = points[pinIndex].y }
             }
             document.segments[index].routePoints = normalizedRoute(points)
         }
@@ -3845,20 +3849,17 @@ struct ContentView: View {
         let isEndpointStub = sectionIndex == 0 || sectionIndex + 1 == points.count - 1
         guard !isEndpointStub || points.count <= 3 || sectionIndex > 0 else { return }
         let isVertical = abs(points[sectionIndex].x - points[sectionIndex + 1].x) < 0.5
-        let delta = isVertical ? translation.width : translation.height
-        let base = isVertical ? points[sectionIndex].x : points[sectionIndex].y
-        let movedCoordinate = base + delta
-        let alignment = nearbyParallelAlignment(segmentID: id, sectionStart: points[sectionIndex], sectionEnd: points[sectionIndex + 1], coordinate: movedCoordinate)
-        let alignedCoordinate = alignment?.coordinate ?? movedCoordinate
         if isVertical {
-            points[sectionIndex].x = alignedCoordinate
-            points[sectionIndex + 1].x = alignedCoordinate
+            let movedX = points[sectionIndex].x + translation.width
+            points[sectionIndex].x = movedX
+            points[sectionIndex + 1].x = movedX
         } else {
-            points[sectionIndex].y = alignedCoordinate
-            points[sectionIndex + 1].y = alignedCoordinate
+            let movedY = points[sectionIndex].y + translation.height
+            points[sectionIndex].y = movedY
+            points[sectionIndex + 1].y = movedY
         }
-        let dragRoute = normalizedRoute(removeRouteLoops(orthogonalizedPoints(points, alignmentTolerance: CGFloat(wireAlignmentTolerance))), alignmentTolerance: CGFloat(wireAlignmentTolerance))
-        wireAlignmentPreviewSegmentIDs = alignment.map { [id, $0.segmentID] } ?? []
+        let dragRoute = routeWithOrthogonalDragJoints(points, draggedSectionIndex: sectionIndex, isVertical: isVertical)
+        wireAlignmentPreviewSegmentIDs.removeAll()
         document.segments[index].routePoints = dragRoute
         cachedWirePoints[id] = dragRoute
         if let labelAnchor = wireLabelRouteAnchorPoints[id] {
@@ -4132,14 +4133,14 @@ struct ContentView: View {
         let endFallback = escapePoint(for: endTarget, slot: endSlot, toward: startTarget)
         let startEscape = preservedStub(from: startPin, to: points[1], minimumLength: 15, fallback: startFallback, matching: startFallback)
         let endEscape = preservedStub(from: endPin, to: points[points.count - 2], minimumLength: 15, fallback: endFallback, matching: endFallback)
-        if points.count == 2 {
-            return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape, endEscape], endStub: endEscape, end: endPin)
+        let middle: [CGPoint]
+        if points.count > 4 {
+            middle = Array(points.dropFirst(2).dropLast(2))
+        } else if points.count == 3 {
+            middle = [points[1]]
+        } else {
+            middle = []
         }
-        if points.count == 4 {
-            let interior = Array(points.dropFirst().dropLast())
-            return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape] + interior + [endEscape], endStub: endEscape, end: endPin)
-        }
-        let middle = points.count > 4 ? Array(points.dropFirst(2).dropLast(2)) : []
         return routePreservingStubs(start: startPin, startStub: startEscape, middle: [startEscape] + middle + [endEscape], endStub: endEscape, end: endPin)
     }
 
