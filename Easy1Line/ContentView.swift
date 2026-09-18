@@ -4109,7 +4109,17 @@ struct ContentView: View {
             ? directPath
             : orthogonalRoute(from: escapeStart, to: escapeEnd, avoiding: rectangles)
 
-        return simplifyOrthogonalPoints([start] + middlePath + [end])
+        return routePreservingStubs(start: start, startStub: escapeStart, middle: middlePath, endStub: escapeEnd, end: end)
+    }
+
+    private func routePreservingStubs(start: CGPoint, startStub: CGPoint, middle: [CGPoint], endStub: CGPoint, end: CGPoint) -> [CGPoint] {
+        var interior = Array(middle.dropFirst().dropLast())
+        var route = [start, startStub] + interior + [endStub, end]
+        var result: [CGPoint] = []
+        for point in route where result.last.map({ abs($0.x - point.x) > 0.5 || abs($0.y - point.y) > 0.5 }) ?? true {
+            result.append(point)
+        }
+        return result
     }
 
     /// Grid-based orthogonal pathfinder: builds a Manhattan grid from the start/end points plus every
