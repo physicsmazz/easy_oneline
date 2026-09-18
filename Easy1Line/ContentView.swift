@@ -1728,7 +1728,42 @@ struct ContentView: View {
         captureForUndo()
         let line = selectedLineDefinition ?? document.lineDefinitions.first ?? LineDefinition.defaultLine
         document.segments.append(SchematicSegment(startID: startID, endID: endID, startSlot: resolvedStartSlot, endSlot: resolvedEndSlot, name: line.name, colorHex: line.colorHex, size: line.wireSize, type: line.wireType, misc: line.misc, displayWidth: 3, description: line.description))
+        autoOrientTargetIfHelpful(startID)
+        autoOrientTargetIfHelpful(endID)
         return true
+    }
+
+    private func autoOrientTargetIfHelpful(_ targetID: UUID) {
+        guard let targetIndex = document.targets.firstIndex(where: { $0.id == targetID }),
+              document.targets[targetIndex].kind != .junction else { return }
+        let target = document.targets[targetIndex]
+        let connections = document.segments.compactMap { segment -> (slot: Int, other: SchematicTarget)? in
+            if segment.startID == targetID, let other = self.target(with: segment.endID) {
+                return (segment.startSlot ?? 0, other)
+            }
+            if segment.endID == targetID, let other = self.target(with: segment.startID) {
+                return (segment.endSlot ?? 0, other)
+            }
+            return nil
+        }
+        guard !connections.isEmpty else { return }
+
+        let currentAngles = connections.map { connection in
+            connectionAngle(for: target, slot: connection.slot)
+        }
+        let desiredAngles = connections.map { connection in
+            atan2(connection.other.position.y - target.position.y, connection.other.position.x - target.position.x) * 180 / Double.pi
+        }
+        func score(for delta: Double) -> Double {
+            zip(currentAngles, desiredAngles).reduce(0) { total, pair in
+                total + angularDistance(pair.0 + delta, pair.1)
+            }
+        }
+
+        let candidates: [Double] = [0, 180]
+        guard let bestDelta = candidates.min(by: { score(for: $0) < score(for: $1) }),
+              score(for: bestDelta) + 0.5 < score(for: 0) else { return }
+        rotateTarget(target, by: bestDelta)
     }
 
     private func resolvedConnectionSlot(for targetID: UUID, requestedSlot: Int?, toward otherID: UUID) -> Int? {
