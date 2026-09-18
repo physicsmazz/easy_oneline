@@ -1084,13 +1084,14 @@ struct ContentView: View {
                 )
                 .position(target.position)
                 .gesture(targetDragGesture(for: target, canvasSize: size))
-                .onTapGesture { targetTapped(target) }
                 .onTapGesture(count: 2) {
                     openTargetInfo(target)
                 }
                 // Junctions are small and often sit directly on a wire's hit area; force the tap
                 // to win over any overlapping wire gesture instead of letting z-order/ambiguity decide.
-                .highPriorityTapIfJunction(target.kind == .junction) { targetTapped(target) }
+                // Only one single-tap recognizer is attached at a time -- adding both a plain
+                // onTapGesture AND this for the same view made Mac click recognition unreliable.
+                .singleTapToSelect(isJunction: target.kind == .junction) { targetTapped(target) }
             }
 
             if showWireLabels {
@@ -2025,14 +2026,37 @@ struct ContentView: View {
             return
         }
         remoteSyncEnabled = true
-        remoteSyncDirty = true
         remoteSyncLastKnownUpdatedAt = nil
         cloudStatus = "Remote sync started"
         remoteSyncTask = Task {
+            await joinRemoteSync()
             while !Task.isCancelled {
-                await runRemoteSyncStep()
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
+                await runRemoteSyncStep()
             }
+        }
+    }
+
+    /// Joining an existing remote session should adopt its current state rather than overwrite it;
+    /// only push if no remote copy exists yet (first time this document is shared).
+    private func joinRemoteSync() async {
+        guard let store = SupabaseDrawingStore() else { return }
+        do {
+            if let remote = try await store.loadDrawing(id: document.id) {
+                remoteSyncLastKnownUpdatedAt = try await store.loadDrawingUpdatedAt(id: document.id)
+                let decoded = try JSONDecoder().decode(SchematicDocument.self, from: remote.data)
+                guard decoded != document else { return }
+                isApplyingRemoteDocument = true
+                document = decoded
+                DispatchQueue.main.async {
+                    self.isApplyingRemoteDocument = false
+                }
+            } else {
+                let data = try JSONEncoder().encode(document)
+                try await store.saveDrawing(id: document.id, name: document.name, data: data, createdByName: document.createdByName, updatedByName: currentDisplayName)
+            }
+        } catch {
+            recordError("Remote sync join failed: \(cloudErrorText(error))")
         }
     }
 
@@ -5392,12 +5416,14 @@ private struct EditorButtonStyle: ButtonStyle {
 private extension View {
     func inspectorLabel() -> some View { font(.system(size: 11.5, weight: .bold)).tracking(1.2).foregroundStyle(.white.opacity(0.4)) }
 
+    /// Exactly one single-tap recognizer, never both -- attaching a plain onTapGesture AND a
+    /// highPriorityGesture tap to the same view made click recognition unreliable on Mac.
     @ViewBuilder
-    func highPriorityTapIfJunction(_ isJunction: Bool, action: @escaping () -> Void) -> some View {
+    func singleTapToSelect(isJunction: Bool, action: @escaping () -> Void) -> some View {
         if isJunction {
             highPriorityGesture(TapGesture().onEnded(action), including: .all)
         } else {
-            self
+            onTapGesture(perform: action)
         }
     }
 }
